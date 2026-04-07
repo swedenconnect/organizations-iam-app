@@ -1,0 +1,56 @@
+server:
+  servlet:
+    session:
+      cookie:
+        same-site: LAX
+        secure: true
+  compression:
+    enabled: true
+    mime-types: application/json,text/html,text/xml,text/plain,text/css,application/javascript
+    min-response-size: 1024
+
+spring:
+  application:
+    name: demo-app
+  security:
+    oauth2:
+      client:
+        registration:
+          demo:
+            client-name: "Demo App"
+            provider: demo
+            scope:
+              - openid
+              - profile
+              - https://id.oidc.se/scope/naturalPersonNumber
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            client-authentication-method: private_key_jwt
+          demo-service-read:
+            client-name: "Demo Service (read)"
+            provider: demo
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/callback/oauth2/code/{registrationId}"
+            client-authentication-method: private_key_jwt
+            scope:
+              - "{org}:{function}:read"
+              - https://id.oidc.se/scope/naturalPersonNumber
+          demo-service-write:
+            client-name: "Demo Service (write)"
+            provider: demo
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/callback/oauth2/code/{registrationId}"
+            client-authentication-method: private_key_jwt
+            scope:
+              - "{org}:{function}:write"
+              - https://id.oidc.se/scope/naturalPersonNumber
+          iam-api:
+            client-name: "IAM Service API"
+            provider: demo
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/callback/oauth2/code/{registrationId}"
+            client-authentication-method: private_key_jwt
+
+iam:
+  security:
+    function: demo

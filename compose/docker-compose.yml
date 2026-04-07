@@ -1,0 +1,161 @@
+name: swedenconnect
+networks:
+  swedenconnect-local:
+    name: swedenconnect-local
+
+services:
+
+#  redis:
+#    image: redis/redis-stack:latest
+#    container_name: redis
+#    ports:
+#      - 16900:6379
+#      - 16901:8001
+#    networks:
+#      - swedenconnect-local
+#    volumes:
+#      - ./config/redis:/tls
+#    environment:
+#      - REDIS_ARGS=--requirepass supersecret
+
+  postgres:
+    image: postgres:16.3
+    ports:
+      - "16905:3306"
+    domainname: local.dev.swedenconnect.se
+    hostname: postgres
+    networks:
+      - swedenconnect-local
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    environment:
+      PGUSER: postgres
+      POSTGRES_PASSWORD: changeit
+      TZ: "Europe/Stockholm"
+    volumes:
+      - ./config/postgres/data/psql/:/var/lib/postgresql/data:rw
+      - ./config/postgres/psql:/docker-entrypoint-initdb.d:ro
+
+  iam-admin-app:
+    image: ghcr.io/swedenconnect/iam-admin-app:latest
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    container_name: iam-admin-app
+    ports:
+      - "17005:17005"
+    domainname: local.dev.swedenconnect.se
+    restart: on-failure
+    extra_hosts:
+      - "local.dev.swedenconnect.se:host-gateway"
+    networks:
+      - swedenconnect-local
+    volumes:
+      - ./config/iam-admin-app:/opt/iam-admin-app
+      - ./config/common:/opt/common
+    environment:
+      TZ: "Europe/Stockholm"
+      APP_CONFIG_DIR: /opt/iam-admin-app
+      COMMON_CONFIG_DIR: /opt/common
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/opt/iam-admin-app/
+      SPRING_PROFILES_ACTIVE: local
+      JAVA_OPTS: "-Djava.net.preferIPv4Stack=true -Dorg.apache.xml.security.ignoreLineBreaks=true -Djavax.net.ssl.trustStore=/opt/common/trust.jks -Djavax.net.ssl.trustStorePassword=secret"
+
+  iam-demo-app:
+    image: ghcr.io/swedenconnect/iam-demo-app:latest
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      iam-admin-app:
+        condition: service_started
+    container_name: iam-demo-app
+    ports:
+      - "16990:16990"
+    domainname: local.dev.swedenconnect.se
+    restart: on-failure
+    extra_hosts:
+      - "local.dev.swedenconnect.se:host-gateway"
+    networks:
+      - swedenconnect-local
+    volumes:
+      - ./config/iam-demo-app:/opt/iam-demo-app
+      - ./config/common:/opt/common
+    environment:
+      TZ: "Europe/Stockholm"
+      APP_CONFIG_DIR: /opt/iam-demo-app
+      COMMON_CONFIG_DIR: /opt/common
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/opt/iam-demo-app/
+      SPRING_PROFILES_ACTIVE: local
+      JAVA_OPTS: "-Djava.net.preferIPv4Stack=true -Dorg.apache.xml.security.ignoreLineBreaks=true -Djavax.net.ssl.trustStore=/opt/common/trust.jks -Djavax.net.ssl.trustStorePassword=secret"
+
+  iam-demo-service:
+    image: ghcr.io/swedenconnect/iam-demo-app:latest
+    container_name: iam-demo-service
+    ports:
+      - "16995:16995"
+    domainname: local.dev.swedenconnect.se
+    restart: on-failure
+    extra_hosts:
+      - "local.dev.swedenconnect.se:host-gateway"
+    networks:
+      - swedenconnect-local
+    volumes:
+      - ./config/iam-demo-service:/opt/iam-demo-service
+      - ./config/common:/opt/common
+    environment:
+      TZ: "Europe/Stockholm"
+      APP_CONFIG_DIR: /opt/iam-demo-service
+      COMMON_CONFIG_DIR: /opt/common
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/opt/iam-demo-service/
+      SPRING_PROFILES_ACTIVE: local
+      JAVA_OPTS: "-Djava.net.preferIPv4Stack=true -Dorg.apache.xml.security.ignoreLineBreaks=true -Djavax.net.ssl.trustStore=/opt/common/trust.jks -Djavax.net.ssl.trustStorePassword=secret"
+
+  keycloak-setup:
+    image: keycloak/keycloak:26.5.7
+    networks:
+      - swedenconnect-local
+    volumes:
+      - ./config/keycloak/scripts:/scripts
+    entrypoint: [""]
+    profiles:
+      - setup
+
+  keycloak:
+    image: keycloak/keycloak:26.5.7
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "17000:8443"
+    domainname: local.dev.swedenconnect.se
+    networks:
+      - swedenconnect-local
+    hostname: keycloak
+    extra_hosts:
+      - "local.dev.swedenconnect.se:host-gateway"
+    environment:
+      KC_HTTP_ENABLED: false
+      KC_HTTPS_KEY_STORE_FILE: /opt/keycloak/common/tls.jks
+      KC_HTTPS_KEY_STORE_PASSWORD: secret
+      KC_HTTPS_KEY_STORE_TYPE: JKS
+      KC_TRUSTSTORE_PATHS: /opt/keycloak/common/tls.crt
+      KC_TLS_HOSTNAME_VERIFIER: ANY
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: keycloak
+      KC_PROXY_HEADERS: "xforwarded"
+      KC_DB_SCHEMA: keycloak
+      KC_DB_URL_HOST: postgres
+      # KC_DB_URL_PORT: 8096
+      KC_DB: postgres
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: secret
+    command: start-dev --log-level=INFO,se.swedenconnect.iam.keycloak:DEBUG --spi-theme-static-max-age=-1 --spi-theme-cache-themes=false --spi-theme-cache-templates=false --hostname local.dev.swedenconnect.se --hostname-strict false --verbose --features=preview,scripts
+    volumes:
+      - ./config/keycloak/tmp:/tmp
+      - ./config/keycloak/import:/opt/keycloak/data/import
+      - ./config/keycloak/themes:/opt/keycloak/themes:rw
+      - ./config/keycloak/spi:/opt/keycloak/providers:rw
+      - ./config/common:/opt/keycloak/common

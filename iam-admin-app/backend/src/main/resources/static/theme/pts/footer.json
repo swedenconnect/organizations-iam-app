@@ -1,0 +1,27 @@
+{
+  "orgName": {
+    "sv": "Post- och telestyrelsen (PTS)",
+    "en": "Swedish Post and Telecom Authority (PTS)"
+  },
+  "contactEmail": "pts@pts.se",
+  "contactPhone": "08-678 55 00",
+  "logoHeight":   "h-12",
+  "links": [
+    {
+      "label": { "sv": "Om PTS",                     "en": "About PTS" },
+      "url": "https://www.pts.se/om-pts/"
+    },
+    {
+      "label": { "sv": "Om webbplatsen",             "en": "About the website" },
+      "url": "https://www.pts.se/om-pts/om-webbplatsen/"
+    },
+    {
+      "label": { "sv": "Cookies",                    "en": "Cookies" },
+      "url": "https://www.pts.se/om-pts/om-webbplatsen/cookies/"
+    },
+    {
+      "label": { "sv": "Tillgänglighetsredogörelse", "en": "Accessibility statement" },
+      "url": "https://www.pts.se/om-pts/om-webbplatsen/tillganglighetsredogorelse/"
+    }
+  ]
+}

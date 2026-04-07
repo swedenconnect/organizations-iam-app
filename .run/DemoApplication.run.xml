@@ -1,0 +1,15 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="DemoApplication" type="SpringBootApplicationConfigurationType"
+                 factoryName="Spring Boot" nameIsGenerated="true">
+    <option name="ACTIVE_PROFILES" value="local"/>
+    <option name="FRAME_DEACTIVATION_UPDATE_POLICY" value="UpdateClassesAndResources"/>
+    <module name="demo-app-be"/>
+    <option name="SPRING_BOOT_MAIN_CLASS" value="se.swedenconnect.iam.demo.app.DemoApplication"/>
+    <option name="VM_PARAMETERS"
+            value="-Djavax.net.ssl.trustStore=$PROJECT_DIR$/compose/config/common/trust.jks -Djavax.net.ssl.trustStorePassword=secret"/>
+    <method v="2">
+      <option name="Maven.BeforeRunTask" enabled="true" file="$PROJECT_DIR$/demo/demo-app/pom.xml"
+              goal="-pl frontend,backend -am package"/>
+    </method>
+  </configuration>
+</component>

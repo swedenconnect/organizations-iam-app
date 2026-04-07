@@ -1,0 +1,74 @@
+server:
+  port: 16990
+  ssl:
+    enabled: true
+    bundle: local
+
+spring:
+  ssl:
+    bundle:
+      jks:
+        local:
+          keystore:
+            location: classpath:local/tls.jks
+            password: secret
+            type: JKS
+      pem:
+        local-trust:
+          truststore:
+            certificate: classpath:local/trusted.crt
+  security:
+    oauth2:
+      client:
+        registration:
+          demo:
+            client-id: https://local.dev.swedenconnect.se:16990
+          demo-service-read:
+            client-id: https://local.dev.swedenconnect.se:16990
+          demo-service-write:
+            client-id: https://local.dev.swedenconnect.se:16990
+          iam-api:
+            client-id: https://local.dev.swedenconnect.se:16990
+        provider:
+          demo:
+            issuer-uri: https://local.dev.swedenconnect.se:17000/realms/orgiam
+
+demo:
+  service:
+    base-url: https://local.dev.swedenconnect.se:16995
+  app:
+    iam-admin:
+      base-url: https://local.dev.swedenconnect.se:17005
+      sso-login-path: /sso/login
+
+iam:
+  security:
+    debug: true
+    client:
+      credential:
+        jks:
+          store:
+            location: classpath:demo-client.jks
+            password: secret
+            type: JKS
+          key:
+            alias: demo
+            key-password: secret
+      registrations:
+        demo-service-read:
+          resource: https://local.dev.swedenconnect.se:16995
+        demo-service-write:
+          resource: https://local.dev.swedenconnect.se:16995
+        iam-api:
+          resource: https://local.dev.swedenconnect.se:17005
+
+
+logging:
+  level:
+    OIDC: TRACE
+    se.swedenconnect.iam.demo: TRACE
+    org.springframework.security: INFO
+    org.springframework.security.oauth2: DEBUG
+    org.springframework.web.servlet.DispatcherServlet: TRACE
+    org.springframework.web.filter.CommonsRequestLoggingFilter: DEBUG
+    org.springframework.web.servlet.mvc.method.annotation: DEBUG

@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mvn:*)",
+      "Bash(npm run:*)",
+      "Bash(npm cache:*)",
+      "Bash(npx tsc:*)",
+      "Bash(jar:*)",
+      "Bash(ls:*)",
+      "Bash(cd:*)",
+      "Bash(cp:*)",
+      "Bash(grep:*)",
+      "Bash(tail:*)",
+      "Bash(for f:*)",
+      "mcp__jetbrains__list_directory_tree",
+      "mcp__jetbrains__build_project",
+      "mcp__jetbrains__get_file_problems",
+      "mcp__jetbrains__replace_text_in_file",
+      "mcp__ide__getDiagnostics"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/post-tool-call.py"
+          }
+        ]
+      }
+    ]
+  }
+}

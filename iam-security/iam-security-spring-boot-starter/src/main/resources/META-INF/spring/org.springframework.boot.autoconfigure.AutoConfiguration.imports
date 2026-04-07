@@ -1,0 +1,3 @@
+se.swedenconnect.iam.security.autoconfigure.IamSecurityAutoConfiguration
+se.swedenconnect.iam.security.autoconfigure.IamSecurityClientAutoConfiguration
+se.swedenconnect.iam.security.autoconfigure.IamSecurityResourceServerAutoConfiguration

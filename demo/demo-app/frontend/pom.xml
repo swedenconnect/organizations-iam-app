@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>se.swedenconnect.iam.demo</groupId>
+    <artifactId>demo-app</artifactId>
+    <version>0.9.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>demo-app-fe</artifactId>
+  <packaging>jar</packaging>
+
+  <name>Sweden Connect :: IAM :: Demo :: App :: Frontend</name>
+  <description>Frontend for the Demo Application</description>
+  <url>https://www.swedenconnect.se</url>
+
+  <properties>
+    <node.version>v20.17.0</node.version>
+    <npm.version>10.8.2</npm.version>
+  </properties>
+
+  <build>
+    <plugins>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-clean-plugin</artifactId>
+        <version>3.5.0</version>
+        <configuration>
+          <filesets>
+            <!-- Vite build output -->
+            <fileset>
+              <directory>${project.basedir}/dist</directory>
+            </fileset>
+          </filesets>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>com.github.eirslett</groupId>
+        <artifactId>frontend-maven-plugin</artifactId>
+        <version>1.15.4</version>
+        <configuration>
+          <workingDirectory>${project.basedir}</workingDirectory>
+        </configuration>
+        <executions>
+          <execution>
+            <id>install-node-and-npm</id>
+            <goals>
+              <goal>install-node-and-npm</goal>
+            </goals>
+            <configuration>
+              <nodeVersion>${node.version}</nodeVersion>
+              <npmVersion>${npm.version}</npmVersion>
+            </configuration>
+          </execution>
+          <execution>
+            <id>npm-install</id>
+            <goals>
+              <goal>npm</goal>
+            </goals>
+            <configuration>
+              <arguments>install --legacy-peer-deps --cache /tmp/npm-cache-demo-app</arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>npm-build</id>
+            <phase>prepare-package</phase>
+            <goals>
+              <goal>npm</goal>
+            </goals>
+            <configuration>
+              <arguments>run build</arguments>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-assembly-plugin</artifactId>
+        <version>3.7.1</version>
+        <executions>
+          <execution>
+            <id>make-frontend-dist</id>
+            <phase>package</phase>
+            <goals>
+              <goal>single</goal>
+            </goals>
+            <configuration>
+              <appendAssemblyId>true</appendAssemblyId>
+              <descriptors>
+                <descriptor>src/assembly/dist.xml</descriptor>
+              </descriptors>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+    </plugins>
+  </build>
+
+</project>

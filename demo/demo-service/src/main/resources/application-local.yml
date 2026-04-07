@@ -1,0 +1,34 @@
+server:
+  port: 16995
+  ssl:
+    enabled: true
+    bundle: local
+
+spring:
+  ssl:
+    bundle:
+      jks:
+        local:
+          keystore:
+            location: classpath:local/tls.jks
+            password: secret
+            type: JKS
+      pem:
+        local-trust:
+          truststore:
+            certificate: classpath:local/trusted.crt
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://local.dev.swedenconnect.se:17000/realms/orgiam
+          audiences:
+            - "demo"
+            - "https://local.dev.swedenconnect.se:16995"
+
+logging:
+  level:
+    se.swedenconnect.iam.demo: DEBUG
+    org.springframework.security: INFO
+    org.springframework.security.oauth2: DEBUG
+    org.springframework.security.oauth2.server.resource: TRACE

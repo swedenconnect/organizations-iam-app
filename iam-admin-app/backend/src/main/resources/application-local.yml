@@ -1,0 +1,69 @@
+server:
+  port: 17005
+  ssl:
+    enabled: true
+    bundle: local
+
+spring:
+  ssl:
+    bundle:
+      jks:
+        local:
+          keystore:
+            location: classpath:local/tls.jks
+            password: secret
+            type: JKS
+      pem:
+        local-trust:
+          truststore:
+            certificate: classpath:local/trusted.crt
+  security:
+    oauth2:
+      client:
+        registration:
+          iam-admin:
+            client-id: https://local.dev.swedenconnect.se:17005
+          iam-admin-sa:
+            client-id: https://local.dev.swedenconnect.se:17005
+        provider:
+          iam-admin:
+            issuer-uri: https://local.dev.swedenconnect.se:17000/realms/orgiam
+      resourceserver:
+        jwt:
+          issuer-uri: https://local.dev.swedenconnect.se:17000/realms/orgiam
+          audiences:
+            - "https://local.dev.swedenconnect.se:17005"
+            - "account"
+
+iam:
+  security:
+    debug: true
+    client:
+      credential:
+        jks:
+          store:
+            location: classpath:oidc-client.jks
+            password: secret
+            type: JKS
+          key:
+            alias: client
+            key-password: secret
+  admin:
+    admin-api-base: https://local.dev.swedenconnect.se:17000/admin/realms/orgiam
+    pnr-userids: true
+#    authz-client-ids:
+#      - "https://local.dev.swedenconnect.se:17005"
+#      - "https://local.dev.swedenconnect.se:17010"
+    allow-function-removal: true
+    allow-org-rights: true
+
+logging:
+  level:
+    OIDC: TRACE
+    se.swedenconnect.iam.admin: TRACE
+    org.springframework.security: INFO
+    org.springframework.security.oauth2: DEBUG
+    org.springframework.web.servlet.DispatcherServlet: TRACE
+    org.springframework.web.filter.CommonsRequestLoggingFilter: DEBUG
+    org.springframework.web.servlet.mvc.method.annotation: DEBUG
+    com.fasterxml.jackson: DEBUG

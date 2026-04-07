@@ -1,0 +1,23 @@
+{
+  "orgName": {
+    "sv": "DIGG - Myndigheten för digital förvaltning",
+    "en": "DIGG - Agency for Digital Government"
+  },
+  "contactEmail": "info@digg.se",
+  "contactPhone": "0771-11 44 00",
+  "logoHeight":   "h-8",
+  "links": [
+    {
+      "label": { "sv": "Om oss",        "en": "About us" },
+      "url": "https://www.digg.se/om-oss"
+    },
+    {
+      "label": { "sv": "Behandling av personuppgifter", "en": "Processing of personal data" },
+      "url": "https://www.digg.se/om-oss/sa-behandlar-vi-dina-personuppgifter"
+    },
+    {
+      "label": { "sv": "Om webbplatsen","en": "About the website" },
+      "url": "https://www.digg.se/om-oss/om-webbplatsen"
+    }
+  ]
+}
