@@ -87,9 +87,9 @@ Wait for Keycloak to finish its startup before proceeding (in another shell if n
 
 #### Step 3 — Bootstrap the realm
 
-In order to get the OIDC Sweden user profile attributes and groups present in the new realm (that we are about to create) we need to to the following:
+In order to get the OIDC Sweden user profile attributes and groups present in the new realm (that we are about to create) we need to do the following:
 
-- Login to the Keycloak UI as an administrator.
+- Login to the Keycloak UI as an administrator (https://local.dev.swedenconnect.se:17000).
 
 - Register the event listener in `master`: In the Keycloak Admin Console go to the `master` realm → **Realm settings → Events → Event listeners** and add `oidc-sweden-event-listener`. New realms will then be configured automatically on creation without requiring a restart.
 
