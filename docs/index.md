@@ -31,6 +31,9 @@ a Spring Boot admin application.
 - [IAM Admin Themes](iam-admin-themes.md) — White-label theming system for the
   admin application.
 
+- [IAM Admin Application Configuration](iam-admin-configuration.md) — Configuration
+  reference for the IAM admin application.
+
 ### Operations
 
 - [Keycloak Setup](keycloak-setup.md) — Step-by-step Keycloak realm configuration,
