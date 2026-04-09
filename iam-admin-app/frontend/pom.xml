@@ -17,6 +17,14 @@
   <description>Frontend for the IAM Admin Application</description>
   <url>https://www.swedenconnect.se</url>
 
+  <licenses>
+    <license>
+      <name>The Apache Software License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
   <properties>
     <node.version>v20.17.0</node.version>
     <npm.version>10.8.2</npm.version>

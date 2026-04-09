@@ -17,6 +17,14 @@
   <description>Demo service — OAuth resource server</description>
   <url>https://www.swedenconnect.se</url>
 
+  <licenses>
+    <license>
+      <name>The Apache Software License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
   <dependencies>
 
     <dependency>

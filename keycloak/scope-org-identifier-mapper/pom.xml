@@ -15,6 +15,14 @@
   <name>Sweden Connect :: IAM :: Keycloak :: Scope Org Identifier Mapper</name>
   <description>Keycloak OIDC protocol mapper that emits the organization_identifier claim by extracting the organization number from the granted scope string.</description>
 
+  <licenses>
+    <license>
+      <name>The Apache Software License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
   <dependencies>
     <dependency>
       <groupId>org.keycloak</groupId>

@@ -15,8 +15,16 @@
   <packaging>jar</packaging>
 
   <name>Sweden Connect :: IAM :: Security :: Spring Boot Starter</name>
-  <description>Spring Boot auto-configuration for IAM security: OIDC clients and resource servers</description>
+  <description>Spring Boot autoconfiguration for IAM security: OIDC clients and resource servers</description>
   <url>https://www.swedenconnect.se</url>
+
+  <licenses>
+    <license>
+      <name>The Apache Software License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
 
   <dependencies>
 

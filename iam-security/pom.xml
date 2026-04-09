@@ -18,6 +18,14 @@
   <description>Parent POM for the IAM security shared library modules</description>
   <url>https://www.swedenconnect.se</url>
 
+  <licenses>
+    <license>
+      <name>The Apache Software License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
   <modules>
     <module>iam-security-base</module>
     <module>iam-security-spring-boot-starter</module>

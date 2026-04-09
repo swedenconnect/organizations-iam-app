@@ -18,6 +18,14 @@
   <description>Demo applications illustrating IAM integration patterns</description>
   <url>https://www.swedenconnect.se</url>
 
+  <licenses>
+    <license>
+      <name>The Apache Software License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
   <modules>
     <module>demo-app</module>
     <module>demo-service</module>
