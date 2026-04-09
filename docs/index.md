@@ -6,6 +6,8 @@ A centralized administration system for assigning and delegating organizational
 rights across service domains. Built on Keycloak with custom protocol mappers and
 a Spring Boot admin application.
 
+- [Release notes](release-notes.md)
+
 ## Documentation
 
 ### Architecture

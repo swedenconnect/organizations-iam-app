@@ -16,16 +16,18 @@
 package se.swedenconnect.iam.admin.auth;
 
 import org.jspecify.annotations.NonNull;
+import se.swedenconnect.iam.security.claims.OrgRightsClaim;
 
 import java.io.Serial;
 
 /**
- * Thrown by {@link OrgRightsClaimParser#checkAdminConstraint} when the parsed
- * {@link OrgRightsClaim} does not satisfy the required admin right, optionally constrained
- * to a specific organization and/or function.
+ * Thrown when a parsed {@link OrgRightsClaim} does not satisfy the required admin right, optionally constrained to a
+ * specific organization and/or function.
  *
- * <p>The exception message contains a human-readable description of why the constraint
- * was not satisfied, suitable for logging and for surfacing to the user.</p>
+ * <p>
+ * The exception message contains a human-readable description of why the constraint was not satisfied, suitable for
+ * logging and for surfacing to the user.
+ * </p>
  *
  * @author Martin Lindström
  */

@@ -6,7 +6,7 @@
   <parent>
     <groupId>se.swedenconnect.iam.keycloak</groupId>
     <artifactId>keycloak-plugins</artifactId>
-    <version>0.9.0-SNAPSHOT</version>
+    <version>0.9.0</version>
   </parent>
 
   <artifactId>scope-org-identifier-mapper</artifactId>

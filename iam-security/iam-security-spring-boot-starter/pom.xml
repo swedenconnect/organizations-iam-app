@@ -8,7 +8,7 @@
   <parent>
     <groupId>se.swedenconnect.iam</groupId>
     <artifactId>iam-security</artifactId>
-    <version>0.9.0-SNAPSHOT</version>
+    <version>0.9.0</version>
   </parent>
 
   <artifactId>iam-security-spring-boot-starter</artifactId>

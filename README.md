@@ -10,6 +10,8 @@ A centralized administration application for assigning and delegating rights for
 
 Full documentation is available at https://docs.swedenconnect.se/organizations-iam-app/index.html.
 
+- [Release notes](https://docs.swedenconnect.se/organizations-iam-app/release-notes.html)
+
 ## Modules
 
 | Module | Description |
