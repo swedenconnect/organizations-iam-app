@@ -7,7 +7,7 @@
   <parent>
     <groupId>se.swedenconnect.iam.demo</groupId>
     <artifactId>demo-app</artifactId>
-    <version>0.9.0-SNAPSHOT</version>
+    <version>0.9.1-SNAPSHOT</version>
   </parent>
 
   <artifactId>demo-app-fe</artifactId>
@@ -16,6 +16,14 @@
   <name>Sweden Connect :: IAM :: Demo :: App :: Frontend</name>
   <description>Frontend for the Demo Application</description>
   <url>https://www.swedenconnect.se</url>
+
+  <licenses>
+    <license>
+      <name>The Apache Software License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
 
   <properties>
     <node.version>v20.17.0</node.version>

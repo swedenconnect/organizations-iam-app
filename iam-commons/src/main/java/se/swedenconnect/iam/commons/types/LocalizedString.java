@@ -70,7 +70,7 @@ public class LocalizedString implements Serializable {
    * @param value the initial value for the localized string. It is associated with a default language tag
    *     indicating no specific language. Cannot be null.
    */
-  public LocalizedString(@NonNull final String value) {
+  public LocalizedString(final @NonNull String value) {
     this();
     this.valuesByLanguageTag.put(NO_LANG, value);
   }
@@ -79,15 +79,17 @@ public class LocalizedString implements Serializable {
    * Constructs a {@code LocalizedString} instance with initial values specified as a map where keys are language tags
    * and values are the corresponding localized strings.
    *
-   * <p>This constructor is also used as the Jackson JSON deserializer: a JSON object such as
-   * {@code {"sv": "Hej", "en": "Hello"}} is deserialized directly into the internal map.</p>
+   * <p>
+   * This constructor is also used as the Jackson JSON deserializer: a JSON object such as
+   * {@code {"sv": "Hej", "en": "Hello"}} is deserialized directly into the internal map.
+   * </p>
    *
    * @param valuesByLanguageTag a map containing initial localized string values by language tag. The keys represent
    *     language tags (e.g., "en", "fr-FR"), and the values are the localized string values associated with those tags.
    *     Cannot be null.
    */
   @JsonCreator
-  public LocalizedString(@NonNull final Map<String, String> valuesByLanguageTag) {
+  public LocalizedString(final @NonNull Map<String, String> valuesByLanguageTag) {
     this();
     this.valuesByLanguageTag.putAll(Objects.requireNonNull(valuesByLanguageTag));
   }
@@ -100,7 +102,7 @@ public class LocalizedString implements Serializable {
    * @param value the localized value to associate with the given locale. Cannot be null.
    * @throws NullPointerException if either the locale or the value is null.
    */
-  public void add(@NonNull final Locale locale, @NonNull final String value) {
+  public void add(final @NonNull Locale locale, final @NonNull String value) {
     this.valuesByLanguageTag.put(Objects.requireNonNull(locale).toLanguageTag(), Objects.requireNonNull(value));
   }
 
@@ -113,7 +115,7 @@ public class LocalizedString implements Serializable {
    * @param value the localized value to store, associated with the specified language tag. Cannot be null.
    * @throws NullPointerException if either the {@code langTag} or {@code value} is null.
    */
-  public void add(@NonNull final String langTag, @NonNull final String value) {
+  public void add(final @NonNull String langTag, final @NonNull String value) {
     this.valuesByLanguageTag.put(Objects.requireNonNull(langTag), Objects.requireNonNull(value));
   }
 
@@ -124,20 +126,21 @@ public class LocalizedString implements Serializable {
    * @param value the value to be stored. Cannot be null.
    * @throws NullPointerException if the {@code value} is null.
    */
-  public void add(@NonNull final String value) {
+  public void add(final @NonNull String value) {
     this.valuesByLanguageTag.put(NO_LANG, Objects.requireNonNull(value));
   }
 
   /**
    * Adds a value from a claim, interpreting the claim name as a potential language-tagged key.
-   * <p></p>
+   * <p>
    * The method extracts a language tag from the claim name, if present, and normalizes it using the BCP 47 language tag
    * standard. If the claim name does not include a valid language tag (or no tag at all), the value is stored under a
    * special "no language" key.
    * </p>
    * <p>
    * Expected claim naming convention: {@code <base>#<langTag>}, e.g. {@code }organization_name#sv} or
-   * {@code organization_name#sv-SE}. </p
+   * {@code organization_name#sv-SE}.
+   * </p>
    *
    * @param claimName the name of the claim, potentially containing a base name followed by a hashtag and a language
    *     tag. Cannot be null.
@@ -145,7 +148,7 @@ public class LocalizedString implements Serializable {
    *     tag extracted from the claim name or under a "no language" key if no valid tag is found. Cannot be null.
    * @throws NullPointerException if {@code claimName} or {@code claimValue} is null.
    */
-  public void addFromClaim(@NonNull final String claimName, @NonNull final String claimValue) {
+  public void addFromClaim(final @NonNull String claimName, final @NonNull String claimValue) {
     Objects.requireNonNull(claimName, "claimName must not be null");
     Objects.requireNonNull(claimValue, "claimValue must not be null");
 
@@ -179,14 +182,13 @@ public class LocalizedString implements Serializable {
    * <li>A value associated with a special tag indicating no specific language.</li>
    * <li>A default value associated with a predefined default language tag.</li>
    * <li>Any available value if none of the above matches are found.</li>
-   * </
+   * </ol>
    *
    * @param locale the {@link Locale} representing the desired language and region to retrieve the value for. Cannot
    *     be null.
    * @return the localized value associated with the most relevant match or {@code null} if no value is found.
    */
-  @Nullable
-  public String get(@NonNull final Locale locale) {
+  public @Nullable String get(final @NonNull Locale locale) {
     final String tag = locale.toLanguageTag();     // e.g. "sv-SE"
     final String lang = locale.getLanguage();      // e.g. "sv"
 
@@ -213,8 +215,7 @@ public class LocalizedString implements Serializable {
    *     retrieve the value for. May be {@code null} or empty.
    * @return the localized value associated with the best match, or {@code null} if no value is found.
    */
-  @Nullable
-  public String get(@Nullable final String langTag) {
+  public @Nullable String get(final @Nullable String langTag) {
     if (!StringUtils.hasText(langTag)) {
       return Optional.ofNullable(this.valuesByLanguageTag.get(NO_LANG))
           .or(() -> Optional.ofNullable(this.valuesByLanguageTag.get(DEFAULT_LANGUAGE)))
@@ -227,8 +228,8 @@ public class LocalizedString implements Serializable {
   }
 
   /**
-   * Returns a map representation of the localized string values, where each key is a language tag and
-   * the corresponding value is the localized string for that language.
+   * Returns a map representation of the localized string values, where each key is a language tag and the corresponding
+   * value is the localized string for that language.
    *
    * <p>This method is also used as the Jackson JSON serializer: a {@code LocalizedString} is
    * serialized as a plain JSON object, e.g. {@code {"sv": "Hej", "en": "Hello"}}.</p>
@@ -236,8 +237,7 @@ public class LocalizedString implements Serializable {
    * @return a non-null Map containing localized string values, with language tags as keys.
    */
   @JsonValue
-  @NonNull
-  public Map<String, String> asMap() {
+  public @NonNull Map<String, String> asMap() {
     return this.valuesByLanguageTag;
   }
 

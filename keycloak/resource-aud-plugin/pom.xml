@@ -6,7 +6,7 @@
   <parent>
     <groupId>se.swedenconnect.iam.keycloak</groupId>
     <artifactId>keycloak-plugins</artifactId>
-    <version>0.9.0-SNAPSHOT</version>
+    <version>0.9.1-SNAPSHOT</version>
   </parent>
 
   <artifactId>resource-aud-plugin</artifactId>
@@ -14,6 +14,14 @@
 
   <name>Sweden Connect :: IAM :: Keycloak :: Resource Audience Plugin</name>
   <description>Keycloak plugin that validates the OAuth2 resource parameter against the target client's client_functions attribute and sets the aud claim to [client_id, function].</description>
+
+  <licenses>
+    <license>
+      <name>The Apache Software License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
 
   <dependencies>
     <dependency>
