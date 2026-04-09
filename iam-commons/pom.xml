@@ -8,7 +8,7 @@
   <parent>
     <groupId>se.swedenconnect.iam</groupId>
     <artifactId>iam-parent</artifactId>
-    <version>0.9.0</version>
+    <version>0.9.1-SNAPSHOT</version>
   </parent>
 
   <artifactId>iam-commons</artifactId>
