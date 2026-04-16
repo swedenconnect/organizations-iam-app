@@ -110,8 +110,16 @@ if [ -z "${CLIENT_ID}" ]; then
   read -r -p "Client ID (e.g. https://my-app.example.com): " CLIENT_ID
 fi
 if [ ${#REDIRECT_URIS[@]} -eq 0 ]; then
-  read -r -p "Redirect URI pattern (e.g. /login/oauth2/code/*): " _URI
-  REDIRECT_URIS+=("$_URI")
+  echo "Enter redirect URI patterns, one per line. Empty line to finish."
+  while true; do
+    read -r -p "Redirect URI pattern (e.g. /login/oauth2/code/*): " _URI
+    [ -z "${_URI}" ] && break
+    REDIRECT_URIS+=("${_URI}")
+  done
+  if [ ${#REDIRECT_URIS[@]} -eq 0 ]; then
+    echo "ERROR: at least one redirect URI is required." >&2
+    exit 1
+  fi
 fi
 
 # Derive default JWKS URL from client ID if not provided
@@ -131,10 +139,10 @@ echo "==> Authenticating as '${USERNAME}'..."
   --password "${PASSWORD}"
 
 # ---------------------------------------------------------------------------
-# Step 1 — Create the client
+# Step 1 — Create the client (if missing)
 # ---------------------------------------------------------------------------
 
-echo "==> Creating client '${CLIENT_ID}'..."
+echo "==> Resolving client '${CLIENT_ID}'..."
 CLIENTS_TMP=$(mktemp)
 ( "${KCADM}" get clients -r "${REALM}" --fields id,clientId ) > "${CLIENTS_TMP}" 2>&1 || true
 EXISTING_UUID=$(grep -B1 "\"clientId\" : \"${CLIENT_ID}\"" "${CLIENTS_TMP}" \
@@ -143,21 +151,10 @@ EXISTING_UUID=$(grep -B1 "\"clientId\" : \"${CLIENT_ID}\"" "${CLIENTS_TMP}" \
 rm -f "${CLIENTS_TMP}"
 
 if [ -n "${EXISTING_UUID}" ]; then
-  echo "    Client '${CLIENT_ID}' already exists (UUID: ${EXISTING_UUID}) — skipping creation."
+  echo "    Client '${CLIENT_ID}' already exists (UUID: ${EXISTING_UUID})."
   CLIENT_UUID="${EXISTING_UUID}"
-  if [ -n "${NAME}" ]; then
-    echo "    Updating display name to '${NAME}'..."
-    "${KCADM}" update "clients/${CLIENT_UUID}" -r "${REALM}" \
-      -s "name=${NAME}"
-  fi
 else
-  REDIRECT_URIS_JSON="["
-  for i in "${!REDIRECT_URIS[@]}"; do
-    [ $i -gt 0 ] && REDIRECT_URIS_JSON+=","
-    REDIRECT_URIS_JSON+="\"${REDIRECT_URIS[$i]}\""
-  done
-  REDIRECT_URIS_JSON+="]"
-
+  echo "    Creating client..."
   CREATE_ARGS=(
     -s "clientId=${CLIENT_ID}"
     -s "protocol=openid-connect"
@@ -168,20 +165,45 @@ else
     -s "directAccessGrantsEnabled=false"
     -s "serviceAccountsEnabled=true"
     -s "publicClient=false"
-    -s "rootUrl=${CLIENT_ID}"
-    -s "redirectUris=${REDIRECT_URIS_JSON}"
-    -s 'attributes.iam_admin_managed=true'
   )
-  if [ -n "${NAME}" ]; then
-    CREATE_ARGS+=(-s "name=${NAME}")
-  fi
-
   CREATE_OUTPUT=$("${KCADM}" create clients -r "${REALM}" \
     "${CREATE_ARGS[@]}" 2>&1 || true)
   echo "${CREATE_OUTPUT}"
   CLIENT_UUID=$(echo "${CREATE_OUTPUT}" | sed "s/.*id '\(.*\)'.*/\1/" || true)
+  if [ -z "${CLIENT_UUID}" ]; then
+    echo "ERROR: failed to create client '${CLIENT_ID}'." >&2
+    exit 1
+  fi
   echo "    Client created (UUID: ${CLIENT_UUID})."
 fi
+
+# ---------------------------------------------------------------------------
+# Step 1b — Sync invocation-driven fields (always)
+#
+# Runs unconditionally so that re-invocations with changed redirect URIs,
+# root URL, or display name overwrite the stored values. Any redirect URIs
+# added manually in the Keycloak UI will be replaced by the supplied set —
+# this matches the documented "idempotent — safe to re-run" contract.
+# ---------------------------------------------------------------------------
+
+REDIRECT_URIS_JSON="["
+for i in "${!REDIRECT_URIS[@]}"; do
+  [ $i -gt 0 ] && REDIRECT_URIS_JSON+=","
+  REDIRECT_URIS_JSON+="\"${REDIRECT_URIS[$i]}\""
+done
+REDIRECT_URIS_JSON+="]"
+
+echo "==> Syncing rootUrl, redirectUris, attributes, name..."
+UPDATE_ARGS=(
+  -s "rootUrl=${CLIENT_ID}"
+  -s "redirectUris=${REDIRECT_URIS_JSON}"
+  -s 'attributes.iam_admin_managed=true'
+)
+if [ -n "${NAME}" ]; then
+  UPDATE_ARGS+=(-s "name=${NAME}")
+fi
+"${KCADM}" update "clients/${CLIENT_UUID}" -r "${REALM}" "${UPDATE_ARGS[@]}"
+echo "    Done."
 
 # ---------------------------------------------------------------------------
 # Step 2 — Configure private_key_jwt with JWKS URL

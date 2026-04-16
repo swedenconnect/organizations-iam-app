@@ -141,7 +141,10 @@ Sets up:
 - Optional client scopes: `https://id.oidc.se/scope/naturalPersonNumber` and `phone`
 - Service account with `realm-management` roles (if `--service-account` is passed)
 
-All steps are idempotent — safe to re-run against an existing client.
+All steps are idempotent — safe to re-run against an existing client. A re-run overwrites
+`rootUrl`, `redirectUris`, the `iam_admin_managed` attribute, and (if `--name` was passed)
+the display name with the values from the current invocation. Redirect URI patterns added
+manually in the Keycloak UI will be removed on re-run.
 
 **Prerequisites:**
 
