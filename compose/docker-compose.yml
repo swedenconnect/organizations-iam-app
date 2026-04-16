@@ -61,8 +61,9 @@ services:
       APP_CONFIG_DIR: /opt/iam-admin-app
       COMMON_CONFIG_DIR: /opt/common
       SPRING_CONFIG_ADDITIONAL_LOCATION: file:/opt/iam-admin-app/
-      SPRING_PROFILES_ACTIVE: local
+      SPRING_PROFILES_ACTIVE: compose
       JAVA_OPTS: "-Djava.net.preferIPv4Stack=true -Dorg.apache.xml.security.ignoreLineBreaks=true -Djavax.net.ssl.trustStore=/opt/common/trust.jks -Djavax.net.ssl.trustStorePassword=secret"
+      JAVA_TOOL_OPTIONS: "-Djava.net.preferIPv4Stack=true -Dorg.apache.xml.security.ignoreLineBreaks=true -Djavax.net.ssl.trustStore=/opt/common/trust.jks -Djavax.net.ssl.trustStorePassword=secret"
 
   iam-demo-app:
     image: ghcr.io/swedenconnect/iam-demo-app:latest
@@ -88,11 +89,12 @@ services:
       APP_CONFIG_DIR: /opt/iam-demo-app
       COMMON_CONFIG_DIR: /opt/common
       SPRING_CONFIG_ADDITIONAL_LOCATION: file:/opt/iam-demo-app/
-      SPRING_PROFILES_ACTIVE: local
+      SPRING_PROFILES_ACTIVE: compose
       JAVA_OPTS: "-Djava.net.preferIPv4Stack=true -Dorg.apache.xml.security.ignoreLineBreaks=true -Djavax.net.ssl.trustStore=/opt/common/trust.jks -Djavax.net.ssl.trustStorePassword=secret"
+      JAVA_TOOL_OPTIONS: "-Djava.net.preferIPv4Stack=true -Dorg.apache.xml.security.ignoreLineBreaks=true -Djavax.net.ssl.trustStore=/opt/common/trust.jks -Djavax.net.ssl.trustStorePassword=secret"
 
   iam-demo-service:
-    image: ghcr.io/swedenconnect/iam-demo-app:latest
+    image: ghcr.io/swedenconnect/iam-demo-service:latest
     container_name: iam-demo-service
     ports:
       - "16995:16995"
@@ -110,8 +112,9 @@ services:
       APP_CONFIG_DIR: /opt/iam-demo-service
       COMMON_CONFIG_DIR: /opt/common
       SPRING_CONFIG_ADDITIONAL_LOCATION: file:/opt/iam-demo-service/
-      SPRING_PROFILES_ACTIVE: local
+      SPRING_PROFILES_ACTIVE: compose
       JAVA_OPTS: "-Djava.net.preferIPv4Stack=true -Dorg.apache.xml.security.ignoreLineBreaks=true -Djavax.net.ssl.trustStore=/opt/common/trust.jks -Djavax.net.ssl.trustStorePassword=secret"
+      JAVA_TOOL_OPTIONS: "-Djava.net.preferIPv4Stack=true -Dorg.apache.xml.security.ignoreLineBreaks=true -Djavax.net.ssl.trustStore=/opt/common/trust.jks -Djavax.net.ssl.trustStorePassword=secret"
 
   keycloak-setup:
     image: keycloak/keycloak:26.5.7
@@ -136,7 +139,14 @@ services:
     hostname: keycloak
     extra_hosts:
       - "local.dev.swedenconnect.se:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8443 && exec 3<&-"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
     environment:
+      KC_HEALTH_ENABLED: true
       KC_HTTP_ENABLED: false
       KC_HTTPS_KEY_STORE_FILE: /opt/keycloak/common/tls.jks
       KC_HTTPS_KEY_STORE_PASSWORD: secret
