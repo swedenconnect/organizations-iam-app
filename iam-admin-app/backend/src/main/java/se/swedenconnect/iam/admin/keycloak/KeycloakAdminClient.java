@@ -30,6 +30,7 @@ import org.springframework.web.client.RestClientResponseException;
 import se.swedenconnect.iam.admin.config.IamAdminProperties;
 import se.swedenconnect.iam.admin.keycloak.model.FunctionInfo;
 import se.swedenconnect.iam.admin.keycloak.model.OrganizationInfo;
+import se.swedenconnect.iam.admin.keycloak.model.RightsHolderEntry;
 import se.swedenconnect.iam.admin.keycloak.model.UserInfo;
 import se.swedenconnect.iam.commons.types.LocalizedString;
 
@@ -1140,6 +1141,178 @@ public class KeycloakAdminClient {
             "policies", List.of(policyId),
             "decisionStrategy", "AFFIRMATIVE"));
     log.debug("Created permission '{}' for scope {}", permissionName, scopeName);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rights holders
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Fetches all users holding a right on the given (organization, function) combination.
+   *
+   * <p>Queries six candidate groups:</p>
+   * <ul>
+   *   <li>{@code /orgs/{org}/_admin}, {@code /_write}, {@code /_read} — org-wide rights</li>
+   *   <li>{@code /orgs/{org}/{func}/_admin}, {@code /_write}, {@code /_read} — function-level rights</li>
+   * </ul>
+   *
+   * <p>Each user appears exactly once in the result with the highest effective right
+   * ({@code admin} &gt; {@code write} &gt; {@code read}). When the same level is held both
+   * org-wide and function-specific, the function scope wins (more specific).</p>
+   *
+   * <p>Results are sorted by right descending (admin → write → read), then by name ascending
+   * within each right (nulls last).</p>
+   *
+   * @param orgIdentifier the organization identifier
+   * @param functionId    the function identifier
+   * @return list of rights holders; never {@code null}
+   * @throws KeycloakAdminException if the org group or function sub-group is not found
+   */
+  public @NonNull List<RightsHolderEntry> fetchFunctionRightsHolders(
+      final @NonNull String orgIdentifier,
+      final @NonNull String functionId) {
+
+    final String orgGroupId = this.resolveOrgGroupId(orgIdentifier);
+    if (orgGroupId == null) {
+      throw new KeycloakAdminException("Org group not found: " + orgIdentifier);
+    }
+
+    final List<Map<String, Object>> orgChildren = this.fetchGroupChildren(orgGroupId);
+
+    // Resolve org-level right group IDs (_admin, _write, _read)
+    final String orgAdminGroupId = findChildGroupId(orgChildren, "_admin");
+    final String orgWriteGroupId = findChildGroupId(orgChildren, "_write");
+    final String orgReadGroupId = findChildGroupId(orgChildren, "_read");
+
+    // Resolve function sub-group
+    final String funcGroupId = orgChildren.stream()
+        .filter(c -> functionId.equals(getString(c, "name")))
+        .map(c -> getString(c, "id"))
+        .filter(Objects::nonNull)
+        .findFirst()
+        .orElseThrow(() -> new KeycloakAdminException(
+            "Function group '" + functionId + "' not found under org '" + orgIdentifier + "'"));
+
+    final List<Map<String, Object>> funcChildren = this.fetchGroupChildren(funcGroupId);
+    final String funcAdminGroupId = findChildGroupId(funcChildren, "_admin");
+    final String funcWriteGroupId = findChildGroupId(funcChildren, "_write");
+    final String funcReadGroupId = findChildGroupId(funcChildren, "_read");
+
+    // Fetch members from all six groups
+    // Structure: Map<userId, best (rightLevel, scope, UserInfo)>
+    final Map<String, RightsHolderAccumulator> accum = new LinkedHashMap<>();
+
+    collectMembers(accum, orgAdminGroupId, 3, "organization");
+    collectMembers(accum, orgWriteGroupId, 2, "organization");
+    collectMembers(accum, orgReadGroupId, 1, "organization");
+    collectMembers(accum, funcAdminGroupId, 3, "function");
+    collectMembers(accum, funcWriteGroupId, 2, "function");
+    collectMembers(accum, funcReadGroupId, 1, "function");
+
+    // Build result sorted by right desc, then name asc (nulls last)
+    return accum.values().stream()
+        .map(a -> new RightsHolderEntry(
+            a.userId, a.personalIdentityNumber, a.name, levelToString(a.level), a.scope))
+        .sorted((a, b) -> {
+          final int rightCmp = Integer.compare(levelFromString(b.right()), levelFromString(a.right()));
+          if (rightCmp != 0) {
+            return rightCmp;
+          }
+          if (a.name() == null && b.name() == null) {
+            return 0;
+          }
+          if (a.name() == null) {
+            return 1;
+          }
+          if (b.name() == null) {
+            return -1;
+          }
+          return a.name().compareToIgnoreCase(b.name());
+        })
+        .toList();
+  }
+
+  private void collectMembers(
+      final @NonNull Map<String, RightsHolderAccumulator> accum,
+      final @Nullable String groupId,
+      final int level,
+      final @NonNull String scope) {
+
+    if (groupId == null) {
+      return;
+    }
+    final List<UserInfo> members = this.fetchGroupMembers(groupId);
+    for (final UserInfo user : members) {
+      final RightsHolderAccumulator existing = accum.get(user.userId());
+      if (existing == null) {
+        accum.put(user.userId(), new RightsHolderAccumulator(
+            user.userId(), user.personalIdentityNumber(), buildDisplayName(user), level, scope));
+      }
+      else if (level > existing.level
+          || (level == existing.level && "function".equals(scope) && "organization".equals(existing.scope))) {
+        existing.level = level;
+        existing.scope = scope;
+      }
+    }
+  }
+
+  private static @Nullable String buildDisplayName(final @NonNull UserInfo user) {
+    final String first = user.firstName();
+    final String last = user.lastName();
+    if (first != null || last != null) {
+      final String full = ((first != null ? first : "") + " " + (last != null ? last : "")).trim();
+      if (!full.isEmpty()) {
+        return full;
+      }
+    }
+    if (user.username() != null && !user.username().isBlank()) {
+      return user.username();
+    }
+    return null;
+  }
+
+  private static @Nullable String findChildGroupId(
+      final @NonNull List<Map<String, Object>> children,
+      final @NonNull String name) {
+    return children.stream()
+        .filter(c -> name.equals(getString(c, "name")))
+        .map(c -> getString(c, "id"))
+        .filter(Objects::nonNull)
+        .findFirst()
+        .orElse(null);
+  }
+
+  private static @NonNull String levelToString(final int level) {
+    return switch (level) {
+      case 3 -> "admin";
+      case 2 -> "write";
+      default -> "read";
+    };
+  }
+
+  private static int levelFromString(final @NonNull String right) {
+    return switch (right) {
+      case "admin" -> 3;
+      case "write" -> 2;
+      default -> 1;
+    };
+  }
+
+  private static final class RightsHolderAccumulator {
+    final String userId;
+    final String personalIdentityNumber;
+    final String name;
+    int level;
+    String scope;
+
+    RightsHolderAccumulator(final String userId, final String personalIdentityNumber,
+        final String name, final int level, final String scope) {
+      this.userId = userId;
+      this.personalIdentityNumber = personalIdentityNumber;
+      this.name = name;
+      this.level = level;
+      this.scope = scope;
+    }
   }
 
   // ---------------------------------------------------------------------------

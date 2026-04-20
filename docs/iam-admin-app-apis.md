@@ -12,6 +12,8 @@
 
     3.1. [List Organizations](#list-organizations)
 
+    3.2. [List Rights Holders for Org/Function](#list-rights-holders)
+
 ---
 
 <a name="overview"></a>
@@ -40,11 +42,17 @@ performed:
 - **Audience** — the `aud` claim must contain the iam-admin-app's client ID
   (e.g. `https://local.dev.swedenconnect.se:17005`).
 
-**Authorization:** Per-endpoint, based on the token's `realm_access.roles` claim.
+**Authorization:** Per-endpoint, based on the token's `realm_access.roles` claim and/or
+the `org_rights` claim.
 
 Keycloak includes realm roles in access tokens by default. The IAM Service API extracts
-the `superuser` role and maps it to the Spring Security authority `ROLE_SUPERUSER`. Each
-endpoint declares its required authority.
+the `superuser` role and maps it to the Spring Security authority `ROLE_SUPERUSER`.
+
+Some endpoints additionally inspect the `org_rights` claim on the access token to
+determine whether the caller has admin rights on a specific organization/function
+combination. For these endpoints to work for non-superusers, the `org_rights` protocol
+mapper must be configured to include the claim on access tokens (the default when using
+`add-oidc-client.sh`).
 
 **Token acquisition by the caller:** The calling application obtains a user-delegated
 access token (authorization code grant) with the `resource` parameter set to the
@@ -76,29 +84,34 @@ attributes:
 ```json
 {
   "5590026042": {
-    "nameSv": "Litsec AB",
-    "nameEn": "Litsec",
-    "attachedFunctions": ["demo", "walletreg"],
-    "contactEmail": "info@litsec.se",
-    "contactPhone": null
+    "name#sv": "Litsec AB",
+    "name#en": "Litsec",
+    "attached_functions": ["demo", "walletreg"],
+    "contact": {
+      "email": "info@litsec.se",
+      "phone": null
+    }
   },
   "5591617864": {
-    "nameSv": "IDsec Solutions AB",
-    "nameEn": "IDsec Solutions",
-    "attachedFunctions": ["demo", "swedenconnect"],
-    "contactEmail": null,
-    "contactPhone": null
+    "name#sv": "IDsec Solutions AB",
+    "name#en": "IDsec Solutions",
+    "attached_functions": ["demo", "swedenconnect"],
+    "contact": {
+      "email": null,
+      "phone": null
+    }
   }
 }
 ```
 
-| Field               | Type           | Description                                        |
-|---------------------|----------------|----------------------------------------------------|
-| `nameSv`            | string \| null | Swedish organization name                          |
-| `nameEn`            | string \| null | English organization name                          |
-| `attachedFunctions` | string[]       | Function identifiers attached to this organization |
-| `contactEmail`      | string \| null | Contact email address                              |
-| `contactPhone`      | string \| null | Contact phone number                               |
+| Field                | Type           | Description                                                    |
+|----------------------|----------------|----------------------------------------------------------------|
+| `name#sv`            | string \| null | Swedish organization name.                                     |
+| `name#en`            | string \| null | English organization name.                                     |
+| `attached_functions` | string[]       | Function identifiers attached to this organization.            |
+| `contact`            | object         | Object with `email` and `phone`, each string or null. Always present. |
+| `contact.email`      | string \| null | Contact email address.                                         |
+| `contact.phone`      | string \| null | Contact phone number.                                          |
 
 **Error responses:**
 
@@ -106,6 +119,75 @@ attributes:
 |--------|------------------------------------------|
 | 401    | Missing or invalid Bearer token          |
 | 403    | Token is valid but caller is not superuser |
+
+<a name="list-rights-holders"></a>
+### 3.2. List Rights Holders for Org/Function
+
+Lists all users holding a right on a specific (organization, function) combination.
+
+**Request:**
+
+```
+GET /iam-api/v1/organizations/{orgIdentifier}/functions/{functionId}/users
+Authorization: Bearer <token>
+```
+
+**Authorization:** Requires one of:
+
+- The `superuser` realm role (`ROLE_SUPERUSER`); or
+- An `org_rights` claim granting `admin` on `(orgIdentifier, functionId)` — including
+  via the org-wide wildcard `(orgIdentifier, *, admin)`.
+
+Authorization is evaluated before any Keycloak lookup; unauthorized callers cannot
+distinguish a non-existent org/function from an existing-but-forbidden one.
+
+**Response:** `200 OK`
+
+```json
+{
+  "users": [
+    {
+      "user_id": "a3b4c5d6-1234-5678-9abc-def012345678",
+      "personal_identity_number": "197001011234",
+      "name": "Anna Andersson",
+      "right": "admin",
+      "scope": "function"
+    },
+    {
+      "user_id": "b4c5d6e7-2345-6789-abcd-ef0123456789",
+      "personal_identity_number": "198505050505",
+      "name": "Bertil Bengtsson",
+      "right": "write",
+      "scope": "organization"
+    }
+  ]
+}
+```
+
+| Field                      | Type           | Description                                                                                         |
+|----------------------------|----------------|-----------------------------------------------------------------------------------------------------|
+| `user_id`                  | string         | Keycloak user UUID                                                                                  |
+| `personal_identity_number` | string \| null | The user's `personalIdentityNumber` attribute from Keycloak                                         |
+| `name`                     | string \| null | `firstName + " " + lastName`, trimmed. Falls back to `username`, then `null`.                       |
+| `right`                    | string         | Effective right: `admin`, `write`, or `read`                                                        |
+| `scope`                    | string         | `"function"` if from the function sub-group; `"organization"` if from the org-wide right sub-group  |
+
+**Ordering:** Sorted by `right` descending (`admin` → `write` → `read`), then by `name`
+ascending within each right (nulls last).
+
+**Right resolution:** A user may appear in multiple candidate groups. Each user is
+returned exactly once with the highest right (`admin` > `write` > `read`). If the same
+level is held both org-wide and function-specific, the function scope wins (more
+specific).
+
+**Error responses:**
+
+| Status | Condition                                                            |
+|--------|----------------------------------------------------------------------|
+| 401    | Missing or invalid Bearer token                                      |
+| 403    | Caller is neither superuser nor admin on this (org, function)        |
+| 404    | Organization does not exist, or function is not attached to it       |
+| 500    | Unexpected Keycloak admin API error                                  |
 
 ---
 
