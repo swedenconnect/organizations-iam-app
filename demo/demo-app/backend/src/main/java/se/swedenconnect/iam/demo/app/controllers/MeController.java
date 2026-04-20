@@ -146,7 +146,7 @@ public class MeController {
 
         @SuppressWarnings("unchecked")
         final List<String> attachedFunctions =
-            attrs.get("attachedFunctions") instanceof final List<?> list
+            attrs.get("attached_functions") instanceof final List<?> list
                 ? (List<String>) list : List.of();
         if (!attachedFunctions.isEmpty()
             && this.function != null
@@ -154,8 +154,8 @@ public class MeController {
           continue;
         }
 
-        final String nameEn = attrs.get("nameEn") instanceof final String s ? s : null;
-        final String nameSv = attrs.get("nameSv") instanceof final String s ? s : null;
+        final String nameEn = attrs.get("name#en") instanceof final String s ? s : null;
+        final String nameSv = attrs.get("name#sv") instanceof final String s ? s : null;
         final String orgName = nameEn != null ? nameEn : (nameSv != null ? nameSv : orgId);
 
         entries.add(new OrgEntry(orgId, orgName, "admin"));
