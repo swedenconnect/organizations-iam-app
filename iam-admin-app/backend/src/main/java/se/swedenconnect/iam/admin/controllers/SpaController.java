@@ -15,23 +15,58 @@
  */
 package se.swedenconnect.iam.admin.controllers;
 
+import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.NonNull;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.ResourceLoader;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 /**
- * Controller that forwards client-side SPA routes to index.html.
+ * Controller that serves the SPA {@code index.html} for all client-side routes,
+ * injecting a {@code <base href="...">} tag so the frontend resolves relative
+ * asset and API URLs correctly under any configured context path.
  *
  * @author Martin Lindström
  */
 @Controller
+@RequiredArgsConstructor
 public class SpaController {
 
+  private final ResourceLoader resourceLoader;
+
   @RequestMapping({
-      "/{path:^(?!api|assets|theme|actuator|error)[^\\.]*}",
-      "/{path:^(?!api|assets|theme|actuator|error)[^\\.]*}/**"
+      "/",
+      "/index.html",
+      "/{path:^(?!api|assets|theme|actuator|error)[^.]*}",
+      "/{path:^(?!api|assets|theme|actuator|error)[^.]*}/**"
   })
-  public String forward() {
-    return "forward:/index.html";
+  @ResponseBody
+  public @NonNull ResponseEntity<String> serveIndex(final HttpServletRequest request) throws IOException {
+    final Resource resource = this.resourceLoader.getResource("classpath:/static/index.html");
+    String html = resource.getContentAsString(StandardCharsets.UTF_8);
+    final String contextPath = request.getContextPath();
+    final String base = contextPath.isEmpty() ? "/" : contextPath + "/";
+    // Replace any existing <base href="..."> regardless of what Vite wrote
+    if (html.contains("<base ")) {
+      html = html.replaceAll("<base\\s+href=\"[^\"]*\"", "<base href=\"" + base + "\"");
+    }
+    else {
+      // Inject one if absent (safety net)
+      html = html.replace("<head>", "<head><base href=\"" + base + "\">");
+    }
+    return ResponseEntity.ok()
+        .contentType(MediaType.TEXT_HTML)
+        .header(HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate")
+        .body(html);
   }
 
 }

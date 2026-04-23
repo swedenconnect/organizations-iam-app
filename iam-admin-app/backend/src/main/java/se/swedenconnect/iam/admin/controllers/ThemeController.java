@@ -15,6 +15,7 @@
  */
 package se.swedenconnect.iam.admin.controllers;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,16 +58,18 @@ public class ThemeController {
   /**
    * Returns theme metadata: active mode name, logo/favicon URLs, and logo heights.
    *
+   * @param request the current HTTP request (used to resolve the context path at runtime)
    * @return theme response
    */
   @GetMapping(value = "/theme", produces = MediaType.APPLICATION_JSON_VALUE)
-  public ThemeResponse theme() {
+  public ThemeResponse theme(final HttpServletRequest request) {
     final FooterJson footer = loadFooterJson();
+    final String base = request.getContextPath();
     return new ThemeResponse(
         this.properties.getTheme(),
-        "/theme/logo.png",
-        "/theme/footer-logo.png",
-        "/theme/favicon.ico",
+        base + "/theme/logo.png",
+        base + "/theme/footer-logo.png",
+        base + "/theme/favicon.ico",
         footer.logoHeight() != null ? footer.logoHeight() : "h-12",
         footer.footerLogoHeight() != null ? footer.footerLogoHeight() : "h-8"
     );
@@ -158,7 +161,7 @@ public class ThemeController {
   // Response records
   // ---------------------------------------------------------------------------
 
-  record ThemeResponse(
+  public record ThemeResponse(
       String mode,
       String logoUrl,
       String footerLogoUrl,
@@ -167,7 +170,7 @@ public class ThemeController {
       String footerLogoHeight) {
   }
 
-  record ThemeFooterResponse(
+  public record ThemeFooterResponse(
       String orgName,
       String contactEmail,
       String contactPhone,
