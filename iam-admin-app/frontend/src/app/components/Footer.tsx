@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLanguage } from '@/app/contexts/LanguageContext';
 import { useTheme } from '@/app/contexts/ThemeContext';
+import { apiUrl } from '@/lib/api';
 
 interface ThemeFooterLink {
   label: string;
@@ -20,7 +21,7 @@ export function Footer() {
   const [footerData, setFooterData] = useState<ThemeFooter | null>(null);
 
   useEffect(() => {
-    fetch(`/api/theme/footer?lang=${language}`)
+    fetch(apiUrl(`api/theme/footer?lang=${language}`))
       .then((r) => r.json())
       .then(setFooterData)
       .catch(() => {});

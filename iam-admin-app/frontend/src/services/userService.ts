@@ -5,6 +5,7 @@
 
 import type { User, UserOrganizationRole } from '@/types';
 import { loadFromStorage, saveToStorage, STORAGE_KEYS } from './storageService';
+import { apiUrl } from '@/lib/api';
 
 // Mock initial data
 const INITIAL_USERS: User[] = [
@@ -51,7 +52,7 @@ export class DuplicatePinError extends Error {
  * Create a new user
  */
 export async function createUser(user: Omit<User, 'id'>): Promise<User> {
-  const response = await fetch('/api/users', {
+  const response = await fetch(apiUrl('api/users'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -87,7 +88,7 @@ export async function createUser(user: Omit<User, 'id'>): Promise<User> {
  * Update an existing user
  */
 export async function updateUser(id: string, user: Partial<User>): Promise<User> {
-  const response = await fetch(`/api/users/${id}`, {
+  const response = await fetch(apiUrl(`api/users/${id}`), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -114,7 +115,7 @@ export async function updateUser(id: string, user: Partial<User>): Promise<User>
  * Delete a user
  */
 export async function deleteUser(id: string): Promise<void> {
-  const response = await fetch(`/api/users/${id}`, { method: 'DELETE' });
+  const response = await fetch(apiUrl(`api/users/${id}`), { method: 'DELETE' });
   if (response.status === 403) throw new Error('FORBIDDEN');
   if (!response.ok) throw new Error(`Failed to delete user: ${response.status}`);
 }
@@ -123,7 +124,7 @@ export async function deleteUser(id: string): Promise<void> {
  * Get a single user by ID
  */
 export async function getUserById(id: string): Promise<User | null> {
-  const response = await fetch(`/api/users/${id}`);
+  const response = await fetch(apiUrl(`api/users/${id}`));
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`Failed to fetch user: ${response.status}`);
   const data = await response.json();
@@ -162,7 +163,7 @@ export async function addUserToOrganization(
   role: 'read' | 'write' | 'admin'
 ): Promise<UserOrganizationRole> {
   const response = await fetch(
-    `/api/organizations/${organizationId}/users/${userId}/rights`,
+    apiUrl(`api/organizations/${organizationId}/users/${userId}/rights`),
     {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -192,7 +193,7 @@ export async function removeUserFromOrganization(
   right: 'read' | 'write' | 'admin'
 ): Promise<void> {
   const response = await fetch(
-    `/api/organizations/${organizationId}/users/${userId}/rights?right=${right}`,
+    apiUrl(`api/organizations/${organizationId}/users/${userId}/rights?right=${right}`),
     { method: 'DELETE' }
   );
   if (response.status === 403) throw new Error('FORBIDDEN');
@@ -213,7 +214,7 @@ export async function addUserToFunction(
   role: 'read' | 'write' | 'admin'
 ): Promise<UserOrganizationRole> {
   const response = await fetch(
-    `/api/organizations/${organizationId}/functions/${functionId}/users/${userId}/rights`,
+    apiUrl(`api/organizations/${organizationId}/functions/${functionId}/users/${userId}/rights`),
     {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -245,7 +246,7 @@ export async function removeUserFromFunction(
   right: 'read' | 'write' | 'admin'
 ): Promise<void> {
   const response = await fetch(
-    `/api/organizations/${organizationId}/functions/${functionId}/users/${userId}/rights?right=${right}`,
+    apiUrl(`api/organizations/${organizationId}/functions/${functionId}/users/${userId}/rights?right=${right}`),
     { method: 'DELETE' }
   );
   if (response.status === 403) throw new Error('FORBIDDEN');

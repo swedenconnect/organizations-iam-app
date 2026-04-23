@@ -6,6 +6,7 @@ import { LogIn, AlertCircle } from 'lucide-react';
 import { Header } from '@/app/components/Header';
 import { Footer } from '@/app/components/Footer';
 import { useLanguage } from '@/app/contexts/LanguageContext';
+import { apiUrl } from '@/lib/api';
 
 export function LoginForm() {
   const { t } = useLanguage();
@@ -14,7 +15,7 @@ export function LoginForm() {
 
   useEffect(() => {
     if (!hasLoginError) return;
-    fetch('/api/auth-error')
+    fetch(apiUrl('api/auth-error'))
       .then((r) => (r.ok ? r.json() : {}))
       .then((data: { description?: string }) => {
         if (data.description) {
@@ -27,7 +28,7 @@ export function LoginForm() {
   }, [hasLoginError]);
 
   const handleLogin = () => {
-    window.location.href = '/oauth2/authorization/iam-admin';
+    window.location.href = apiUrl('oauth2/authorization/iam-admin');
   };
 
   return (
