@@ -114,6 +114,7 @@ server:
     enabled: true
     bundle: local
   servlet:
+    context-path: /iam-admin
     session:
       cookie:
         same-site: LAX

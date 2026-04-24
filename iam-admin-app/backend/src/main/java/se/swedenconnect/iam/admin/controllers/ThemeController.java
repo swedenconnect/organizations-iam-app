@@ -64,7 +64,8 @@ public class ThemeController {
   @GetMapping(value = "/theme", produces = MediaType.APPLICATION_JSON_VALUE)
   public ThemeResponse theme(final HttpServletRequest request) {
     final FooterJson footer = loadFooterJson();
-    final String base = request.getContextPath();
+    final String cp = request.getContextPath();
+    final String base = (cp.isEmpty() || "/".equals(cp)) ? "" : cp;
     return new ThemeResponse(
         this.properties.getTheme(),
         base + "/theme/logo.png",

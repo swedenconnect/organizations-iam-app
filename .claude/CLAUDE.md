@@ -24,6 +24,26 @@ mvn compile test -pl iam-admin-app/backend
 # Run a single test class (example)
 mvn test -pl keycloak/org-rights-mapper -Dtest=OrgRightsMapperTest
 
+# Build a local Docker image for iam-admin-app (defaults to linux/amd64)
+mvn package -pl iam-admin-app/frontend -DskipTests
+mvn install -pl iam-admin-app/frontend -DskipTests
+mvn package -pl iam-admin-app/backend -DskipTests jib:dockerBuild@local
+
+# On Apple Silicon (arm64), override the architecture:
+mvn package -pl iam-admin-app/backend -DskipTests jib:dockerBuild@local -Djib.local.architecture=arm64
+# To avoid passing the flag every time, add this to ~/.m2/settings.xml:
+#   <profiles>
+#     <profile>
+#       <id>apple-silicon</id>
+#       <properties>
+#         <jib.local.architecture>arm64</jib.local.architecture>
+#       </properties>
+#     </profile>
+#   </profiles>
+#   <activeProfiles>
+#     <activeProfile>apple-silicon</activeProfile>
+#   </activeProfiles>
+
 # Build Keycloak plugin JARs and install into compose/config/keycloak/spi/
 ./compose/keycloak-scripts/install-keycloak-plugins.sh
 
