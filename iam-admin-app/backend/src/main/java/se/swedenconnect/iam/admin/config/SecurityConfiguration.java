@@ -20,6 +20,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -59,6 +60,18 @@ import se.swedenconnect.iam.admin.keycloak.AdminSessionBootstrapHandler;
 @Slf4j
 public class SecurityConfiguration {
 
+  @Value("${server.servlet.context-path:/}")
+  private String contextPath;
+
+  /**
+   * Returns a context-path-prefixed path, e.g. "/admin" + "/index.html" → "/admin/index.html".
+   * When the context path is "/", the prefix is empty to avoid double slashes.
+   */
+  private @NonNull String getPrefixedPath(final @NonNull String path) {
+    final String prefix = "/".equals(this.contextPath) ? "" : this.contextPath;
+    return prefix + path;
+  }
+
   @Bean
   @Order(2)
   public SecurityFilterChain securityFilterChain(
@@ -67,14 +80,14 @@ public class SecurityConfiguration {
       final OAuth2UserService<OidcUserRequest, OidcUser> oidcUserService,
       final OAuth2AuthorizationRequestResolver authorizationRequestResolver,
       final AdminSessionBootstrapHandler successHandler,
-      @org.springframework.beans.factory.annotation.Value("${iam.admin.sso-login-path:/sso/login}") final String ssoLoginPath) throws Exception {
+      @Value("${iam.admin.sso-login-path:/sso/login}") final String ssoLoginPath) throws Exception {
 
     final HttpSessionRequestCache requestCache = new HttpSessionRequestCache() {
       @Override
       public void saveRequest(
           final HttpServletRequest request, final @NonNull HttpServletResponse response) {
-        final String uri = request.getRequestURI();
-        if (uri != null && uri.startsWith("/api/")) {
+        final String path = request.getServletPath();
+        if (path != null && path.startsWith("/api/")) {
           return;
         }
         super.saveRequest(request, response);
@@ -112,7 +125,7 @@ public class SecurityConfiguration {
         )
         .logout(logout -> logout
             .logoutUrl("/logout")
-            .logoutSuccessUrl("/")
+            .logoutSuccessUrl(this.getPrefixedPath("/"))
         );
 
     return http.build();
@@ -132,7 +145,7 @@ public class SecurityConfiguration {
     } else {
       log.debug("Standard login failed — redirecting to login page");
     }
-    response.sendRedirect("/?loginError");
+    response.sendRedirect(this.getPrefixedPath("/?loginError"));
   }
 
   @Bean

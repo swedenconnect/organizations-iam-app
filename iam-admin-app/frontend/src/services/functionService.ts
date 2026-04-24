@@ -5,6 +5,7 @@
 
 import type { FunctionData, FunctionType, OrganizationFunction } from '@/types';
 import { loadFromStorage, saveToStorage, STORAGE_KEYS } from './storageService';
+import { apiUrl } from '@/lib/api';
 
 // Mock initial data (empty for org-functions)
 const INITIAL_ORG_FUNCTIONS: OrganizationFunction[] = [];
@@ -24,7 +25,7 @@ function toFunctionType(data: FunctionData): FunctionType {
  * Get all functions
  */
 export async function getFunctions(): Promise<FunctionType[]> {
-  const response = await fetch('/api/functions');
+  const response = await fetch(apiUrl('api/functions'));
   if (!response.ok) throw new Error('FETCH_FUNCTIONS_FAILED');
   const data: FunctionData[] = await response.json();
   return data.map(toFunctionType);
@@ -34,7 +35,7 @@ export async function getFunctions(): Promise<FunctionType[]> {
  * Create a new function
  */
 export async function createFunction(func: Omit<FunctionType, 'id'>): Promise<FunctionType> {
-  const response = await fetch('/api/functions', {
+  const response = await fetch(apiUrl('api/functions'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -56,7 +57,7 @@ export async function createFunction(func: Omit<FunctionType, 'id'>): Promise<Fu
  * Update an existing function
  */
 export async function updateFunction(id: string, func: Partial<FunctionType>): Promise<FunctionType> {
-  const response = await fetch(`/api/functions/${id}`, {
+  const response = await fetch(apiUrl(`api/functions/${id}`), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -77,7 +78,7 @@ export async function updateFunction(id: string, func: Partial<FunctionType>): P
  * Delete a function
  */
 export async function deleteFunction(id: string): Promise<void> {
-  const response = await fetch(`/api/functions/${id}`, {
+  const response = await fetch(apiUrl(`api/functions/${id}`), {
     method: 'DELETE',
   });
   if (response.status === 403) throw new Error('FORBIDDEN');
@@ -120,7 +121,7 @@ export async function assignFunctionsToOrganization(
   const results: OrganizationFunction[] = [];
   for (const functionId of functionIds) {
     const response = await fetch(
-      `/api/organizations/${organizationId}/functions/${functionId}`,
+      apiUrl(`api/organizations/${organizationId}/functions/${functionId}`),
       { method: 'POST' }
     );
     if (response.status === 403) throw new Error('FORBIDDEN');
@@ -136,7 +137,7 @@ export async function assignFunctionsToOrganization(
 export async function removeOrganizationFunctions(organizationId: string, functionIds: string[]): Promise<void> {
   for (const functionId of functionIds) {
     const response = await fetch(
-      `/api/organizations/${organizationId}/functions/${functionId}`,
+      apiUrl(`api/organizations/${organizationId}/functions/${functionId}`),
       { method: 'DELETE' }
     );
     if (!response.ok && response.status !== 404) {

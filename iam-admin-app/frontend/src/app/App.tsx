@@ -19,6 +19,7 @@ import { LanguageProvider, useLanguage } from '@/app/contexts/LanguageContext';
 import { ThemeProvider } from '@/app/contexts/ThemeContext';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/app/components/ui/dialog';
 import { ErrorDialog } from '@/app/components/ErrorDialog';
+import { apiUrl } from '@/lib/api';
 import {
   getOrganizations,
   createOrganization,
@@ -107,7 +108,7 @@ function AppContent() {
   useEffect(() => {
     const init = async () => {
       try {
-        const response = await fetch('/api/me');
+        const response = await fetch(apiUrl('api/me'));
         if (response.ok) {
           const user: CurrentUser = await response.json();
           setCurrentUser(user);
@@ -198,8 +199,8 @@ function AppContent() {
   }, [loadData]);
 
   const handleLogout = async () => {
-    await fetch('/logout', { method: 'POST' });
-    window.location.href = '/';
+    await fetch(apiUrl('logout'), { method: 'POST' });
+    window.location.href = apiUrl('');
   };
 
   const handleSaveOrganization = async (org: Omit<Organization, 'id'> & { id?: string }) => {

@@ -15,6 +15,7 @@
  */
 
 import { createContext, useContext, useEffect, useState } from 'react';
+import { apiUrl } from '@/lib/api';
 
 interface ThemeData {
   mode: string;
@@ -38,13 +39,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<ThemeData>(defaultTheme);
 
   useEffect(() => {
-    fetch('/api/theme')
+    fetch(apiUrl('api/theme'))
       .then((r) => r.json())
       .then((data: { mode: string; logoUrl: string; footerLogoUrl: string; logoHeight: string; footerLogoHeight: string }) => {
         const link = document.createElement('link');
         link.id = 'theme-css';
         link.rel = 'stylesheet';
-        link.href = '/theme/theme.css';
+        link.href = apiUrl('theme/theme.css');
         if (!document.getElementById('theme-css')) {
           document.head.appendChild(link);
         }

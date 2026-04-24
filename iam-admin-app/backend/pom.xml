@@ -25,6 +25,11 @@
     </license>
   </licenses>
 
+  <properties>
+    <!-- Architecture for jib:dockerBuild@local. Override with -Djib.local.architecture=arm64 on Apple Silicon. -->
+    <jib.local.architecture>amd64</jib.local.architecture>
+  </properties>
+
   <dependencies>
 
     <dependency>
@@ -174,6 +179,15 @@
               <goal>dockerBuild</goal>
             </goals>
             <configuration>
+              <from>
+                <!-- Override with -Djib.local.architecture=arm64 on Apple Silicon -->
+                <platforms>
+                  <platform>
+                    <os>linux</os>
+                    <architecture>${jib.local.architecture}</architecture>
+                  </platform>
+                </platforms>
+              </from>
               <to>
                 <image>iam-admin-app</image>
               </to>
