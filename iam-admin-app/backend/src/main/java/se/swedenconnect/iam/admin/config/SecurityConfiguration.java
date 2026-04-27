@@ -30,11 +30,14 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.oauth2.client.endpoint.RestClientAuthorizationCodeTokenResponseClient;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
+import org.springframework.security.oauth2.client.oidc.web.logout.OidcClientInitiatedLogoutSuccessHandler;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
+import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
 import org.springframework.web.filter.CommonsRequestLoggingFilter;
 import se.swedenconnect.iam.admin.auth.OrgRightsOidcUserService;
@@ -80,6 +83,7 @@ public class SecurityConfiguration {
       final OAuth2UserService<OidcUserRequest, OidcUser> oidcUserService,
       final OAuth2AuthorizationRequestResolver authorizationRequestResolver,
       final AdminSessionBootstrapHandler successHandler,
+      final ClientRegistrationRepository clientRegistrationRepository,
       @Value("${iam.admin.sso-login-path:/sso/login}") final String ssoLoginPath) throws Exception {
 
     final HttpSessionRequestCache requestCache = new HttpSessionRequestCache() {
@@ -125,7 +129,7 @@ public class SecurityConfiguration {
         )
         .logout(logout -> logout
             .logoutUrl("/logout")
-            .logoutSuccessUrl(this.getPrefixedPath("/"))
+            .logoutSuccessHandler(oidcLogoutSuccessHandler(clientRegistrationRepository))
         );
 
     return http.build();
@@ -157,6 +161,13 @@ public class SecurityConfiguration {
     filter.setMaxPayloadLength(2000);
     filter.setAfterMessagePrefix("REQUEST: ");
     return filter;
+  }
+
+  private LogoutSuccessHandler oidcLogoutSuccessHandler(
+      final ClientRegistrationRepository repo) {
+    final OidcClientInitiatedLogoutSuccessHandler handler = new OidcClientInitiatedLogoutSuccessHandler(repo);
+    handler.setPostLogoutRedirectUri("{baseUrl}" + this.getPrefixedPath("/"));
+    return handler;
   }
 
 }
