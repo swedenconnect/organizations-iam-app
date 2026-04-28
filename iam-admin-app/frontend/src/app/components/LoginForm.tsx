@@ -10,7 +10,9 @@ import { apiUrl } from '@/lib/api';
 
 export function LoginForm() {
   const { t } = useLanguage();
-  const hasLoginError = new URLSearchParams(window.location.search).has('loginError');
+  const params = new URLSearchParams(window.location.search);
+  const hasLoginError = params.has('loginError');
+  const hasSessionExpired = params.has('sessionExpired');
   const [errorDescription, setErrorDescription] = useState<string | null>(null);
 
   useEffect(() => {
@@ -45,6 +47,14 @@ export function LoginForm() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
+              {hasSessionExpired && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    {t('login.sessionExpired')}
+                  </AlertDescription>
+                </Alert>
+              )}
               {hasLoginError && (
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />

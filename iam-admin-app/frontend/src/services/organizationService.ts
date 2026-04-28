@@ -5,7 +5,7 @@
 
 import type { Organization } from '@/types';
 import { loadFromStorage, saveToStorage, STORAGE_KEYS } from './storageService';
-import { apiUrl } from '@/lib/api';
+import { apiUrl, apiFetch } from '@/lib/api';
 
 // Mock initial data
 const INITIAL_ORGANIZATIONS: Organization[] = [
@@ -30,7 +30,7 @@ export async function getOrganizations(): Promise<Organization[]> {
  * Create a new organization
  */
 export async function createOrganization(org: Omit<Organization, 'id'>): Promise<Organization> {
-  const response = await fetch(apiUrl('api/organizations'), {
+  const response = await apiFetch(apiUrl('api/organizations'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -59,7 +59,7 @@ export async function updateOrganization(id: string, org: Partial<Organization>)
   if (org.nameSv != null) body.nameSv = org.nameSv;
   if (org.nameEn != null) body.nameEn = org.nameEn;
 
-  const response = await fetch(apiUrl(`api/organizations/${id}`), {
+  const response = await apiFetch(apiUrl(`api/organizations/${id}`), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -83,7 +83,7 @@ export async function updateOrganization(id: string, org: Partial<Organization>)
  * Delete an organization
  */
 export async function deleteOrganization(id: string): Promise<void> {
-  const response = await fetch(apiUrl(`api/organizations/${id}`), { method: 'DELETE' });
+  const response = await apiFetch(apiUrl(`api/organizations/${id}`), { method: 'DELETE' });
   if (response.status === 403) throw new Error('FORBIDDEN');
   if (response.status === 409) throw new Error('HAS_ATTACHED_FUNCTIONS');
   if (response.status === 404) throw new Error('NOT_FOUND');
