@@ -145,7 +145,7 @@ echo "==> Configuring ACR-to-LoA mappings..."
 "${KCADM}" update realms/"${REALM}" -f - <<'EOF'
 {
   "attributes": {
-    "acr.loa.map": "{\"0\":\"http://id.elegnamnden.se/loa/1.0/loa2\",\"1\":\"http://id.swedenconnect.se/loa/1.0/uncertified-loa3\",\"2\":\"http://id.elegnamnden.se/loa/1.0/loa3\",\"3\":\"http://id.elegnamnden.se/loa/1.0/loa4\"}"
+    "acr.loa.map": "{\"http://id.elegnamnden.se/loa/1.0/loa2\":\"0\",\"http://id.swedenconnect.se/loa/1.0/uncertified-loa3\":\"1\",\"http://id.elegnamnden.se/loa/1.0/loa3\":\"2\",\"http://id.elegnamnden.se/loa/1.0/loa4\":\"3\"}"
   }
 }
 EOF
