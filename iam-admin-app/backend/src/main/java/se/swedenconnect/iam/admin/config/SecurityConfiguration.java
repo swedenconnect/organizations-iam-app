@@ -24,15 +24,18 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.oauth2.client.endpoint.RestClientAuthorizationCodeTokenResponseClient;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
@@ -95,6 +98,7 @@ public class SecurityConfiguration {
     };
 
     final AuthenticationFailureHandler failureHandler = this::handleAuthenticationFailure;
+    final AuthenticationEntryPoint authenticationEntryPoint = this::handleUnauthenticated;
 
     http
         .csrf(AbstractHttpConfigurer::disable)
@@ -126,6 +130,9 @@ public class SecurityConfiguration {
         .logout(logout -> logout
             .logoutUrl("/logout")
             .logoutSuccessUrl(this.getPrefixedPath("/"))
+        )
+        .exceptionHandling(ex -> ex
+            .authenticationEntryPoint(authenticationEntryPoint)
         );
 
     return http.build();
@@ -146,6 +153,20 @@ public class SecurityConfiguration {
       log.debug("Standard login failed — redirecting to login page");
     }
     response.sendRedirect(this.getPrefixedPath("/?loginError"));
+  }
+
+  void handleUnauthenticated(
+      final @NonNull HttpServletRequest request,
+      final @NonNull HttpServletResponse response,
+      final @NonNull AuthenticationException authException) throws java.io.IOException {
+
+    if (request.getServletPath().startsWith("/api/")) {
+      response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+      response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+      response.getWriter().write("{\"error\":\"session-expired\"}");
+    } else {
+      response.sendRedirect(this.getPrefixedPath("/oauth2/authorization/iam-admin"));
+    }
   }
 
   @Bean

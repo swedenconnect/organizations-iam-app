@@ -24,7 +24,8 @@ const translations = {
     'login.authenticating': 'Authenticating...',
     'login.demo': 'Demo: Click to simulate OpenID Connect authentication',
     'login.accessDenied': 'You do not have administrative rights to perform user delegation. Please contact your system administrator.',
-    
+    'login.sessionExpired': 'Your session has expired. Please log in again.',
+
     // Dashboard
     'dashboard.title': 'Admin Dashboard',
     'dashboard.description': 'Manage organizations and users',
@@ -218,6 +219,7 @@ const translations = {
     'login.authenticating': 'Autentiserar...',
     'login.demo': 'Demo: Klicka för att simulera OpenID Connect-autentisering',
     'login.accessDenied': 'Du har inte administrativa rättigheter att utföra användardelegering. Kontakta din systemadministratör.',
+    'login.sessionExpired': 'Din session har gått ut. Logga in igen.',
     
     // Dashboard
     'dashboard.title': 'Administratörspanel',

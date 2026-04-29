@@ -19,7 +19,7 @@ import { LanguageProvider, useLanguage } from '@/app/contexts/LanguageContext';
 import { ThemeProvider } from '@/app/contexts/ThemeContext';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/app/components/ui/dialog';
 import { ErrorDialog } from '@/app/components/ErrorDialog';
-import { apiUrl } from '@/lib/api';
+import { apiUrl, apiFetch } from '@/lib/api';
 import {
   getOrganizations,
   createOrganization,
@@ -108,7 +108,7 @@ function AppContent() {
   useEffect(() => {
     const init = async () => {
       try {
-        const response = await fetch(apiUrl('api/me'));
+        const response = await apiFetch(apiUrl('api/me'));
         if (response.ok) {
           const user: CurrentUser = await response.json();
           setCurrentUser(user);
