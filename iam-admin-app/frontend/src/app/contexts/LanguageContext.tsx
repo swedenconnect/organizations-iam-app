@@ -65,7 +65,11 @@ const translations = {
     'users.orgLevelRights': 'Organization-level Rights',
     'users.functionLevelRights': 'Function-level Rights',
     'users.functions': 'Function Rights',
-    
+    'users.orgRight': 'organization right',
+    'users.orgRights': 'organization rights',
+    'users.functionRight': 'function right',
+    'users.functionRights': 'function rights',
+
     // Functions
     'functions.title': 'Functions',
     'functions.count': 'function',
@@ -260,7 +264,11 @@ const translations = {
     'users.orgLevelRights': 'Organisationsnivåns rättigheter',
     'users.functionLevelRights': 'Funktionsnivåns rättigheter',
     'users.functions': 'Funktionsrättigheter',
-    
+    'users.orgRight': 'organisationsrättighet',
+    'users.orgRights': 'organisationsrättigheter',
+    'users.functionRight': 'funktionsrättighet',
+    'users.functionRights': 'funktionsrättigheter',
+
     // Functions
     'functions.title': 'Funktioner',
     'functions.count': 'funktion',
