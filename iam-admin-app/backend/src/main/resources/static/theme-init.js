@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', function () {
-  fetch('/api/theme')
+  fetch('api/theme')
     .then(function (r) { return r.json(); })
     .then(function (data) {
       var logo = document.getElementById('app-logo');
