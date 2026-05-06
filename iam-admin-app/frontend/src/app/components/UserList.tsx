@@ -227,14 +227,14 @@ export function UserList({ users, organizations, functions, currentUserId, isSup
                         <div className="flex gap-3 mt-2">
                           {user.rights.filter((r) => r.functionId === null).length > 0 && (
                             <p className="text-xs text-gray-400">
-                              {user.rights.filter((r) => r.functionId === null).length} org{' '}
-                              {user.rights.filter((r) => r.functionId === null).length === 1 ? 'right' : 'rights'}
+                              {user.rights.filter((r) => r.functionId === null).length}{' '}
+                              {user.rights.filter((r) => r.functionId === null).length === 1 ? t('users.orgRight') : t('users.orgRights')}
                             </p>
                           )}
                           {user.rights.filter((r) => r.functionId !== null).length > 0 && (
                             <p className="text-xs text-gray-400">
-                              {user.rights.filter((r) => r.functionId !== null).length} function{' '}
-                              {user.rights.filter((r) => r.functionId !== null).length === 1 ? 'right' : 'rights'}
+                              {user.rights.filter((r) => r.functionId !== null).length}{' '}
+                              {user.rights.filter((r) => r.functionId !== null).length === 1 ? t('users.functionRight') : t('users.functionRights')}
                             </p>
                           )}
                         </div>
