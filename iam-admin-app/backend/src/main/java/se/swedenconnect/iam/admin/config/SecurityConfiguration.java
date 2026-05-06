@@ -129,7 +129,8 @@ public class SecurityConfiguration {
         )
         .logout(logout -> logout
             .logoutUrl("/logout")
-            .logoutSuccessUrl(this.getPrefixedPath("/"))
+            .logoutSuccessHandler((request, response, authentication) ->
+                response.sendRedirect(this.getPrefixedPath("/")))
         )
         .exceptionHandling(ex -> ex
             .authenticationEntryPoint(authenticationEntryPoint)

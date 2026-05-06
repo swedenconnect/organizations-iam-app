@@ -198,9 +198,15 @@ function AppContent() {
     init();
   }, [loadData]);
 
-  const handleLogout = async () => {
-    await fetch(apiUrl('logout'), { method: 'POST' });
-    window.location.href = apiUrl('');
+  const handleLogout = () => {
+    // Use a form submit rather than fetch so the browser follows the post-logout
+    // redirect natively. fetch() is blocked by the browser when the logout
+    // response is a cross-origin or opaque redirect.
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = apiUrl('logout');
+    document.body.appendChild(form);
+    form.submit();
   };
 
   const handleSaveOrganization = async (org: Omit<Organization, 'id'> & { id?: string }) => {
