@@ -19,6 +19,9 @@
   detect the expired session and redirect to the login page with a clear
   "session expired" message, instead of silently failing or showing an
   unexpected error.
+- Fixed a bug where removing a user's right at the organisation level failed
+  with an unexpected error. The delete operation was silently dropping the
+  required `right` query parameter before sending the request to the backend.
 
 ---
 
