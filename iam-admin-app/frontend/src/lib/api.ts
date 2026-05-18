@@ -11,7 +11,8 @@
  */
 export function apiUrl(path: string): string {
   const p = path.startsWith('/') ? path.slice(1) : path;
-  return new URL(p, document.baseURI).pathname;
+  const url = new URL(p, document.baseURI);
+  return url.pathname + url.search;
 }
 
 /**
