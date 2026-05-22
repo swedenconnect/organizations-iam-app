@@ -112,6 +112,7 @@ public class SecurityConfiguration {
             .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
             .requestMatchers(ssoLoginPath).permitAll()
             .requestMatchers("/actuator/**").permitAll()
+            .requestMatchers("/swagger-ui/**", "/v3/**").permitAll()
             .requestMatchers("/jwks").permitAll()
             .anyRequest().authenticated()
         )

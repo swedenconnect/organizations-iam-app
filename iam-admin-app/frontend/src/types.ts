@@ -89,6 +89,22 @@ export interface UserData {
   rights: UserRightData[];
 }
 
+export interface OrganizationPage {
+  content: OrganizationData[];
+  totalElements: number;
+  page: number;
+  size: number;
+  totalPages: number;
+}
+
+export interface UserPage {
+  content: UserData[];
+  totalElements: number;
+  page: number;
+  size: number;
+  totalPages: number;
+}
+
 export interface AdminSessionData {
   superuser: boolean;
   functionConstraint: string | null;
@@ -96,8 +112,6 @@ export interface AdminSessionData {
   allowFunctionRemoval: boolean;
   allowOrgRights: boolean;
   functions: FunctionData[];
-  organizations: OrganizationData[];
-  users: UserData[];
   orgRights: UserOrgRight[];
   adminOrgIdentifiers: string[];
 }

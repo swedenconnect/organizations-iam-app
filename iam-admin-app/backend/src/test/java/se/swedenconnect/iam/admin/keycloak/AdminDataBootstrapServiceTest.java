@@ -27,13 +27,10 @@ import se.swedenconnect.iam.commons.types.OrganizationID;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
 import se.swedenconnect.iam.admin.keycloak.model.FunctionInfo;
 import se.swedenconnect.iam.admin.keycloak.model.OrganizationInfo;
-import se.swedenconnect.iam.admin.keycloak.model.UserInfo;
-import se.swedenconnect.iam.admin.keycloak.model.UserRight;
 import se.swedenconnect.iam.security.claims.OrgRightsClaim;
-import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -69,10 +66,6 @@ class AdminDataBootstrapServiceTest {
         attachedFunctions, null, null);
   }
 
-  private static UserInfo userInfo(final String userId) {
-    return new UserInfo(userId, null, null, null, null, null, null, false, List.of());
-  }
-
   private static OrgRightsClaim superuserClaim() {
     return new OrgRightsClaim(true, List.of());
   }
@@ -84,12 +77,7 @@ class AdminDataBootstrapServiceTest {
 
   @BeforeEach
   void setUp() {
-    final ObjectMapper objectMapper = new ObjectMapper();
-    service = new AdminDataBootstrapService(keycloakAdminClient, objectMapper);
-
-    // Default: no children or members for any group
-    when(keycloakAdminClient.fetchGroupChildren(anyString())).thenReturn(List.of());
-    when(keycloakAdminClient.fetchGroupMembers(anyString())).thenReturn(List.of());
+    service = new AdminDataBootstrapService(keycloakAdminClient);
   }
 
   // ---------------------------------------------------------------------------
@@ -100,21 +88,13 @@ class AdminDataBootstrapServiceTest {
   void bootstrap_superuser_noConstraint_allData() {
     final FunctionInfo demo = functionInfo("demo");
     final FunctionInfo walletreg = functionInfo("walletreg");
-    final OrganizationInfo org1 = orgInfo("5590026042", "group-1", List.of("demo", "walletreg"));
-    final OrganizationInfo org2 = orgInfo("5561234567", "group-2", List.of("demo"));
-    final UserInfo user1 = userInfo("user-1");
-    final UserInfo user2 = userInfo("user-2");
 
     when(keycloakAdminClient.fetchAllFunctions()).thenReturn(List.of(demo, walletreg));
-    when(keycloakAdminClient.fetchAllOrganizationGroups()).thenReturn(List.of(org1, org2));
-    when(keycloakAdminClient.fetchAllUsers()).thenReturn(List.of(user1, user2));
 
     final AdminSessionData result =
         service.bootstrap(superuserClaim(), SUBJECT, null, null);
 
     assertThat(result.functions()).containsExactlyInAnyOrder(demo, walletreg);
-    assertThat(result.organizations()).containsExactlyInAnyOrder(org1, org2);
-    assertThat(result.users()).hasSize(2);
     assertThat(result.currentUserIsSuperuser()).isTrue();
     assertThat(result.functionConstraint()).isNull();
     assertThat(result.orgConstraint()).isNull();
@@ -128,12 +108,8 @@ class AdminDataBootstrapServiceTest {
   void bootstrap_superuser_withFunctionConstraint_filteredFunctions() {
     final FunctionInfo demo = functionInfo("demo");
     final FunctionInfo walletreg = functionInfo("walletreg");
-    final OrganizationInfo org1 = orgInfo("5590026042", "group-1", List.of("demo", "walletreg"));
-    final UserInfo user1 = userInfo("user-1");
 
     when(keycloakAdminClient.fetchAllFunctions()).thenReturn(List.of(demo, walletreg));
-    when(keycloakAdminClient.fetchAllOrganizationGroups()).thenReturn(List.of(org1));
-    when(keycloakAdminClient.fetchAllUsers()).thenReturn(List.of(user1));
 
     final AdminSessionData result =
         service.bootstrap(superuserClaim(), SUBJECT, "demo", null);
@@ -143,83 +119,37 @@ class AdminDataBootstrapServiceTest {
   }
 
   // ---------------------------------------------------------------------------
-  // Test 3: superuser, function constraint filters attachedFunctions on orgs
+  // Test 3: superuser, function constraint stored for API-level filtering
   // ---------------------------------------------------------------------------
 
   @Test
-  void bootstrap_superuser_withConstraint_filteredAttachedFunctions() {
+  void bootstrap_superuser_withConstraint_functionStoredForApiFiltering() {
     final FunctionInfo demo = functionInfo("demo");
     final FunctionInfo walletreg = functionInfo("walletreg");
-    final OrganizationInfo org1 = orgInfo("5590026042", "group-1", List.of("demo", "walletreg"));
 
     when(keycloakAdminClient.fetchAllFunctions()).thenReturn(List.of(demo, walletreg));
-    when(keycloakAdminClient.fetchAllOrganizationGroups()).thenReturn(List.of(org1));
-    when(keycloakAdminClient.fetchAllUsers()).thenReturn(List.of());
 
     final AdminSessionData result =
         service.bootstrap(superuserClaim(), SUBJECT, "demo", null);
 
-    assertThat(result.organizations()).hasSize(1);
-    assertThat(result.organizations().get(0).attachedFunctions()).containsExactly("demo");
-    assertThat(result.organizations().get(0).attachedFunctions()).doesNotContain("walletreg");
+    // Only the constrained function is in the session; orgs/users are loaded on-demand by API
+    assertThat(result.functions()).containsExactly(demo);
+    assertThat(result.functionConstraint()).isEqualTo("demo");
   }
 
   // ---------------------------------------------------------------------------
-  // Test 4: superuser, function constraint filters user rights
+  // Test 4: superuser, adminOrgIdentifiers empty (superusers have full access)
   // ---------------------------------------------------------------------------
 
   @Test
-  void bootstrap_superuser_withConstraint_filteredUserRights() {
-    final FunctionInfo demo = functionInfo("demo");
-    final FunctionInfo walletreg = functionInfo("walletreg");
-    final OrganizationInfo org1 = orgInfo("5590026042", "group-1", List.of("demo", "walletreg"));
-
-    // User has rights for both demo and walletreg
-    final UserRight demoRight = new UserRight("5590026042", "demo", "write");
-    final UserRight walletregRight = new UserRight("5590026042", "walletreg", "read");
-    final UserInfo user1 = new UserInfo("user-1", null, null, null, null, null, null, false,
-        List.of(demoRight, walletregRight));
-
-    when(keycloakAdminClient.fetchAllFunctions()).thenReturn(List.of(demo, walletreg));
-    when(keycloakAdminClient.fetchAllOrganizationGroups()).thenReturn(List.of(org1));
-    when(keycloakAdminClient.fetchAllUsers()).thenReturn(List.of(user1));
-
-    // The rights are fetched from group membership, not from the user object directly.
-    // The bootstrap service fetches group children and members to build the rights map.
-    // With no group children mocked, the user in the result has empty rights from group lookups.
-    // We need to mock the group structure to return the user with rights.
-    // Since this is complex, we mock the fetchGroupChildren to return a right group,
-    // and fetchGroupMembers to return the user.
-
-    // Org group-1 has a "demo" function sub-group with id "demo-group"
-    final Map<String, Object> demoGroup = Map.of("id", "demo-group", "name", "demo");
-    final Map<String, Object> walletregGroup = Map.of("id", "walletreg-group", "name", "walletreg");
-    when(keycloakAdminClient.fetchGroupChildren("group-1"))
-        .thenReturn(List.of(demoGroup, walletregGroup));
-
-    // demo function sub-group has a _write right group
-    final Map<String, Object> demoWriteGroup = Map.of("id", "demo-write-id", "name", "_write");
-    when(keycloakAdminClient.fetchGroupChildren("demo-group"))
-        .thenReturn(List.of(demoWriteGroup));
-
-    // walletreg function sub-group has a _read right group
-    final Map<String, Object> walletregReadGroup = Map.of("id", "walletreg-read-id", "name", "_read");
-    when(keycloakAdminClient.fetchGroupChildren("walletreg-group"))
-        .thenReturn(List.of(walletregReadGroup));
-
-    // Members of the right groups
-    final UserInfo userProfile = new UserInfo("user-1", "u1", null, null, null, null, null, false, List.of());
-    when(keycloakAdminClient.fetchGroupMembers("demo-write-id")).thenReturn(List.of(userProfile));
-    when(keycloakAdminClient.fetchGroupMembers("walletreg-read-id")).thenReturn(List.of(userProfile));
+  void bootstrap_superuser_adminOrgIdentifiers_empty() {
+    when(keycloakAdminClient.fetchAllFunctions()).thenReturn(List.of());
 
     final AdminSessionData result =
-        service.bootstrap(superuserClaim(), SUBJECT, "demo", null);
+        service.bootstrap(superuserClaim(), SUBJECT, null, null);
 
-    assertThat(result.users()).hasSize(1);
-    final UserInfo resultUser = result.users().get(0);
-    // Only demo rights should remain after function constraint filtering
-    assertThat(resultUser.rights()).allMatch(r -> r.functionId() == null || "demo".equals(r.functionId()));
-    assertThat(resultUser.rights()).noneMatch(r -> "walletreg".equals(r.functionId()));
+    assertThat(result.adminOrgIdentifiers()).isEmpty();
+    assertThat(result.currentUserIsSuperuser()).isTrue();
   }
 
   // ---------------------------------------------------------------------------
@@ -229,11 +159,8 @@ class AdminDataBootstrapServiceTest {
   @Test
   void bootstrap_constraintStoredInResult() {
     final FunctionInfo demo = functionInfo("demo");
-    final OrganizationInfo org1 = orgInfo("5590026042", "group-1", List.of("demo"));
 
     when(keycloakAdminClient.fetchAllFunctions()).thenReturn(List.of(demo));
-    when(keycloakAdminClient.fetchAllOrganizationGroups()).thenReturn(List.of(org1));
-    when(keycloakAdminClient.fetchAllUsers()).thenReturn(List.of());
 
     final AdminSessionData result =
         service.bootstrap(superuserClaim(), SUBJECT, "demo", null);
@@ -248,15 +175,36 @@ class AdminDataBootstrapServiceTest {
   @Test
   void bootstrap_nullConstraint_notStoredInResult() {
     final FunctionInfo demo = functionInfo("demo");
-    final OrganizationInfo org1 = orgInfo("5590026042", "group-1", List.of("demo"));
 
     when(keycloakAdminClient.fetchAllFunctions()).thenReturn(List.of(demo));
-    when(keycloakAdminClient.fetchAllOrganizationGroups()).thenReturn(List.of(org1));
-    when(keycloakAdminClient.fetchAllUsers()).thenReturn(List.of());
 
     final AdminSessionData result =
         service.bootstrap(superuserClaim(), SUBJECT, null, null);
 
     assertThat(result.functionConstraint()).isNull();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Test 7: non-superuser, adminOrgIdentifiers derived from claim
+  // ---------------------------------------------------------------------------
+
+  @Test
+  void bootstrap_regularUser_adminOrgIdentifiersDerivedFromClaim() {
+    final FunctionInfo demo = functionInfo("demo");
+    final OrganizationInfo org = orgInfo("5590026042", "group-1", List.of("demo"));
+
+    final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
+        orgEntry("5590026042", new OrgRightsClaim.FunctionEntry("*", "admin"))));
+
+    when(keycloakAdminClient.fetchAllFunctions()).thenReturn(List.of(demo));
+    when(keycloakAdminClient.fetchOrganizationByIdentifier("5590026042"))
+        .thenReturn(Optional.of(org));
+
+    final AdminSessionData result =
+        service.bootstrap(claim, SUBJECT, null, null);
+
+    assertThat(result.adminOrgIdentifiers()).containsExactly("5590026042");
+    assertThat(result.currentUserIsSuperuser()).isFalse();
+    assertThat(result.functions()).containsExactly(demo);
   }
 }

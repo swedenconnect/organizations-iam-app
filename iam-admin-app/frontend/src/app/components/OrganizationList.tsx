@@ -3,6 +3,16 @@ import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Input } from '@/app/components/ui/input';
 import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/app/components/ui/pagination';
+import { cn } from '@/app/components/ui/utils';
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -23,6 +33,12 @@ import { LastAdminError } from '@/services/userService';
 
 interface OrganizationListProps {
   organizations: Organization[];
+  currentPage: number;
+  totalPages: number;
+  totalElements: number;
+  searchTerm: string;
+  onPageChange: (page: number) => void;
+  onSearch: (term: string) => void;
   users: User[];
   userRoles: UserOrganizationRole[];
   functions: FunctionType[];
@@ -53,6 +69,12 @@ interface OrganizationListProps {
 
 export function OrganizationList({
   organizations,
+  currentPage,
+  totalPages,
+  totalElements,
+  searchTerm,
+  onPageChange,
+  onSearch,
   users,
   userRoles,
   functions,
@@ -75,7 +97,6 @@ export function OrganizationList({
   onUserCreated,
 }: OrganizationListProps) {
   const { t, language } = useLanguage();
-  const [searchTerm, setSearchTerm] = useState('');
   const [expandedOrgs, setExpandedOrgs] = useState<Set<string>>(new Set());
   const [editingRight, setEditingRight] = useState<{
     userId: string;
@@ -130,14 +151,6 @@ export function OrganizationList({
     return (org as any).name || 'Unnamed Organization';
   };
 
-  const filteredOrganizations = organizations.filter((org) => {
-    const searchLower = searchTerm.toLowerCase();
-    return (
-      (org.nameSv?.toLowerCase() || '').includes(searchLower) ||
-      (org.nameEn?.toLowerCase() || '').includes(searchLower) ||
-      (org.organizationNumber?.toLowerCase() || '').includes(searchLower)
-    );
-  });
 
   const getUsersForOrganization = (orgId: string) => {
     const orgUserRoles = userRoles.filter((role) => role.organizationId === orgId && !role.functionId);
@@ -182,23 +195,35 @@ export function OrganizationList({
     setExpandedOrgs(newExpanded);
   };
 
+  const getPageNumbers = (current: number, total: number): (number | 'ellipsis')[] => {
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i);
+    const pages: (number | 'ellipsis')[] = [0];
+    if (current > 2) pages.push('ellipsis');
+    for (let i = Math.max(1, current - 1); i <= Math.min(total - 2, current + 1); i++) {
+      pages.push(i);
+    }
+    if (current < total - 3) pages.push('ellipsis');
+    pages.push(total - 1);
+    return pages;
+  };
+
   return (
     <div className="space-y-4">
       {/* Search */}
-      {(isSuperuser || organizations.length !== 1) && (
+      {(isSuperuser || totalElements !== 1) && (
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
           <Input
             type="text"
             placeholder={t('search.organizations')}
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => onSearch(e.target.value)}
             className="pl-10"
           />
         </div>
       )}
 
-      {filteredOrganizations.length === 0 ? (
+      {organizations.length === 0 ? (
         <Card>
           <CardContent className="pt-6">
             <div className="text-center text-gray-500">
@@ -208,7 +233,8 @@ export function OrganizationList({
           </CardContent>
         </Card>
       ) : (
-        filteredOrganizations.map((org) => {
+        <>
+        {organizations.map((org) => {
           const orgUsers = getUsersForOrganization(org.id);
           const orgFunctions = getFunctionsForOrganization(org.id);
           const isExpanded = expandedOrgs.has(org.id);
@@ -544,7 +570,43 @@ export function OrganizationList({
               )}
             </Card>
           );
-        })
+        })}
+        {totalPages > 1 && (
+          <Pagination className="mt-2">
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  onClick={() => onPageChange(Math.max(0, currentPage - 1))}
+                  className={cn(currentPage === 0 && 'pointer-events-none opacity-50')}
+                />
+              </PaginationItem>
+              {getPageNumbers(currentPage, totalPages).map((item, idx) =>
+                item === 'ellipsis' ? (
+                  <PaginationItem key={`ellipsis-${idx}`}>
+                    <PaginationEllipsis />
+                  </PaginationItem>
+                ) : (
+                  <PaginationItem key={item}>
+                    <PaginationLink
+                      isActive={item === currentPage}
+                      onClick={() => onPageChange(item as number)}
+                      className="cursor-pointer"
+                    >
+                      {(item as number) + 1}
+                    </PaginationLink>
+                  </PaginationItem>
+                )
+              )}
+              <PaginationItem>
+                <PaginationNext
+                  onClick={() => onPageChange(Math.min(totalPages - 1, currentPage + 1))}
+                  className={cn(currentPage === totalPages - 1 && 'pointer-events-none opacity-50')}
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
+        )}
+        </>
       )}
 
       {/* Dialogs */}

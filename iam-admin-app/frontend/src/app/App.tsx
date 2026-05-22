@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { LoginForm } from '@/app/components/LoginForm';
 import { OrganizationList } from '@/app/components/OrganizationList';
 import { OrganizationForm } from '@/app/components/OrganizationForm';
@@ -8,7 +8,7 @@ import { FunctionList } from '@/app/components/FunctionList';
 import { FunctionForm } from '@/app/components/FunctionForm';
 import { Header } from '@/app/components/Header';
 import { Footer } from '@/app/components/Footer';
-import { Organization, User, UserOrganizationRole, FunctionType, OrganizationFunction, AdminSessionData } from '@/types';
+import { Organization, User, UserOrganizationRole, FunctionType, OrganizationFunction, AdminSessionData, OrganizationData } from '@/types';
 import { LastAdminError } from '@/services/userService';
 import { Button } from '@/app/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
@@ -21,7 +21,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ErrorDialog } from '@/app/components/ErrorDialog';
 import { apiUrl } from '@/lib/api';
 import {
+  fetchAllOrganizations,
   getOrganizations,
+  DEFAULT_ORG_PAGE_SIZE,
   createOrganization,
   updateOrganization,
   deleteOrganization,
@@ -54,6 +56,24 @@ interface CurrentUser {
   email: string;
 }
 
+interface OrgPageState {
+  orgs: Organization[];
+  page: number;
+  totalPages: number;
+  totalElements: number;
+}
+
+function mapOrgData(o: OrganizationData): Organization {
+  return {
+    id: o.orgIdentifier,
+    organizationNumber: o.orgIdentifier,
+    nameSv: o.nameSv ?? '',
+    nameEn: o.nameEn ?? '',
+    contactEmail: o.contactEmail ?? undefined,
+    additionalData: o.contactPhone ? { contactPhone: o.contactPhone } : undefined,
+  };
+}
+
 function AppContent() {
   const { t, language } = useLanguage();
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -62,6 +82,9 @@ function AppContent() {
 
   // State for data
   const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [orgPage, setOrgPage] = useState<OrgPageState>({ orgs: [], page: 0, totalPages: 1, totalElements: 0 });
+  const [orgSearch, setOrgSearch] = useState('');
+  const orgSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [userRoles, setUserRoles] = useState<UserOrganizationRole[]>([]);
   const [functions, setFunctions] = useState<FunctionType[]>([]);
@@ -89,20 +112,69 @@ function AppContent() {
 
 
   const loadData = useCallback(async (skipFunctions = false, skipOrganizations = false, skipUsers = false) => {
-    const [orgs, usersData, roles, orgFuncs, funcs] = await Promise.all([
-      skipOrganizations ? Promise.resolve(null) : getOrganizations(),
+    const [orgs, userPage, roles, funcs] = await Promise.all([
+      skipOrganizations ? Promise.resolve(null) : fetchAllOrganizations(),
       skipUsers ? Promise.resolve(null) : getUsers(),
       getUserRoles(),
-      skipOrganizations ? Promise.resolve(null) : getOrganizationFunctions(),
       skipFunctions ? Promise.resolve(null) : getFunctions(),
     ]);
 
-    if (orgs !== null) setOrganizations(orgs);
-    if (usersData !== null) setUsers(usersData);
+    if (orgs !== null) {
+      const mappedOrgs = orgs.content.map(mapOrgData);
+      setOrganizations(mappedOrgs);
+      setOrgPage({
+        orgs: mappedOrgs.slice(0, DEFAULT_ORG_PAGE_SIZE),
+        page: 0,
+        totalPages: Math.max(1, Math.ceil(orgs.totalElements / DEFAULT_ORG_PAGE_SIZE)),
+        totalElements: orgs.totalElements,
+      });
+      setOrgSearch('');
+      setOrganizationFunctions(orgs.content.flatMap((o) =>
+        o.attachedFunctions.map((funcId) => ({
+          id: `${o.orgIdentifier}:${funcId}`,
+          organizationId: o.orgIdentifier,
+          functionId: funcId,
+        }))
+      ));
+    }
+    if (userPage !== null) {
+      setUsers(userPage.content.map((u) => ({
+        id: u.userId,
+        personalIdentityNumber: u.personalIdentityNumber ?? '',
+        name: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || u.userId,
+        email: u.email ?? '',
+        phoneNumber: u.phoneNumber ?? undefined,
+        superuser: u.superuser,
+        rights: u.rights,
+      })));
+    }
     setUserRoles(roles);
-    if (orgFuncs !== null) setOrganizationFunctions(orgFuncs);
     if (funcs !== null) setFunctions(funcs);
   }, []);
+
+  const loadOrgPage = useCallback(async (page: number, search: string) => {
+    try {
+      const result = await getOrganizations(page, DEFAULT_ORG_PAGE_SIZE, search);
+      setOrgPage({
+        orgs: result.content.map(mapOrgData),
+        page: result.page,
+        totalPages: result.totalPages,
+        totalElements: result.totalElements,
+      });
+    } catch (err) {
+      console.error('Failed to load org page:', err);
+    }
+  }, []);
+
+  const handleOrgPageChange = useCallback((page: number) => {
+    loadOrgPage(page, orgSearch);
+  }, [loadOrgPage, orgSearch]);
+
+  const handleOrgSearch = useCallback((term: string) => {
+    setOrgSearch(term);
+    if (orgSearchTimerRef.current) clearTimeout(orgSearchTimerRef.current);
+    orgSearchTimerRef.current = setTimeout(() => loadOrgPage(0, term), 300);
+  }, [loadOrgPage]);
 
   // Check authentication state on mount, then load data if authenticated
   useEffect(() => {
@@ -117,41 +189,10 @@ function AppContent() {
           if (session !== null) {
             setSessionData(session);
 
-            // Map OrganizationData → Organization
-            // TODO: retire getOrganizations() from localStorage once all data is API-sourced
-            const adminOrgIds = new Set(session.adminOrgIdentifiers ?? []);
-
-            const mappedOrgs: Organization[] = session.organizations
-              .filter((o) => session.superuser || adminOrgIds.has(o.orgIdentifier))
-              .map((o) => ({
-                id: o.orgIdentifier,
-                organizationNumber: o.orgIdentifier,
-                nameSv: o.nameSv ?? '',
-                nameEn: o.nameEn ?? '',
-                contactEmail: o.contactEmail ?? undefined,
-                additionalData: o.contactPhone ? { contactPhone: o.contactPhone } : undefined,
-              }));
-
-            // Derive OrganizationFunction[] from attachedFunctions
-            const derivedOrgFunctions: OrganizationFunction[] = session.organizations
-              .filter((o) => session.superuser || adminOrgIds.has(o.orgIdentifier))
-              .flatMap((o) =>
-                o.attachedFunctions.map((funcName) => ({
-                  id: `${o.orgIdentifier}:${funcName}`,
-                  organizationId: o.orgIdentifier,
-                  functionId: funcName,
-                }))
-              );
-
-            const mappedUsers: User[] = session.users.map((u) => ({
-              id: u.userId,
-              personalIdentityNumber: u.personalIdentityNumber ?? '',
-              name: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || u.userId,
-              email: u.email ?? '',
-              phoneNumber: u.phoneNumber ?? undefined,
-              superuser: u.superuser,
-              rights: u.rights,
-            }));
+            setAllowFunctionRemoval(session.allowFunctionRemoval ?? false);
+            setAllowOrgRights(session.allowOrgRights ?? true);
+            setFunctionConstraint(session.functionConstraint ?? null);
+            setOrgConstraint(session.orgConstraint ?? null);
 
             const mappedFunctions: FunctionType[] = session.functions.map((f) => ({
               id: f.id,
@@ -161,27 +202,50 @@ function AppContent() {
               descriptionSv: f.descriptionSv ?? '',
               descriptionEn: f.descriptionEn ?? '',
             }));
-
-            setOrganizations(mappedOrgs);
-            setOrganizationFunctions(derivedOrgFunctions);
-            setUsers(mappedUsers);
             setFunctions(mappedFunctions);
-            setAllowFunctionRemoval(session.allowFunctionRemoval ?? false);
-            setAllowOrgRights(session.allowOrgRights ?? true);
-            setFunctionConstraint(session.functionConstraint ?? null);
-            setOrgConstraint(session.orgConstraint ?? null);
 
-            // Derive UserOrganizationRole[] from user rights in session
-            const derivedUserRoles: UserOrganizationRole[] = session.users.flatMap((u) =>
-              u.rights
-                .filter((r) => session.superuser || adminOrgIds.has(r.orgIdentifier))
-                .map((r) => ({
-                  id: `${u.userId}:${r.orgIdentifier}:${r.functionId ?? '*'}`,
-                  userId: u.userId,
-                  organizationId: r.orgIdentifier,
-                  functionId: r.functionId ?? undefined,
-                  role: r.right as 'read' | 'write' | 'admin',
-                }))
+            // Fetch orgs and users from the API (not cached in session)
+            const [orgPage, userPage] = await Promise.all([
+              fetchAllOrganizations(),
+              getUsers(),
+            ]);
+
+            const mappedOrgs: Organization[] = orgPage.content.map(mapOrgData);
+            setOrganizations(mappedOrgs);
+            setOrgPage({
+              orgs: mappedOrgs.slice(0, DEFAULT_ORG_PAGE_SIZE),
+              page: 0,
+              totalPages: Math.max(1, Math.ceil(orgPage.totalElements / DEFAULT_ORG_PAGE_SIZE)),
+              totalElements: orgPage.totalElements,
+            });
+
+            setOrganizationFunctions(orgPage.content.flatMap((o) =>
+              o.attachedFunctions.map((funcId) => ({
+                id: `${o.orgIdentifier}:${funcId}`,
+                organizationId: o.orgIdentifier,
+                functionId: funcId,
+              }))
+            ));
+
+            const mappedUsers: User[] = userPage.content.map((u) => ({
+              id: u.userId,
+              personalIdentityNumber: u.personalIdentityNumber ?? '',
+              name: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || u.userId,
+              email: u.email ?? '',
+              phoneNumber: u.phoneNumber ?? undefined,
+              superuser: u.superuser,
+              rights: u.rights,
+            }));
+            setUsers(mappedUsers);
+
+            const derivedUserRoles: UserOrganizationRole[] = mappedUsers.flatMap((u) =>
+              (u.rights ?? []).map((r) => ({
+                id: `${u.id}:${r.orgIdentifier}:${r.functionId ?? '*'}`,
+                userId: u.id,
+                organizationId: r.orgIdentifier,
+                functionId: r.functionId ?? undefined,
+                role: r.right as 'read' | 'write' | 'admin',
+              }))
             );
             setUserRoles(derivedUserRoles);
           } else {
@@ -212,14 +276,22 @@ function AppContent() {
   const handleSaveOrganization = async (org: Omit<Organization, 'id'> & { id?: string }) => {
     try {
       if (org.id) {
-        // Update existing
+        // Update existing — refresh full list and current page to reflect name/contact changes
         const updatedOrg = await updateOrganization(org.id, org);
         setOrganizations(organizations.map((o) => (o.id === org.id ? updatedOrg : o)));
+        setOrgPage((prev) => ({
+          ...prev,
+          orgs: prev.orgs.map((o) => (o.id === org.id ? updatedOrg : o)),
+        }));
         toast.success(t('toast.orgUpdated'));
       } else {
-        // Create new
-        const newOrg = await createOrganization(org);
-        setOrganizations([...organizations, newOrg]);
+        // Create new — reload current page so totals and ordering are correct
+        await createOrganization(org);
+        await loadOrgPage(orgPage.page, orgSearch);
+        setOrganizations((prev) => {
+          // Will be reconciled on next full reload; optimistically add for UserList/FunctionList
+          return prev;
+        });
         toast.success(t('toast.orgCreated'));
       }
       setIsOrgFormOpen(false);
@@ -246,6 +318,11 @@ function AppContent() {
       setOrganizations(organizations.filter((o) => o.id !== id));
       setUserRoles(userRoles.filter((r) => r.organizationId !== id));
       setOrganizationFunctions(organizationFunctions.filter((of) => of.organizationId !== id));
+
+      // Reload the current page; if it is now empty step back one page
+      const remainingTotal = orgPage.totalElements - 1;
+      const maxPage = Math.max(0, Math.ceil(remainingTotal / DEFAULT_ORG_PAGE_SIZE) - 1);
+      await loadOrgPage(Math.min(orgPage.page, maxPage), orgSearch);
 
       toast.success(t('toast.orgDeleted'));
     } catch (error) {
@@ -387,21 +464,7 @@ function AppContent() {
   const handleAssignFunctionsToOrg = async (organizationId: string, functionIds: string[]) => {
     try {
       const newOrgFunctions = await assignFunctionsToOrganization(organizationId, functionIds);
-
       setOrganizationFunctions([...organizationFunctions, ...newOrgFunctions]);
-
-      setSessionData((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          organizations: prev.organizations.map((o) =>
-            o.orgIdentifier === organizationId
-              ? { ...o, attachedFunctions: [...o.attachedFunctions, ...functionIds] }
-              : o
-          ),
-        };
-      });
-
       toast.success(t('toast.functionsAssigned'));
     } catch (error) {
       console.error('Error assigning functions to organization:', error);
@@ -637,9 +700,9 @@ function AppContent() {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-xl font-semibold">{t('organizations.title')}</h2>
-                  {((sessionData?.superuser ?? false) || organizations.length !== 1) && (
+                  {((sessionData?.superuser ?? false) || orgPage.totalElements !== 1) && (
                     <p className="text-sm text-gray-500 mt-1">
-                      {organizations.length} {organizations.length !== 1 ? t('organizations.count_plural') : t('organizations.count')}
+                      {orgPage.totalElements} {orgPage.totalElements !== 1 ? t('organizations.count_plural') : t('organizations.count')}
                     </p>
                   )}
                 </div>
@@ -652,7 +715,13 @@ function AppContent() {
               </div>
 
               <OrganizationList
-                organizations={organizations}
+                organizations={orgPage.orgs}
+                currentPage={orgPage.page}
+                totalPages={orgPage.totalPages}
+                totalElements={orgPage.totalElements}
+                searchTerm={orgSearch}
+                onPageChange={handleOrgPageChange}
+                onSearch={handleOrgSearch}
                 users={users}
                 userRoles={userRoles}
                 functions={functions}

@@ -32,6 +32,7 @@ import se.swedenconnect.iam.admin.keycloak.model.FunctionInfo;
 import se.swedenconnect.iam.admin.keycloak.model.OrganizationInfo;
 import se.swedenconnect.iam.admin.keycloak.model.RightsHolderEntry;
 import se.swedenconnect.iam.admin.keycloak.model.UserInfo;
+import se.swedenconnect.iam.admin.keycloak.model.UserRight;
 import se.swedenconnect.iam.commons.types.LocalizedString;
 
 import org.springframework.web.util.UriComponentsBuilder;
@@ -40,6 +41,7 @@ import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -49,6 +51,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Low-level client for the KeyCloak Admin REST API.
@@ -72,7 +75,7 @@ public class KeycloakAdminClient {
   private final String adminApiBase;
   private final boolean pnrUserids;
   private final IamAdminProperties properties;
-
+  private CacheToken cacheToken;
   public KeycloakAdminClient(
       final @NonNull OAuth2AuthorizedClientManager authorizedClientManager,
       final RestClient.Builder restClientBuilder,
@@ -92,6 +95,9 @@ public class KeycloakAdminClient {
   // ---------------------------------------------------------------------------
 
   private String getAccessToken() {
+    if (this.cacheToken != null && !this.cacheToken.expired()) {
+      return cacheToken.tokenValue;
+    }
     final OAuth2AuthorizeRequest authorizeRequest = OAuth2AuthorizeRequest
         .withClientRegistrationId("iam-admin-sa")
         .principal("service-account")
@@ -107,8 +113,23 @@ public class KeycloakAdminClient {
 
     log.debug("Service account access token obtained (expires at {})",
         authorizedClient.getAccessToken().getExpiresAt());
+    cacheToken = new CacheToken(authorizedClient.getAccessToken().getExpiresAt().toEpochMilli(),
+        authorizedClient.getAccessToken().getTokenValue());
+    return cacheToken.tokenValue;
+  }
 
-    return authorizedClient.getAccessToken().getTokenValue();
+  private class CacheToken {
+    public final long expiryTime;
+    public final String tokenValue;
+
+    public CacheToken(final long expiryTime, final String tokenValue) {
+      this.expiryTime = expiryTime;
+      this.tokenValue = tokenValue;
+    }
+    public boolean expired() {
+      return System.currentTimeMillis() >
+          Math.min(this.expiryTime,this.expiryTime - TimeUnit.HOURS.toMillis(1));
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -398,11 +419,20 @@ public class KeycloakAdminClient {
    */
   public @NonNull List<FunctionInfo> fetchAllFunctions() {
     final String groupId = this.findTopLevelGroupId("functions");
-    final List<Map<String, Object>> children = this.adminGet(
-        "/groups/" + groupId + "/children?briefRepresentation=false",
-        new ParameterizedTypeReference<>() {});
-    if (children == null) {
-      return List.of();
+    final List<Map<String, Object>> children = new ArrayList<>();
+    int first = 0;
+    while (true) {
+      final List<Map<String, Object>> page = this.adminGet(
+          "/groups/" + groupId + "/children?briefRepresentation=false&first=" + first + "&max=" + PAGE_SIZE,
+          new ParameterizedTypeReference<>() {});
+      if (page == null || page.isEmpty()) {
+        break;
+      }
+      children.addAll(page);
+      if (page.size() < PAGE_SIZE) {
+        break;
+      }
+      first += PAGE_SIZE;
     }
     return children.stream()
         .map(g -> {
@@ -440,14 +470,162 @@ public class KeycloakAdminClient {
    * @return list of organizations; never {@code null}
    */
   public @NonNull List<OrganizationInfo> fetchAllOrganizationGroups() {
+    final List<OrganizationInfo> allOrgGroups = new ArrayList<>();
+    int first = 0;
+    while (true) {
+      final List<OrganizationInfo> page = this.fetchOrganizationGroupsPaged(first,PAGE_SIZE);
+      if (page == null || page.isEmpty()) {
+        break;
+      }
+      allOrgGroups.addAll(page);
+      if (page.size() < PAGE_SIZE) {
+        break;
+      }
+      first += PAGE_SIZE;
+    }
+    return allOrgGroups;
+  }
+
+  /**
+   * Fetches a single page of organization groups from Keycloak.
+   *
+   * @param first offset (0-based)
+   * @param max   maximum number of results to return
+   * @return list of organizations for the requested page; never {@code null}
+   */
+  public @NonNull List<OrganizationInfo> fetchOrganizationGroupsPaged(final int first, final int max) {
     final String orgsGroupId = this.findTopLevelGroupId("orgs");
     final List<Map<String, Object>> orgGroups = this.adminGet(
-        "/groups/" + orgsGroupId + "/children?briefRepresentation=false",
+        "/groups/" + orgsGroupId + "/children?briefRepresentation=false&first=" + first + "&max=" + max,
         new ParameterizedTypeReference<>() {});
     if (orgGroups == null) {
       return List.of();
     }
+    return this.mapOrgGroups(orgGroups);
+  }
 
+  /**
+   * Returns the total number of organization groups directly under the {@code orgs} top-level group.
+   *
+   * <p>Uses paged fetches with {@code briefRepresentation=true} for compatibility with
+   * Keycloak versions that do not expose the {@code /children/count} endpoint.</p>
+   *
+   * @return total organization count
+   */
+  public int fetchOrganizationGroupCount() {
+    final String orgsGroupId = this.findTopLevelGroupId("orgs");
+    int count = 0;
+    int first = 0;
+    while (true) {
+      final List<Map<String, Object>> page = this.adminGet(
+          "/groups/" + orgsGroupId + "/children?briefRepresentation=true&first=" + first + "&max=" + PAGE_SIZE,
+          new ParameterizedTypeReference<>() {});
+      if (page == null || page.isEmpty()) {
+        break;
+      }
+      count += page.size();
+      if (page.size() < PAGE_SIZE) {
+        break;
+      }
+      first += PAGE_SIZE;
+    }
+    return count;
+  }
+
+  /**
+   * Fetches a single organization by its identifier.
+   *
+   * <p>Uses Keycloak's group search by name and filters to the exact path
+   * {@code /orgs/{orgIdentifier}}. Handles both the flat response format of Keycloak 23+ and
+   * the hierarchical response of older versions where matching sub-groups are nested inside
+   * their parent group under the {@code subGroups} key.</p>
+   *
+   * @param orgIdentifier the organization identifier (10-digit number)
+   * @return the organization, or empty if not found
+   */
+  public @NonNull Optional<OrganizationInfo> fetchOrganizationByIdentifier(
+      final @NonNull String orgIdentifier) {
+
+    final String encoded = URLEncoder.encode(orgIdentifier, StandardCharsets.UTF_8);
+    final List<Map<String, Object>> groups = this.adminGet(
+        "/groups?search=" + encoded + "&exact=true&briefRepresentation=false",
+        new ParameterizedTypeReference<>() {});
+    if (groups == null || groups.isEmpty()) {
+      return Optional.empty();
+    }
+    final String expectedPath = "/orgs/" + orgIdentifier;
+
+    // Keycloak 23+: search returns a flat list — the org group is directly in the result.
+    Map<String, Object> orgGroup = groups.stream()
+        .filter(g -> expectedPath.equals(getString(g, "path")))
+        .findFirst()
+        .orElse(null);
+
+    // Older Keycloak: search returns top-level groups with matching children nested under
+    // "subGroups". Subgroup entries may use brief representation (no attributes), so we
+    // fetch the full group representation by ID before mapping.
+    if (orgGroup == null) {
+      final String groupId = groups.stream()
+          .flatMap(g -> getSubGroups(g).stream())
+          .filter(g -> expectedPath.equals(getString(g, "path")))
+          .map(g -> getString(g, "id"))
+          .filter(Objects::nonNull)
+          .findFirst()
+          .orElse(null);
+      if (groupId != null) {
+        orgGroup = this.adminGet("/groups/" + groupId, new ParameterizedTypeReference<>() {});
+      }
+    }
+
+    if (orgGroup == null) {
+      return Optional.empty();
+    }
+    final List<OrganizationInfo> mapped = this.mapOrgGroups(List.of(orgGroup));
+    return mapped.isEmpty() ? Optional.empty() : Optional.of(mapped.getFirst());
+  }
+
+  @SuppressWarnings("unchecked")
+  private static @NonNull List<Map<String, Object>> getSubGroups(final @NonNull Map<String, Object> group) {
+    return group.get("subGroups") instanceof final List<?> list
+        ? (List<Map<String, Object>>) list
+        : List.of();
+  }
+
+  /**
+   * Returns the sorted list of organization identifiers that have the given function attached.
+   *
+   * <p>Uses Keycloak's global group search for groups named {@code functionId}, then filters
+   * to those at path depth {@code /orgs/{orgId}/{functionId}}. The result is sorted for
+   * stable pagination.</p>
+   *
+   * @param functionId the function identifier
+   * @return sorted list of org identifiers; never {@code null}
+   */
+  public @NonNull List<String> fetchOrgIdentifiersForFunction(final @NonNull String functionId) {
+    final String encoded = URLEncoder.encode(functionId, StandardCharsets.UTF_8);
+    final List<Map<String, Object>> groups = this.adminGet(
+        "/groups?search=" + encoded + "&exact=true&briefRepresentation=true",
+        new ParameterizedTypeReference<>() {});
+    if (groups == null || groups.isEmpty()) {
+      return List.of();
+    }
+    return groups.stream()
+        .map(g -> getString(g, "path"))
+        .filter(Objects::nonNull)
+        .filter(path -> {
+          final String[] parts = path.split("/");
+          // Expect exactly: ["", "orgs", "{orgId}", "{functionId}"]
+          return parts.length == 4
+              && "orgs".equals(parts[1])
+              && functionId.equals(parts[3]);
+        })
+        .map(path -> path.split("/")[2])
+        .distinct()
+        .sorted()
+        .toList();
+  }
+
+  private @NonNull List<OrganizationInfo> mapOrgGroups(final @NonNull List<Map<String, Object>> orgGroups) {
     final List<OrganizationInfo> result = new ArrayList<>();
     for (final Map<String, Object> org : orgGroups) {
       final String groupId = getString(org, "id");
@@ -457,7 +635,6 @@ public class KeycloakAdminClient {
         orgIdentifier = getString(org, "name");
       }
 
-      // Fetch org's children to discover attached function sub-groups
       final List<Map<String, Object>> children = this.fetchGroupChildren(groupId);
       final List<String> attachedFunctions = children.stream()
           .map(c -> getString(c, "name"))
@@ -1905,17 +2082,98 @@ public class KeycloakAdminClient {
   }
 
   /**
+   * Fetches a single page of users from Keycloak.
+   *
+   * <p>Returns basic user profile only — rights are not included. Use
+   * {@link #fetchUserRights(String)} to fetch rights for a specific user.</p>
+   *
+   * @param first  0-based offset
+   * @param max    maximum number of results to return
+   * @return list of users for the requested page; never {@code null}
+   */
+  public @NonNull List<UserInfo> fetchUsersPaged(final int first, final int max) {
+    final Set<String> superuserIds = this.fetchSuperuserIds();
+    final List<Map<String, Object>> page = this.adminGet(
+        "/users?first=" + first + "&max=" + max,
+        new ParameterizedTypeReference<>() {});
+    if (page == null) {
+      return List.of();
+    }
+    return page.stream().map(u -> this.mapUser(u, superuserIds)).toList();
+  }
+
+  /**
+   * Returns the total number of users in the Keycloak realm.
+   *
+   * @return total user count
+   */
+  public int fetchUserCount() {
+    final Integer count = this.adminGet("/users/count", new ParameterizedTypeReference<Integer>() {});
+    return count != null ? count : 0;
+  }
+
+  /**
+   * Fetches the rights for a specific user by inspecting their Keycloak group memberships.
+   *
+   * <p>Group paths are parsed to extract organizational rights:
+   * <ul>
+   *   <li>{@code /orgs/{orgId}/_admin|_write|_read} → org-level right</li>
+   *   <li>{@code /orgs/{orgId}/{funcId}/_admin|_write|_read} → function-level right</li>
+   * </ul>
+   * Groups outside the {@code /orgs/} hierarchy are ignored.</p>
+   *
+   * @param userId the Keycloak user UUID
+   * @return list of rights; never {@code null}
+   */
+  public @NonNull List<UserRight> fetchUserRights(final @NonNull String userId) {
+    final List<Map<String, Object>> groups = this.adminGet(
+        "/users/" + userId + "/groups",
+        new ParameterizedTypeReference<>() {});
+    if (groups == null || groups.isEmpty()) {
+      return List.of();
+    }
+    final List<UserRight> rights = new ArrayList<>();
+    for (final Map<String, Object> group : groups) {
+      final String path = getString(group, "path");
+      if (path == null) {
+        continue;
+      }
+      final String[] parts = path.split("/");
+      // Org-level: ["", "orgs", "{orgId}", "_admin|_write|_read"]
+      if (parts.length == 4 && "orgs".equals(parts[1]) && isRightGroupName(parts[3])) {
+        rights.add(new UserRight(parts[2], null, rightFromName(parts[3])));
+      }
+      // Function-level: ["", "orgs", "{orgId}", "{funcId}", "_admin|_write|_read"]
+      else if (parts.length == 5 && "orgs".equals(parts[1]) && isRightGroupName(parts[4])) {
+        rights.add(new UserRight(parts[2], parts[3], rightFromName(parts[4])));
+      }
+    }
+    return List.copyOf(rights);
+  }
+
+  /**
    * Fetches members of the given KeyCloak group.
    *
    * @param groupId KeyCloak group UUID
    * @return list of group members; never {@code null}
    */
   public @NonNull List<UserInfo> fetchGroupMembers(final @NonNull String groupId) {
-    final List<Map<String, Object>> members = this.adminGet(
-        "/groups/" + groupId + "/members",
-        new ParameterizedTypeReference<>() {});
-    return members == null ? List.of()
-        : members.stream().map(u -> this.mapUser(u, Set.of())).toList();
+    final List<Map<String, Object>> allMembers = new ArrayList<>();
+    int first = 0;
+    while (true) {
+      final List<Map<String, Object>> page = this.adminGet(
+          "/groups/" + groupId + "/members?first=" + first + "&max=" + PAGE_SIZE,
+          new ParameterizedTypeReference<>() {});
+      if (page == null || page.isEmpty()) {
+        break;
+      }
+      allMembers.addAll(page);
+      if (page.size() < PAGE_SIZE) {
+        break;
+      }
+      first += PAGE_SIZE;
+    }
+    return allMembers.stream().map(u -> this.mapUser(u, Set.of())).toList();
   }
 
   // ---------------------------------------------------------------------------
@@ -1955,10 +2213,22 @@ public class KeycloakAdminClient {
     if (groupId == null) {
       return List.of();
     }
-    final List<Map<String, Object>> children = this.adminGet(
-        "/groups/" + groupId + "/children",
-        new ParameterizedTypeReference<>() {});
-    return children != null ? children : List.of();
+    final List<Map<String, Object>> result = new ArrayList<>();
+    int first = 0;
+    while (true) {
+      final List<Map<String, Object>> page = this.adminGet(
+          "/groups/" + groupId + "/children?first=" + first + "&max=" + PAGE_SIZE,
+          new ParameterizedTypeReference<>() {});
+      if (page == null || page.isEmpty()) {
+        break;
+      }
+      result.addAll(page);
+      if (page.size() < PAGE_SIZE) {
+        break;
+      }
+      first += PAGE_SIZE;
+    }
+    return result;
   }
 
   // ---------------------------------------------------------------------------
@@ -2022,6 +2292,137 @@ public class KeycloakAdminClient {
   }
 
   // ---------------------------------------------------------------------------
+  // Live admin-check helpers (called per-request, not cached in session)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Returns the sorted list of unique user IDs that hold any right in any of the given
+   * organizations. Used to determine the pageable user set for a non-superuser admin.
+   *
+   * <p>Traverses org-level right groups and all function sub-groups' right groups.</p>
+   *
+   * @param orgIdentifiers set of organization identifiers to traverse
+   * @return sorted list of user IDs; never {@code null}
+   */
+  public @NonNull List<String> fetchUserIdsForOrgs(final @NonNull Collection<String> orgIdentifiers) {
+    final LinkedHashSet<String> userIds = new LinkedHashSet<>();
+    for (final String orgIdentifier : orgIdentifiers) {
+      final Optional<OrganizationInfo> orgOpt = this.fetchOrganizationByIdentifier(orgIdentifier);
+      if (orgOpt.isEmpty()) {
+        continue;
+      }
+      final List<Map<String, Object>> orgChildren = this.fetchGroupChildren(orgOpt.get().groupId());
+      for (final Map<String, Object> child : orgChildren) {
+        final String name = getString(child, "name");
+        final String id = getString(child, "id");
+        if (id == null) {
+          continue;
+        }
+        if ("_admin".equals(name) || "_write".equals(name) || "_read".equals(name)) {
+          this.fetchGroupMembers(id).forEach(u -> userIds.add(u.userId()));
+        }
+        else {
+          // Function sub-group — traverse its right-groups
+          for (final Map<String, Object> funcChild : this.fetchGroupChildren(id)) {
+            final String fcName = getString(funcChild, "name");
+            final String fcId = getString(funcChild, "id");
+            if (fcId != null && ("_admin".equals(fcName) || "_write".equals(fcName) || "_read".equals(fcName))) {
+              this.fetchGroupMembers(fcId).forEach(u -> userIds.add(u.userId()));
+            }
+          }
+        }
+      }
+    }
+    return userIds.stream().sorted().toList();
+  }
+
+  /**
+   * Returns {@code true} if at least one other user (not {@code excludeUserId}) holds
+   * the org-level admin right for the given organization.
+   *
+   * <p>Returns {@code true} (non-blocking) when the org cannot be found.</p>
+   *
+   * @param orgIdentifier  the organization identifier
+   * @param excludeUserId  the Keycloak user UUID to exclude from the check
+   * @return {@code true} if another admin exists; {@code false} if the excluded user is the last admin
+   */
+  public boolean hasOtherOrgAdmin(final @NonNull String orgIdentifier, final @NonNull String excludeUserId) {
+    final Optional<OrganizationInfo> orgOpt = this.fetchOrganizationByIdentifier(orgIdentifier);
+    if (orgOpt.isEmpty()) {
+      return true; // conservative: can't determine → allow
+    }
+    final String adminGroupId = this.fetchGroupChildren(orgOpt.get().groupId()).stream()
+        .filter(c -> "_admin".equals(getString(c, "name")))
+        .map(c -> getString(c, "id"))
+        .filter(Objects::nonNull)
+        .findFirst()
+        .orElse(null);
+    if (adminGroupId == null) {
+      return false;
+    }
+    return this.fetchGroupMembers(adminGroupId).stream()
+        .anyMatch(u -> !u.userId().equals(excludeUserId));
+  }
+
+  /**
+   * Returns {@code true} if at least one other user (not {@code excludeUserId}) holds
+   * admin rights for the given function within the given organization.
+   *
+   * <p>Both org-level admin members and function-level admin members are considered,
+   * since org-level admins implicitly cover all functions.</p>
+   *
+   * @param orgIdentifier  the organization identifier
+   * @param functionId     the function identifier
+   * @param excludeUserId  the Keycloak user UUID to exclude from the check
+   * @return {@code true} if another admin exists; {@code false} if the excluded user is the last admin
+   */
+  public boolean hasOtherFunctionAdmin(
+      final @NonNull String orgIdentifier,
+      final @NonNull String functionId,
+      final @NonNull String excludeUserId) {
+
+    final Optional<OrganizationInfo> orgOpt = this.fetchOrganizationByIdentifier(orgIdentifier);
+    if (orgOpt.isEmpty()) {
+      return true;
+    }
+    final List<Map<String, Object>> orgChildren = this.fetchGroupChildren(orgOpt.get().groupId());
+
+    // Org-level admin covers all functions
+    final String orgAdminGroupId = orgChildren.stream()
+        .filter(c -> "_admin".equals(getString(c, "name")))
+        .map(c -> getString(c, "id"))
+        .filter(Objects::nonNull)
+        .findFirst()
+        .orElse(null);
+    if (orgAdminGroupId != null && this.fetchGroupMembers(orgAdminGroupId).stream()
+        .anyMatch(u -> !u.userId().equals(excludeUserId))) {
+      return true;
+    }
+
+    // Function-level admin
+    final String funcGroupId = orgChildren.stream()
+        .filter(c -> functionId.equals(getString(c, "name")))
+        .map(c -> getString(c, "id"))
+        .filter(Objects::nonNull)
+        .findFirst()
+        .orElse(null);
+    if (funcGroupId == null) {
+      return false;
+    }
+    final String funcAdminGroupId = this.fetchGroupChildren(funcGroupId).stream()
+        .filter(c -> "_admin".equals(getString(c, "name")))
+        .map(c -> getString(c, "id"))
+        .filter(Objects::nonNull)
+        .findFirst()
+        .orElse(null);
+    if (funcAdminGroupId == null) {
+      return false;
+    }
+    return this.fetchGroupMembers(funcAdminGroupId).stream()
+        .anyMatch(u -> !u.userId().equals(excludeUserId));
+  }
+
+  // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
 
@@ -2039,6 +2440,18 @@ public class KeycloakAdminClient {
         getFirstAttr(raw, "phoneNumber"),
         id != null && superuserIds.contains(id),
         List.of());
+  }
+
+  private static boolean isRightGroupName(final @NonNull String name) {
+    return "_admin".equals(name) || "_write".equals(name) || "_read".equals(name);
+  }
+
+  private static @NonNull String rightFromName(final @NonNull String name) {
+    return switch (name) {
+      case "_admin" -> "admin";
+      case "_write" -> "write";
+      default -> "read";
+    };
   }
 
   private static @Nullable String getString(

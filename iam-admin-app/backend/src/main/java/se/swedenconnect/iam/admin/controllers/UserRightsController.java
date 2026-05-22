@@ -35,7 +35,7 @@ import se.swedenconnect.iam.admin.keycloak.AdminSessionBootstrapHandler;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminClient;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminException;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
-import org.jspecify.annotations.Nullable;
+import se.swedenconnect.iam.admin.keycloak.model.UserRight;
 
 import java.util.Map;
 import java.util.Set;
@@ -115,13 +115,11 @@ public class UserRightsController {
     }
 
     if (!"admin".equals(right)) {
-      final boolean currentlyOrgAdmin = data.users().stream()
-          .filter(u -> u.userId().equals(userId))
-          .flatMap(u -> u.rights().stream())
+      final boolean currentlyOrgAdmin = this.keycloakAdminClient.fetchUserRights(userId).stream()
           .anyMatch(r -> orgIdentifier.equals(r.orgIdentifier())
               && r.functionId() == null
               && "admin".equals(r.right()));
-      if (currentlyOrgAdmin && !isLastAdmin(data, userId, orgIdentifier, null)) {
+      if (currentlyOrgAdmin && !this.keycloakAdminClient.hasOtherOrgAdmin(orgIdentifier, userId)) {
         log.info("PUT /api/organizations/{}/users/{}/rights — rejected: last admin for org '{}'",
             orgIdentifier, userId, orgIdentifier);
         return ResponseEntity.status(409).body(Map.of("reason", "LAST_ADMIN", "scope", orgIdentifier));
@@ -196,13 +194,11 @@ public class UserRightsController {
     }
 
     if (!"admin".equals(right)) {
-      final boolean currentlyFunctionAdmin = data.users().stream()
-          .filter(u -> u.userId().equals(userId))
-          .flatMap(u -> u.rights().stream())
+      final boolean currentlyFunctionAdmin = this.keycloakAdminClient.fetchUserRights(userId).stream()
           .anyMatch(r -> orgIdentifier.equals(r.orgIdentifier())
               && functionId.equals(r.functionId())
               && "admin".equals(r.right()));
-      if (currentlyFunctionAdmin && !isLastAdmin(data, userId, orgIdentifier, functionId)) {
+      if (currentlyFunctionAdmin && !this.keycloakAdminClient.hasOtherFunctionAdmin(orgIdentifier, functionId, userId)) {
         log.info("PUT /api/organizations/{}/functions/{}/users/{}/rights — rejected: last admin for function '{}/{}'",
             orgIdentifier, functionId, userId, orgIdentifier, functionId);
         return ResponseEntity.status(409).body(
@@ -277,7 +273,7 @@ public class UserRightsController {
       return ResponseEntity.badRequest().body("right must be one of: read, write, admin");
     }
 
-    if ("admin".equals(right) && !isLastAdmin(data, userId, orgIdentifier, null)) {
+    if ("admin".equals(right) && !this.keycloakAdminClient.hasOtherOrgAdmin(orgIdentifier, userId)) {
       log.info("DELETE /api/organizations/{}/users/{}/rights — rejected: last admin for org '{}'",
           orgIdentifier, userId, orgIdentifier);
       return ResponseEntity.status(409).body(Map.of("reason", "LAST_ADMIN", "scope", orgIdentifier));
@@ -346,7 +342,7 @@ public class UserRightsController {
       return ResponseEntity.badRequest().body("right must be one of: read, write, admin");
     }
 
-    if ("admin".equals(right) && !isLastAdmin(data, userId, orgIdentifier, functionId)) {
+    if ("admin".equals(right) && !this.keycloakAdminClient.hasOtherFunctionAdmin(orgIdentifier, functionId, userId)) {
       log.info("DELETE /api/organizations/{}/functions/{}/users/{}/rights — rejected: last admin for function '{}/{}'",
           orgIdentifier, functionId, userId, orgIdentifier, functionId);
       return ResponseEntity.status(409).body(
@@ -397,29 +393,5 @@ public class UserRightsController {
             && "admin".equals(f.right()));
   }
 
-  /**
-   * Returns {@code true} if at least one OTHER user holds an admin right for the same
-   * org (and optionally function) — meaning removing admin from {@code userId} would
-   * NOT leave the scope without an admin.
-   *
-   * <p>Returns {@code false} if no other admin exists, i.e. the given user is the last
-   * admin and the operation should be blocked.</p>
-   *
-   * @param functionId {@code null} for org-level checks; non-null for function-level checks
-   */
-  private static boolean isLastAdmin(
-      final AdminSessionData data,
-      final String userId,
-      final String orgIdentifier,
-      final @Nullable String functionId) {
-    return data.users().stream()
-        .filter(u -> !u.userId().equals(userId))
-        .flatMap(u -> u.rights().stream())
-        .anyMatch(r -> orgIdentifier.equals(r.orgIdentifier())
-            && "admin".equals(r.right())
-            && (functionId == null
-                || functionId.equals(r.functionId())
-                || r.functionId() == null));
-  }
 
 }

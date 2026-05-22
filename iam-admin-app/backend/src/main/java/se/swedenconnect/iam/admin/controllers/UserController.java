@@ -30,9 +30,13 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import se.swedenconnect.iam.admin.controllers.dto.CreateUserRequest;
 import se.swedenconnect.iam.admin.controllers.dto.UpdateUserRequest;
+import se.swedenconnect.iam.admin.controllers.dto.UserPageResponse;
+import se.swedenconnect.iam.admin.controllers.dto.UserResponse;
+import se.swedenconnect.iam.admin.controllers.dto.UserRightResponse;
 import se.swedenconnect.iam.admin.keycloak.AdminSessionBootstrapHandler;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminClient;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminException;
@@ -40,7 +44,10 @@ import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
 import se.swedenconnect.iam.admin.keycloak.model.UserInfo;
 import se.swedenconnect.iam.admin.keycloak.model.UserRight;
 
+
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * REST controller for user management operations.
@@ -57,6 +64,94 @@ import java.util.Map;
 public class UserController {
 
   private final KeycloakAdminClient keycloakAdminClient;
+
+  private static final int DEFAULT_PAGE_SIZE = 50;
+
+  /**
+   * Returns a paginated list of users.
+   *
+   * <p>Superusers receive all users paginated directly from Keycloak, with rights fetched
+   * per user. Regular admins receive only their scoped users from session data with
+   * in-memory pagination.</p>
+   *
+   * @param page    0-based page index (default 0)
+   * @param size    page size (default 50)
+   * @param request the HTTP servlet request
+   * @return 200 with paginated users, 403 if not authenticated
+   */
+  @GetMapping(value = "/users", produces = MediaType.APPLICATION_JSON_VALUE)
+  public ResponseEntity<UserPageResponse> listUsers(
+      @RequestParam(defaultValue = "0") final int page,
+      @RequestParam(defaultValue = "" + DEFAULT_PAGE_SIZE) final int size,
+      final HttpServletRequest request) {
+
+    final HttpSession session = request.getSession(false);
+    final Object attr = session != null
+        ? session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)
+        : null;
+
+    if (!(attr instanceof final AdminSessionData data)) {
+      log.info("GET /api/users — rejected: no valid admin session");
+      return ResponseEntity.status(403).build();
+    }
+
+    final int effectiveSize = size > 0 ? size : DEFAULT_PAGE_SIZE;
+    final int effectivePage = Math.max(page, 0);
+    final int first = effectivePage * effectiveSize;
+
+    final List<UserResponse> content;
+    final int total;
+
+    if (data.currentUserIsSuperuser()) {
+      final List<UserInfo> users = this.keycloakAdminClient.fetchUsersPaged(first, effectiveSize);
+      content = users.stream()
+          .map(u -> toResponse(u, this.keycloakAdminClient.fetchUserRights(u.userId())))
+          .toList();
+      total = this.keycloakAdminClient.fetchUserCount();
+      log.debug("GET /api/users — superuser, page={}, size={}, total={}", effectivePage, effectiveSize, total);
+    }
+    else {
+      final List<String> userIds = this.keycloakAdminClient.fetchUserIdsForOrgs(data.adminOrgIdentifiers());
+      // Apply orgConstraint if present
+      final List<String> scopedIds;
+      if (data.orgConstraint() != null) {
+        final String oc = data.orgConstraint();
+        scopedIds = userIds.stream()
+            .filter(id -> this.keycloakAdminClient.fetchUserRights(id).stream()
+                .anyMatch(r -> oc.equals(r.orgIdentifier())))
+            .toList();
+      }
+      else {
+        scopedIds = userIds;
+      }
+      total = scopedIds.size();
+      final int fromIndex = Math.min(first, total);
+      final int toIndex = Math.min(first + effectiveSize, total);
+      content = scopedIds.subList(fromIndex, toIndex).stream()
+          .map(id -> {
+            final UserInfo u = this.keycloakAdminClient.fetchUserById(id).orElse(null);
+            if (u == null) return null;
+            List<UserRight> rights = this.keycloakAdminClient.fetchUserRights(id);
+            if (data.orgConstraint() != null) {
+              final String oc = data.orgConstraint();
+              rights = rights.stream().filter(r -> oc.equals(r.orgIdentifier())).toList();
+            }
+            if (data.functionConstraint() != null) {
+              final String fc = data.functionConstraint();
+              rights = rights.stream()
+                  .filter(r -> r.functionId() == null || fc.equals(r.functionId()))
+                  .toList();
+            }
+            return toResponse(u, rights);
+          })
+          .filter(Objects::nonNull)
+          .toList();
+      log.debug("GET /api/users — regular admin, page={}, size={}, total={}", effectivePage, effectiveSize, total);
+    }
+
+    final int totalPages = effectiveSize > 0 ? (int) Math.ceil((double) total / effectiveSize) : 0;
+    return ResponseEntity.ok(new UserPageResponse(content, total, effectivePage, effectiveSize, totalPages));
+  }
 
   /**
    * Creates a new user in Keycloak.
@@ -278,41 +373,24 @@ public class UserController {
       return ResponseEntity.status(403).build();
     }
 
-    // Safety check: ensure no org or function is left without an admin
-    final UserInfo target = data.users().stream()
-        .filter(u -> u.userId().equals(userId))
-        .findFirst()
-        .orElse(null);
-
-    if (target != null) {
-      for (final UserRight right : target.rights()) {
-        if (!"admin".equals(right.right())) continue;
-
-        final boolean otherAdminExists;
-        if (right.functionId() == null) {
-          // Org-level admin — need another org-level admin for the same org
-          otherAdminExists = data.users().stream()
-              .filter(u -> !u.userId().equals(userId))
-              .flatMap(u -> u.rights().stream())
-              .anyMatch(r -> r.orgIdentifier().equals(right.orgIdentifier())
-                  && r.functionId() == null
-                  && "admin".equals(r.right()));
-        } else {
-          // Function-level admin — need another function-level admin OR an org-level admin
-          otherAdminExists = data.users().stream()
-              .filter(u -> !u.userId().equals(userId))
-              .flatMap(u -> u.rights().stream())
-              .anyMatch(r -> r.orgIdentifier().equals(right.orgIdentifier())
-                  && "admin".equals(r.right())
-                  && (right.functionId().equals(r.functionId()) || r.functionId() == null));
-        }
-
-        if (!otherAdminExists) {
-          log.info("DELETE /api/users/{} — rejected: last admin for org '{}' function '{}'",
-              userId, right.orgIdentifier(), right.functionId());
-          return ResponseEntity.status(409)
-              .body(Map.of("reason", "LAST_ADMIN", "scope", right.orgIdentifier()));
-        }
+    // Safety check: ensure no org or function is left without an admin (live Keycloak query)
+    for (final UserRight right : this.keycloakAdminClient.fetchUserRights(userId)) {
+      if (!"admin".equals(right.right())) {
+        continue;
+      }
+      final boolean otherAdminExists;
+      if (right.functionId() == null) {
+        otherAdminExists = this.keycloakAdminClient.hasOtherOrgAdmin(right.orgIdentifier(), userId);
+      }
+      else {
+        otherAdminExists = this.keycloakAdminClient.hasOtherFunctionAdmin(
+            right.orgIdentifier(), right.functionId(), userId);
+      }
+      if (!otherAdminExists) {
+        log.info("DELETE /api/users/{} — rejected: last admin for org '{}' function '{}'",
+            userId, right.orgIdentifier(), right.functionId());
+        return ResponseEntity.status(409)
+            .body(Map.of("reason", "LAST_ADMIN", "scope", right.orgIdentifier()));
       }
     }
 
@@ -330,6 +408,22 @@ public class UserController {
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
+
+  private static UserResponse toResponse(final UserInfo u, final List<UserRight> rights) {
+    final List<UserRightResponse> rightResponses = rights.stream()
+        .map(r -> new UserRightResponse(r.orgIdentifier(), r.functionId(), r.right()))
+        .toList();
+    return new UserResponse(
+        u.userId(),
+        u.username(),
+        u.firstName(),
+        u.lastName(),
+        u.email(),
+        u.personalIdentityNumber(),
+        u.phoneNumber(),
+        u.superuser(),
+        rightResponses);
+  }
 
   private static String getCurrentUserId() {
     final var auth = SecurityContextHolder.getContext().getAuthentication();

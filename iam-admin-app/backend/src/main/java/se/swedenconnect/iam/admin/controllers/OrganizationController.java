@@ -22,13 +22,17 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import se.swedenconnect.iam.admin.controllers.dto.CreateOrganizationRequest;
+import se.swedenconnect.iam.admin.controllers.dto.OrganizationPageResponse;
+import se.swedenconnect.iam.admin.controllers.dto.OrganizationResponse;
 import se.swedenconnect.iam.admin.controllers.dto.UpdateOrganizationRequest;
 import se.swedenconnect.iam.admin.keycloak.AdminSessionBootstrapHandler;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminClient;
@@ -36,7 +40,9 @@ import se.swedenconnect.iam.admin.keycloak.KeycloakAdminException;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
 import se.swedenconnect.iam.admin.keycloak.model.OrganizationInfo;
 
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * REST controller for organization management operations.
@@ -52,6 +58,198 @@ import java.util.Map;
 public class OrganizationController {
 
   private final KeycloakAdminClient keycloakAdminClient;
+
+  private static final int DEFAULT_PAGE_SIZE = 50;
+
+  /**
+   * Returns a paginated list of organizations, optionally filtered by a search term.
+   *
+   * <p>Superusers receive all organizations paginated directly from Keycloak.
+   * Regular admins receive only their authorized organizations (from session) with
+   * in-memory pagination. When {@code search} is provided the full org list is fetched
+   * and filtered server-side before pagination is applied.</p>
+   *
+   * @param page    0-based page index (default 0)
+   * @param size    page size (default 50)
+   * @param search  optional case-insensitive filter on org number, Swedish name and English name
+   * @param request the HTTP servlet request
+   * @return 200 with paginated organizations, 403 if not authenticated
+   */
+  @GetMapping(value = "/organizations", produces = MediaType.APPLICATION_JSON_VALUE)
+  public ResponseEntity<OrganizationPageResponse> listOrganizations(
+      @RequestParam(defaultValue = "0") final int page,
+      @RequestParam(defaultValue = "" + DEFAULT_PAGE_SIZE) final int size,
+      @RequestParam(defaultValue = "") final String search,
+      final HttpServletRequest request) {
+
+    final HttpSession session = request.getSession(false);
+    final Object attr = session != null
+        ? session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)
+        : null;
+
+    if (!(attr instanceof final AdminSessionData data)) {
+      log.info("GET /api/organizations — rejected: no valid admin session");
+      return ResponseEntity.status(403).build();
+    }
+
+    final int effectiveSize = size > 0 ? size : DEFAULT_PAGE_SIZE;
+    final int effectivePage = Math.max(page, 0);
+    final int first = effectivePage * effectiveSize;
+    final String searchTerm = (search == null || search.isBlank()) ? null : search.trim().toLowerCase();
+
+    final List<OrganizationResponse> content;
+    final int total;
+
+    if (data.currentUserIsSuperuser()) {
+      if (data.orgConstraint() != null) {
+        // SSO-scoped superuser: single org, no real paging needed
+        final String oc = data.orgConstraint();
+        final List<OrganizationInfo> orgs = this.keycloakAdminClient.fetchOrganizationGroupsPaged(first, effectiveSize);
+        final List<OrganizationInfo> filtered = orgs.stream().filter(o -> oc.equals(o.orgIdentifier())).toList();
+        content = applyFunctionConstraint(filtered, data.functionConstraint()).stream()
+            .map(OrganizationController::toResponse).toList();
+        total = content.size();
+      }
+      else if (searchTerm != null) {
+        // Search: fetch everything, filter in Java, paginate in Java
+        final List<OrganizationInfo> all = this.keycloakAdminClient.fetchAllOrganizationGroups();
+        final List<OrganizationInfo> filtered = applyFunctionConstraint(all, data.functionConstraint())
+            .stream()
+            .filter(o -> matchesSearch(o, searchTerm))
+            .toList();
+        total = filtered.size();
+        content = filtered.stream()
+            .skip(first)
+            .limit(effectiveSize)
+            .map(OrganizationController::toResponse)
+            .toList();
+      }
+      else {
+        // No search: efficient paged Keycloak fetch
+        final List<OrganizationInfo> orgs = this.keycloakAdminClient.fetchOrganizationGroupsPaged(first, effectiveSize);
+        content = applyFunctionConstraint(orgs, data.functionConstraint()).stream()
+            .map(OrganizationController::toResponse).toList();
+        total = this.keycloakAdminClient.fetchOrganizationGroupCount();
+      }
+      log.debug("GET /api/organizations — superuser, page={}, size={}, search='{}', total={}",
+          effectivePage, effectiveSize, search, total);
+    }
+    else {
+      // Non-superuser: work from the org identifiers stored in the session
+      final java.util.Set<String> scope = data.adminOrgIdentifiers();
+      final List<String> orgIds;
+      if (data.orgConstraint() != null) {
+        final String oc = data.orgConstraint();
+        orgIds = scope.contains(oc) ? List.of(oc) : List.of();
+      }
+      else {
+        orgIds = scope.stream().sorted().toList();
+      }
+
+      if (searchTerm != null) {
+        // Fetch all their orgs, filter by search term, paginate in Java
+        final List<OrganizationInfo> allUserOrgs = orgIds.stream()
+            .map(id -> this.keycloakAdminClient.fetchOrganizationByIdentifier(id).orElse(null))
+            .filter(Objects::nonNull)
+            .toList();
+        final List<OrganizationInfo> filtered = applyFunctionConstraint(allUserOrgs, data.functionConstraint())
+            .stream()
+            .filter(o -> matchesSearch(o, searchTerm))
+            .toList();
+        total = filtered.size();
+        content = filtered.stream()
+            .skip(first)
+            .limit(effectiveSize)
+            .map(OrganizationController::toResponse)
+            .toList();
+      }
+      else {
+        total = orgIds.size();
+        final int fromIndex = Math.min(first, total);
+        final int toIndex = Math.min(first + effectiveSize, total);
+        final List<OrganizationInfo> pageOrgs = orgIds.subList(fromIndex, toIndex).stream()
+            .map(id -> this.keycloakAdminClient.fetchOrganizationByIdentifier(id).orElse(null))
+            .filter(Objects::nonNull)
+            .toList();
+        content = applyFunctionConstraint(pageOrgs, data.functionConstraint()).stream()
+            .map(OrganizationController::toResponse).toList();
+      }
+      log.debug("GET /api/organizations — regular admin, page={}, size={}, search='{}', total={}",
+          effectivePage, effectiveSize, search, total);
+    }
+
+    final int totalPages = effectiveSize > 0 ? (int) Math.ceil((double) total / effectiveSize) : 0;
+    return ResponseEntity.ok(new OrganizationPageResponse(content, total, effectivePage, effectiveSize, totalPages));
+  }
+
+  private static boolean matchesSearch(final OrganizationInfo org, final String searchLower) {
+    if (org.orgIdentifier().toLowerCase().contains(searchLower)) {
+      return true;
+    }
+    final String sv = org.name().get("sv");
+    if (sv != null && sv.toLowerCase().contains(searchLower)) {
+      return true;
+    }
+    final String en = org.name().get("en");
+    return en != null && en.toLowerCase().contains(searchLower);
+  }
+
+  /**
+   * Returns a single organization by its identifier.
+   *
+   * @param orgIdentifier the organization identifier
+   * @param request       the HTTP servlet request
+   * @return 200 with the organization, 403 if not authenticated or no access, 404 if not found
+   */
+  @GetMapping(value = "/organizations/{orgIdentifier}", produces = MediaType.APPLICATION_JSON_VALUE)
+  public ResponseEntity<?> getOrganization(
+      @PathVariable final String orgIdentifier,
+      final HttpServletRequest request) {
+
+    final HttpSession session = request.getSession(false);
+    final Object attr = session != null
+        ? session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)
+        : null;
+
+    if (!(attr instanceof final AdminSessionData data)) {
+      log.info("GET /api/organizations/{} — rejected: no valid admin session", orgIdentifier);
+      return ResponseEntity.status(403).build();
+    }
+
+    if (!data.currentUserIsSuperuser() && !data.adminOrgIdentifiers().contains(orgIdentifier)) {
+      log.info("GET /api/organizations/{} — rejected: caller lacks org access", orgIdentifier);
+      return ResponseEntity.status(403).build();
+    }
+
+    return this.keycloakAdminClient.fetchOrganizationByIdentifier(orgIdentifier)
+        .<ResponseEntity<?>>map(o -> ResponseEntity.ok(toResponse(o)))
+        .orElseGet(() -> {
+          log.info("GET /api/organizations/{} — not found", orgIdentifier);
+          return ResponseEntity.notFound().build();
+        });
+  }
+
+  private static List<OrganizationInfo> applyFunctionConstraint(
+      final List<OrganizationInfo> orgs,
+      final String functionConstraint) {
+    if (functionConstraint == null) {
+      return orgs;
+    }
+    return orgs.stream()
+        .map(o -> o.withFilteredFunctions(f -> functionConstraint.equals(f)))
+        .toList();
+  }
+
+  private static OrganizationResponse toResponse(final OrganizationInfo o) {
+    return new OrganizationResponse(
+        o.orgIdentifier(),
+        o.name().get("sv"),
+        o.name().get("en"),
+        o.groupId(),
+        o.attachedFunctions(),
+        o.contactEmail(),
+        o.contactPhone());
+  }
 
   /**
    * Creates a new organization in Keycloak.
@@ -174,10 +372,8 @@ public class OrganizationController {
       log.info("PUT /api/organizations/{} — updated successfully", orgIdentifier);
 
       // Re-read to return current state
-      final OrganizationInfo updated = this.keycloakAdminClient.fetchAllOrganizationGroups()
-          .stream()
-          .filter(o -> orgIdentifier.equals(o.orgIdentifier()))
-          .findFirst()
+      final OrganizationInfo updated = this.keycloakAdminClient
+          .fetchOrganizationByIdentifier(orgIdentifier)
           .orElse(null);
 
       if (updated == null) {
