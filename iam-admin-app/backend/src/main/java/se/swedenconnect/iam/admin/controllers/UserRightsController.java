@@ -16,7 +16,6 @@
 package se.swedenconnect.iam.admin.controllers;
 
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -75,12 +74,8 @@ public class UserRightsController {
       @RequestBody final AddUserRightRequest req,
       final HttpServletRequest request) {
 
-    final HttpSession session = request.getSession(false);
-    final Object attr = session != null
-        ? session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)
-        : null;
-
-    if (!(attr instanceof final AdminSessionData data)) {
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null) {
       log.info("PUT /api/organizations/{}/users/{}/rights — rejected: no valid admin session",
           orgIdentifier, userId);
       return ResponseEntity.status(403).build();
@@ -160,12 +155,8 @@ public class UserRightsController {
       @RequestBody final AddUserRightRequest req,
       final HttpServletRequest request) {
 
-    final HttpSession session = request.getSession(false);
-    final Object attr = session != null
-        ? session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)
-        : null;
-
-    if (!(attr instanceof final AdminSessionData data)) {
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null) {
       log.info("PUT /api/organizations/{}/functions/{}/users/{}/rights — rejected: no valid admin session",
           orgIdentifier, functionId, userId);
       return ResponseEntity.status(403).build();
@@ -241,12 +232,8 @@ public class UserRightsController {
       @RequestParam final String right,
       final HttpServletRequest request) {
 
-    final HttpSession session = request.getSession(false);
-    final Object attr = session != null
-        ? session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)
-        : null;
-
-    if (!(attr instanceof final AdminSessionData data)) {
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null) {
       log.info("DELETE /api/organizations/{}/users/{}/rights — rejected: no valid admin session",
           orgIdentifier, userId);
       return ResponseEntity.status(403).build();
@@ -310,12 +297,8 @@ public class UserRightsController {
       @RequestParam final String right,
       final HttpServletRequest request) {
 
-    final HttpSession session = request.getSession(false);
-    final Object attr = session != null
-        ? session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)
-        : null;
-
-    if (!(attr instanceof final AdminSessionData data)) {
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null) {
       log.info("DELETE /api/organizations/{}/functions/{}/users/{}/rights — rejected: no valid admin session",
           orgIdentifier, functionId, userId);
       return ResponseEntity.status(403).build();

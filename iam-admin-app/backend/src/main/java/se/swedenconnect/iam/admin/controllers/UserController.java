@@ -16,7 +16,6 @@
 package se.swedenconnect.iam.admin.controllers;
 
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -85,12 +84,8 @@ public class UserController {
       @RequestParam(defaultValue = "" + DEFAULT_PAGE_SIZE) final int size,
       final HttpServletRequest request) {
 
-    final HttpSession session = request.getSession(false);
-    final Object attr = session != null
-        ? session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)
-        : null;
-
-    if (!(attr instanceof final AdminSessionData data)) {
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null) {
       log.info("GET /api/users — rejected: no valid admin session");
       return ResponseEntity.status(403).build();
     }
@@ -168,12 +163,8 @@ public class UserController {
       @RequestBody final CreateUserRequest req,
       final HttpServletRequest request) {
 
-    final HttpSession session = request.getSession(false);
-    final Object attr = session != null
-        ? session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)
-        : null;
-
-    if (!(attr instanceof AdminSessionData)) {
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null) {
       log.info("POST /api/users — rejected: no valid admin session");
       return ResponseEntity.status(403).build();
     }
@@ -224,12 +215,8 @@ public class UserController {
       @PathVariable final String userId,
       final HttpServletRequest request) {
 
-    final HttpSession session = request.getSession(false);
-    final Object attr = session != null
-        ? session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)
-        : null;
-
-    if (!(attr instanceof AdminSessionData)) {
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null) {
       log.info("GET /api/users/{} — rejected: no valid admin session", userId);
       return ResponseEntity.status(403).build();
     }
@@ -275,12 +262,8 @@ public class UserController {
       @RequestBody final UpdateUserRequest req,
       final HttpServletRequest request) {
 
-    final HttpSession session = request.getSession(false);
-    final Object attr = session != null
-        ? session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)
-        : null;
-
-    if (!(attr instanceof AdminSessionData)) {
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null) {
       log.info("PUT /api/users/{} — rejected: no valid admin session", userId);
       return ResponseEntity.status(403).build();
     }
@@ -348,12 +331,8 @@ public class UserController {
       @PathVariable final String userId,
       final HttpServletRequest request) {
 
-    final HttpSession session = request.getSession(false);
-    final Object attr = session != null
-        ? session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)
-        : null;
-
-    if (!(attr instanceof final AdminSessionData data)) {
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null) {
       log.info("DELETE /api/users/{} — rejected: no valid admin session", userId);
       return ResponseEntity.status(403).build();
     }

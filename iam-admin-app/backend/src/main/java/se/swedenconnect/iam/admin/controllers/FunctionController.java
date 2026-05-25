@@ -16,7 +16,6 @@
 package se.swedenconnect.iam.admin.controllers;
 
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -101,12 +100,8 @@ public class FunctionController {
       @RequestParam(defaultValue = "50") final int size,
       final HttpServletRequest request) {
 
-    final HttpSession session = request.getSession(false);
-    final Object attr = session != null
-        ? session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)
-        : null;
-
-    if (!(attr instanceof final AdminSessionData data)) {
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null) {
       log.info("GET /api/functions/{}/organizations — rejected: no valid admin session", functionId);
       return ResponseEntity.status(403).build();
     }
@@ -164,12 +159,8 @@ public class FunctionController {
       @RequestBody final CreateFunctionRequest req,
       final HttpServletRequest request) {
 
-    final HttpSession session = request.getSession(false);
-    final Object attr = session != null
-        ? session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)
-        : null;
-
-    if (!(attr instanceof final AdminSessionData data && data.currentUserIsSuperuser())) {
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null || !data.currentUserIsSuperuser()) {
       log.info("POST /api/functions — rejected: caller is not a superuser");
       return ResponseEntity.status(403).build();
     }
@@ -224,12 +215,8 @@ public class FunctionController {
       @RequestBody final UpdateFunctionRequest req,
       final HttpServletRequest request) {
 
-    final HttpSession session = request.getSession(false);
-    final Object attr = session != null
-        ? session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)
-        : null;
-
-    if (!(attr instanceof final AdminSessionData data && data.currentUserIsSuperuser())) {
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null || !data.currentUserIsSuperuser()) {
       log.info("PUT /api/functions/{} — rejected: caller is not a superuser", functionId);
       return ResponseEntity.status(403).build();
     }
@@ -281,12 +268,8 @@ public class FunctionController {
       return ResponseEntity.status(403).build();
     }
 
-    final HttpSession session = request.getSession(false);
-    final Object attr = session != null
-        ? session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)
-        : null;
-
-    if (!(attr instanceof final AdminSessionData data && data.currentUserIsSuperuser())) {
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null || !data.currentUserIsSuperuser()) {
       log.info("DELETE /api/functions/{} — rejected: caller is not a superuser", functionId);
       return ResponseEntity.status(403).build();
     }
