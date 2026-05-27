@@ -210,7 +210,7 @@ export function OrganizationList({
   return (
     <div className="space-y-4">
       {/* Search */}
-      {(isSuperuser || totalElements !== 1) && (
+      {(isSuperuser || totalElements !== 1 || searchTerm !== '') && (
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
           <Input
