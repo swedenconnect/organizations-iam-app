@@ -25,6 +25,7 @@ import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import se.swedenconnect.iam.commons.LibraryVersion;
 
 /**
  * Configuration class for OpenAPI/Swagger documentation.
@@ -35,7 +36,7 @@ import org.springframework.context.annotation.Configuration;
 public class OpenApiConfig {
 
   /**
-   * Configures the OpenAPI documentation for the Entity Registry API.
+   * Configures the OpenAPI documentation for the IAM-Admin-GUI-API.
    *
    * @return configured OpenAPI instance
    */
@@ -45,7 +46,7 @@ public class OpenApiConfig {
         .info(new Info()
             .title("IAM Admin API")
             .description("REST API for supporting IAM-Admin-GUI")
-            .version("0.5.10-SNAPSHOT")
+            .version(LibraryVersion.getVersion())
             .contact(new Contact()
                 .name("Sweden Connect")
                 .url("https://www.swedenconnect.se")
