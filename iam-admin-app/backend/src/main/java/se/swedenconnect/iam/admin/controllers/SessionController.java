@@ -30,14 +30,9 @@ import se.swedenconnect.iam.admin.controllers.dto.AdminSessionResponse;
 import se.swedenconnect.iam.admin.controllers.dto.FunctionResponse;
 import se.swedenconnect.iam.admin.controllers.dto.FunctionRightResponse;
 import se.swedenconnect.iam.admin.controllers.dto.OrgRightResponse;
-import se.swedenconnect.iam.admin.controllers.dto.OrganizationResponse;
-import se.swedenconnect.iam.admin.controllers.dto.UserResponse;
-import se.swedenconnect.iam.admin.controllers.dto.UserRightResponse;
 import se.swedenconnect.iam.admin.keycloak.AdminSessionBootstrapHandler;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
 import se.swedenconnect.iam.admin.keycloak.model.FunctionInfo;
-import se.swedenconnect.iam.admin.keycloak.model.OrganizationInfo;
-import se.swedenconnect.iam.admin.keycloak.model.UserInfo;
 
 import java.util.List;
 
@@ -75,9 +70,8 @@ public class SessionController {
       return ResponseEntity.noContent().build();
     }
 
-    log.debug("GET /api/session — returning session data (superuser={}, functions={}, orgs={}, users={})",
-        data.currentUserIsSuperuser(), data.functions().size(),
-        data.organizations().size(), data.users().size());
+    log.debug("GET /api/session — returning session data (superuser={}, functions={})",
+        data.currentUserIsSuperuser(), data.functions().size());
 
     return ResponseEntity.ok(toResponse(data));
   }
@@ -94,8 +88,6 @@ public class SessionController {
         this.properties.isAllowFunctionRemoval(),
         this.properties.isAllowOrgRights(),
         data.functions().stream().map(SessionController::toFunctionResponse).toList(),
-        data.organizations().stream().map(SessionController::toOrganizationResponse).toList(),
-        data.users().stream().map(SessionController::toUserResponse).toList(),
         toOrgRights(data.claim()),
         data.adminOrgIdentifiers()
     );
@@ -124,34 +116,6 @@ public class SessionController {
         nameEn != null ? nameEn : f.id(),
         desc != null ? desc.get("sv") : null,
         desc != null ? desc.get("en") : null
-    );
-  }
-
-  private static OrganizationResponse toOrganizationResponse(final OrganizationInfo o) {
-    return new OrganizationResponse(
-        o.orgIdentifier(),
-        o.name().get("sv"),
-        o.name().get("en"),
-        o.groupId(),
-        o.attachedFunctions(),
-        o.contactEmail(),
-        o.contactPhone()
-    );
-  }
-
-  private static UserResponse toUserResponse(final UserInfo u) {
-    return new UserResponse(
-        u.userId(),
-        u.username(),
-        u.firstName(),
-        u.lastName(),
-        u.email(),
-        u.personalIdentityNumber(),
-        u.phoneNumber(),
-        u.superuser(),
-        u.rights().stream()
-            .map(r -> new UserRightResponse(r.orgIdentifier(), r.functionId(), r.right()))
-            .toList()
     );
   }
 

@@ -16,23 +16,18 @@
 package se.swedenconnect.iam.admin.controllers.dto;
 
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 import java.util.List;
-import java.util.Set;
 
 /**
- * JSON response body for {@code GET /api/session}.
+ * Paginated response for the user list endpoint.
  *
- * @author Martin Lindström
+ * @author Per Fredrik Plars
  */
-public record AdminSessionResponse(
-    boolean superuser,
-    @Nullable String functionConstraint,
-    @Nullable String orgConstraint,
-    boolean allowFunctionRemoval,
-    boolean allowOrgRights,
-    @NonNull List<FunctionResponse> functions,
-    @NonNull List<OrgRightResponse> orgRights,
-    @NonNull Set<String> adminOrgIdentifiers) {
+public record UserPageResponse(
+    @NonNull List<UserResponse> content,
+    int totalElements,
+    int page,
+    int size,
+    int totalPages) {
 }

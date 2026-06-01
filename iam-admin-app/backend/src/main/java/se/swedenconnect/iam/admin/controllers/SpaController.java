@@ -46,8 +46,8 @@ public class SpaController {
   @RequestMapping({
       "/",
       "/index.html",
-      "/{path:^(?!api|assets|theme|actuator|error)[^.]*}",
-      "/{path:^(?!api|assets|theme|actuator|error)[^.]*}/**"
+      "/{path:^(?!api|assets|theme|actuator|error|swagger-ui|v3)[^.]*}",
+      "/{path:^(?!api|assets|theme|actuator|error|swagger-ui|v3)[^.]*}/**"
   })
   @ResponseBody
   public @NonNull ResponseEntity<String> serveIndex(final HttpServletRequest request) throws IOException {

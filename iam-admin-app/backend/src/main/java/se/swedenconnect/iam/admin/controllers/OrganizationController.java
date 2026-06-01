@@ -16,26 +16,32 @@
 package se.swedenconnect.iam.admin.controllers;
 
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import se.swedenconnect.iam.admin.controllers.dto.CreateOrganizationRequest;
+import se.swedenconnect.iam.admin.controllers.dto.OrganizationPageResponse;
+import se.swedenconnect.iam.admin.controllers.dto.OrganizationResponse;
 import se.swedenconnect.iam.admin.controllers.dto.UpdateOrganizationRequest;
 import se.swedenconnect.iam.admin.keycloak.AdminSessionBootstrapHandler;
-import se.swedenconnect.iam.admin.keycloak.KeycloakAdminClient;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminException;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
 import se.swedenconnect.iam.admin.keycloak.model.OrganizationInfo;
+import se.swedenconnect.iam.admin.service.OrganizationService;
 
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -51,7 +57,105 @@ import java.util.Map;
 @Slf4j
 public class OrganizationController {
 
-  private final KeycloakAdminClient keycloakAdminClient;
+  private final OrganizationService organizationService;
+
+  private static final int DEFAULT_PAGE_SIZE = 50;
+
+  /**
+   * Returns a paginated list of organizations, optionally filtered by a search term.
+   *
+   * <p>Superusers receive all organizations from the cache. Regular admins receive only their
+   * authorized organizations (from session). When {@code search} is provided, results are
+   * filtered server-side before pagination is applied.</p>
+   *
+   * @param page    0-based page index (default 0)
+   * @param size    page size (default 50)
+   * @param search  optional case-insensitive filter on org number, Swedish name and English name
+   * @param request the HTTP servlet request
+   * @return 200 with paginated organizations, 403 if not authenticated
+   */
+  @GetMapping(value = "/organizations", produces = MediaType.APPLICATION_JSON_VALUE)
+  public ResponseEntity<OrganizationPageResponse> listOrganizations(
+      @RequestParam(defaultValue = "0") final int page,
+      @RequestParam(defaultValue = "" + DEFAULT_PAGE_SIZE) final int size,
+      @RequestParam(defaultValue = "") final String search,
+      final HttpServletRequest request) {
+
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null) {
+      log.info("GET /api/organizations — rejected: no valid admin session");
+      return ResponseEntity.status(403).build();
+    }
+
+    final int effectiveSize = size > 0 ? size : DEFAULT_PAGE_SIZE;
+    final int effectivePage = Math.max(page, 0);
+    final String searchTerm = (search == null || search.isBlank()) ? null : search.trim();
+
+    final OrganizationPageResponse result;
+
+    if (data.currentUserIsSuperuser()) {
+      final String orgConstraint = data.orgConstraint();
+      if (orgConstraint != null) {
+        result = this.organizationService.listByOrgNumbers(
+            List.of(orgConstraint), searchTerm, effectivePage, effectiveSize);
+      }
+      else if (searchTerm != null) {
+        result = this.organizationService.searchByName(searchTerm, effectivePage, effectiveSize);
+      }
+      else {
+        result = this.organizationService.list(effectivePage, effectiveSize);
+      }
+      log.debug("GET /api/organizations — superuser, page={}, size={}, search='{}', total={}",
+          effectivePage, effectiveSize, search, result.totalElements());
+    }
+    else {
+      final java.util.Set<String> scope = data.adminOrgIdentifiers();
+      final List<String> orgIds;
+      if (data.orgConstraint() != null) {
+        final String oc = data.orgConstraint();
+        orgIds = scope.contains(oc) ? List.of(oc) : List.of();
+      }
+      else {
+        orgIds = scope.stream().sorted().toList();
+      }
+      result = this.organizationService.listByOrgNumbers(orgIds, searchTerm, effectivePage, effectiveSize);
+      log.debug("GET /api/organizations — regular admin, page={}, size={}, search='{}', total={}",
+          effectivePage, effectiveSize, search, result.totalElements());
+    }
+
+    return ResponseEntity.ok(applyFunctionConstraint(result, data.functionConstraint()));
+  }
+
+  /**
+   * Returns a single organization by its identifier.
+   *
+   * @param orgIdentifier the organization identifier
+   * @param request       the HTTP servlet request
+   * @return 200 with the organization, 403 if not authenticated or no access, 404 if not found
+   */
+  @GetMapping(value = "/organizations/{orgIdentifier}", produces = MediaType.APPLICATION_JSON_VALUE)
+  public ResponseEntity<?> getOrganization(
+      @PathVariable final String orgIdentifier,
+      final HttpServletRequest request) {
+
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null) {
+      log.info("GET /api/organizations/{} — rejected: no valid admin session", orgIdentifier);
+      return ResponseEntity.status(403).build();
+    }
+
+    if (!data.currentUserIsSuperuser() && !data.adminOrgIdentifiers().contains(orgIdentifier)) {
+      log.info("GET /api/organizations/{} — rejected: caller lacks org access", orgIdentifier);
+      return ResponseEntity.status(403).build();
+    }
+
+    return this.organizationService.findByOrgNumber(orgIdentifier)
+        .<ResponseEntity<?>>map(o -> ResponseEntity.ok(toResponse(o)))
+        .orElseGet(() -> {
+          log.info("GET /api/organizations/{} — not found", orgIdentifier);
+          return ResponseEntity.notFound().build();
+        });
+  }
 
   /**
    * Creates a new organization in Keycloak.
@@ -68,12 +172,8 @@ public class OrganizationController {
       @RequestBody final CreateOrganizationRequest req,
       final HttpServletRequest request) {
 
-    final HttpSession session = request.getSession(false);
-    final Object attr = session != null
-        ? session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)
-        : null;
-
-    if (!(attr instanceof final AdminSessionData data && data.currentUserIsSuperuser())) {
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null || !data.currentUserIsSuperuser()) {
       log.info("POST /api/organizations — rejected: caller is not a superuser");
       return ResponseEntity.status(403).build();
     }
@@ -93,12 +193,12 @@ public class OrganizationController {
       return ResponseEntity.badRequest().body("nameEn must not be blank");
     }
 
-    if (this.keycloakAdminClient.organizationExists(orgNumber)) {
+    if (this.organizationService.exists(orgNumber)) {
       log.info("POST /api/organizations — rejected: organization '{}' already exists", orgNumber);
       return ResponseEntity.status(409).build();
     }
 
-    this.keycloakAdminClient.createOrganization(orgNumber, nameSv, nameEn);
+    this.organizationService.create(orgNumber, nameSv, nameEn);
     log.info("POST /api/organizations — organization '{}' created successfully", orgNumber);
 
     return ResponseEntity.status(201).body(Map.of(
@@ -128,19 +228,14 @@ public class OrganizationController {
       @RequestBody final UpdateOrganizationRequest req,
       final HttpServletRequest request) {
 
-    final HttpSession session = request.getSession(false);
-    final Object attr = session != null
-        ? session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)
-        : null;
-
-    if (!(attr instanceof final AdminSessionData data)) {
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null) {
       log.info("PUT /api/organizations/{} — rejected: no valid admin session", orgIdentifier);
       return ResponseEntity.status(403).build();
     }
 
     final boolean isSuperuser = data.currentUserIsSuperuser();
 
-    // Non-superusers may not change org names
     final boolean hasNameChange = (req.nameSv() != null && !req.nameSv().isBlank())
         || (req.nameEn() != null && !req.nameEn().isBlank());
     if (!isSuperuser && hasNameChange) {
@@ -148,13 +243,11 @@ public class OrganizationController {
       return ResponseEntity.status(403).build();
     }
 
-    // Non-superusers must have org-level admin right
     if (!isSuperuser && !hasOrgAdminRight(data, orgIdentifier)) {
       log.info("PUT /api/organizations/{} — rejected: caller lacks org-admin right", orgIdentifier);
       return ResponseEntity.status(403).build();
     }
 
-    // Superuser: validate name fields if provided
     if (isSuperuser) {
       if (req.nameSv() != null && req.nameSv().isBlank()) {
         return ResponseEntity.badRequest().body("nameSv must not be blank");
@@ -165,7 +258,7 @@ public class OrganizationController {
     }
 
     try {
-      this.keycloakAdminClient.updateOrganization(
+      final OrganizationInfo updated = this.organizationService.update(
           orgIdentifier,
           isSuperuser ? req.nameSv() : null,
           isSuperuser ? req.nameEn() : null,
@@ -173,18 +266,7 @@ public class OrganizationController {
           req.contactPhone());
       log.info("PUT /api/organizations/{} — updated successfully", orgIdentifier);
 
-      // Re-read to return current state
-      final OrganizationInfo updated = this.keycloakAdminClient.fetchAllOrganizationGroups()
-          .stream()
-          .filter(o -> orgIdentifier.equals(o.orgIdentifier()))
-          .findFirst()
-          .orElse(null);
-
-      if (updated == null) {
-        return ResponseEntity.notFound().build();
-      }
-
-      final java.util.LinkedHashMap<String, Object> responseBody = new java.util.LinkedHashMap<>();
+      final LinkedHashMap<String, Object> responseBody = new LinkedHashMap<>();
       responseBody.put("orgIdentifier", updated.orgIdentifier());
       responseBody.put("nameSv", updated.name().get("sv"));
       responseBody.put("nameEn", updated.name().get("en"));
@@ -218,28 +300,24 @@ public class OrganizationController {
       @PathVariable final String orgIdentifier,
       final HttpServletRequest request) {
 
-    final HttpSession session = request.getSession(false);
-    final Object attr = session != null
-        ? session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)
-        : null;
-
-    if (!(attr instanceof final AdminSessionData data && data.currentUserIsSuperuser())) {
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null || !data.currentUserIsSuperuser()) {
       log.info("DELETE /api/organizations/{} — rejected: caller is not a superuser", orgIdentifier);
       return ResponseEntity.status(403).build();
     }
 
-    if (!this.keycloakAdminClient.organizationExists(orgIdentifier)) {
+    if (!this.organizationService.exists(orgIdentifier)) {
       log.info("DELETE /api/organizations/{} — not found", orgIdentifier);
       return ResponseEntity.notFound().build();
     }
 
-    if (this.keycloakAdminClient.isFunctionAttachedToOrg_any(orgIdentifier)) {
+    if (this.organizationService.hasFunctionsAttached(orgIdentifier)) {
       log.info("DELETE /api/organizations/{} — rejected: org has attached functions", orgIdentifier);
       return ResponseEntity.status(409).body("Organization has attached functions; detach them first");
     }
 
     try {
-      this.keycloakAdminClient.deleteOrganization(orgIdentifier);
+      this.organizationService.delete(orgIdentifier);
       log.info("DELETE /api/organizations/{} — deleted successfully", orgIdentifier);
       return ResponseEntity.noContent().build();
     }
@@ -253,6 +331,37 @@ public class OrganizationController {
   // Helpers
   // ---------------------------------------------------------------------------
 
+  private static OrganizationPageResponse applyFunctionConstraint(
+      final OrganizationPageResponse response,
+      final @Nullable String functionConstraint) {
+    if (functionConstraint == null) {
+      return response;
+    }
+    final List<OrganizationResponse> filtered = response.content().stream()
+        .map(o -> new OrganizationResponse(
+            o.orgIdentifier(),
+            o.nameSv(),
+            o.nameEn(),
+            o.groupId(),
+            o.attachedFunctions().stream().filter(functionConstraint::equals).toList(),
+            o.contactEmail(),
+            o.contactPhone()))
+        .toList();
+    return new OrganizationPageResponse(
+        filtered, response.totalElements(), response.page(), response.size(), response.totalPages());
+  }
+
+  private static OrganizationResponse toResponse(final OrganizationInfo o) {
+    return new OrganizationResponse(
+        o.orgIdentifier(),
+        o.name().get("sv"),
+        o.name().get("en"),
+        o.groupId(),
+        o.attachedFunctions(),
+        o.contactEmail(),
+        o.contactPhone());
+  }
+
   private static boolean hasOrgAdminRight(
       final AdminSessionData data,
       final String orgIdentifier) {
@@ -261,5 +370,4 @@ public class OrganizationController {
         .flatMap(e -> e.functions().stream())
         .anyMatch(f -> "*".equals(f.function()) && "admin".equals(f.right()));
   }
-
 }

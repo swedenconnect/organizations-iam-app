@@ -3,27 +3,21 @@
  * Handles all user-related data operations.
  */
 
-import type { User, UserOrganizationRole } from '@/types';
-import { loadFromStorage, saveToStorage, STORAGE_KEYS } from './storageService';
+import type { User, UserOrganizationRole, UserPage } from '@/types';
+import { saveToStorage, STORAGE_KEYS } from './storageService';
 import { apiUrl, apiFetch } from '@/lib/api';
 
-// Mock initial data
-const INITIAL_USERS: User[] = [
-  {
-    id: '1',
-    name: 'Martin Lindström',
-    email: 'martin@litsec.se',
-    personalIdentityNumber: '196911292032',
-    phoneNumber: '+46701234567',
-  },
-];
+export const DEFAULT_USER_PAGE_SIZE = 50;
 
 /**
- * Get all users
+ * Get a page of users from the backend.
  */
-export async function getUsers(): Promise<User[]> {
-  // TODO: Replace with fetch('/api/users')
-  return loadFromStorage(STORAGE_KEYS.USERS, INITIAL_USERS);
+export async function getUsers(page = 0, size = DEFAULT_USER_PAGE_SIZE): Promise<UserPage> {
+  const response = await apiFetch(apiUrl(`api/users?page=${page}&size=${size}`));
+  if (!response.ok) {
+    throw new Error(`Failed to fetch users: ${response.status}`);
+  }
+  return response.json();
 }
 
 /**

@@ -31,6 +31,7 @@ import se.swedenconnect.iam.security.claims.OrgRightsClaimParser;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
 
 import java.io.IOException;
+import java.util.Optional;
 
 /**
  * Authentication success handler that bootstraps session data from the KeyCloak Admin REST API
@@ -51,6 +52,18 @@ public class AdminSessionBootstrapHandler extends SavedRequestAwareAuthenticatio
 
   /** HTTP session attribute key under which the bootstrapped data is stored. */
   public static final String SESSION_DATA_ATTR = "adminSessionData";
+
+  /**
+   * Resolves the {@link AdminSessionData} from the current HTTP session.
+   *
+   * @param request the incoming HTTP request
+   * @return the session data, or empty if no valid admin session exists
+   */
+  public static @NonNull Optional<AdminSessionData> resolveSession(final @NonNull HttpServletRequest request) {
+    final HttpSession session = request.getSession(false);
+    final Object attr = session != null ? session.getAttribute(SESSION_DATA_ATTR) : null;
+    return attr instanceof final AdminSessionData data ? Optional.of(data) : Optional.empty();
+  }
 
   private final AdminDataBootstrapService bootstrapService;
   private final OrgRightsClaimParser claimParser;

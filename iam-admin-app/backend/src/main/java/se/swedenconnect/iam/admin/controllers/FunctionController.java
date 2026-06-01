@@ -16,7 +16,6 @@
 package se.swedenconnect.iam.admin.controllers;
 
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -28,16 +27,20 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import se.swedenconnect.iam.admin.config.IamAdminProperties;
 import se.swedenconnect.iam.admin.controllers.dto.CreateFunctionRequest;
 import se.swedenconnect.iam.admin.controllers.dto.FunctionResponse;
+import se.swedenconnect.iam.admin.controllers.dto.OrganizationPageResponse;
+import se.swedenconnect.iam.admin.controllers.dto.OrganizationResponse;
 import se.swedenconnect.iam.admin.controllers.dto.UpdateFunctionRequest;
 import se.swedenconnect.iam.admin.keycloak.AdminSessionBootstrapHandler;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminClient;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminException;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
 import se.swedenconnect.iam.admin.keycloak.model.FunctionInfo;
+import se.swedenconnect.iam.admin.keycloak.model.OrganizationInfo;
 
 import java.util.List;
 
@@ -78,6 +81,70 @@ public class FunctionController {
   }
 
   /**
+   * Returns a paginated list of organizations that have the given function attached.
+   *
+   * <p>The full list of org identifiers is retrieved from Keycloak in one call (Keycloak group
+   * search), then paginated in memory. Superusers see all organizations; regular admins see
+   * only the organizations they administer.</p>
+   *
+   * @param functionId the function identifier
+   * @param page       0-based page index (default 0)
+   * @param size       page size (default 50)
+   * @param request    the HTTP servlet request
+   * @return 200 with paginated organizations, 403 if not authenticated
+   */
+  @GetMapping(value = "/functions/{functionId}/organizations", produces = MediaType.APPLICATION_JSON_VALUE)
+  public ResponseEntity<OrganizationPageResponse> getOrganizationsForFunction(
+      @PathVariable final String functionId,
+      @RequestParam(defaultValue = "0") final int page,
+      @RequestParam(defaultValue = "50") final int size,
+      final HttpServletRequest request) {
+
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null) {
+      log.info("GET /api/functions/{}/organizations — rejected: no valid admin session", functionId);
+      return ResponseEntity.status(403).build();
+    }
+
+    final int effectiveSize = size > 0 ? size : 50;
+    final int effectivePage = Math.max(page, 0);
+    final int first = effectivePage * effectiveSize;
+
+    List<String> orgIds = this.keycloakAdminClient.fetchOrgIdentifiersForFunction(functionId);
+
+    if (!data.currentUserIsSuperuser()) {
+      final java.util.Set<String> adminOrgs = data.adminOrgIdentifiers();
+      orgIds = orgIds.stream().filter(adminOrgs::contains).toList();
+    }
+
+    final int total = orgIds.size();
+    final int fromIndex = Math.min(first, total);
+    final int toIndex = Math.min(first + effectiveSize, total);
+    final List<String> pageIds = orgIds.subList(fromIndex, toIndex);
+
+    final List<OrganizationResponse> content = pageIds.stream()
+        .map(id -> this.keycloakAdminClient.fetchOrganizationByIdentifier(id).orElse(null))
+        .filter(java.util.Objects::nonNull)
+        .map(FunctionController::toOrgResponse)
+        .toList();
+
+    final int totalPages = effectiveSize > 0 ? (int) Math.ceil((double) total / effectiveSize) : 0;
+    log.debug("GET /api/functions/{}/organizations — page={}, size={}, total={}", functionId, effectivePage, effectiveSize, total);
+    return ResponseEntity.ok(new OrganizationPageResponse(content, total, effectivePage, effectiveSize, totalPages));
+  }
+
+  private static OrganizationResponse toOrgResponse(final OrganizationInfo o) {
+    return new OrganizationResponse(
+        o.orgIdentifier(),
+        o.name().get("sv"),
+        o.name().get("en"),
+        o.groupId(),
+        o.attachedFunctions(),
+        o.contactEmail(),
+        o.contactPhone());
+  }
+
+  /**
    * Creates a new canonical function definition in Keycloak.
    *
    * @param req     the request body
@@ -92,12 +159,8 @@ public class FunctionController {
       @RequestBody final CreateFunctionRequest req,
       final HttpServletRequest request) {
 
-    final HttpSession session = request.getSession(false);
-    final Object attr = session != null
-        ? session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)
-        : null;
-
-    if (!(attr instanceof final AdminSessionData data && data.currentUserIsSuperuser())) {
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null || !data.currentUserIsSuperuser()) {
       log.info("POST /api/functions — rejected: caller is not a superuser");
       return ResponseEntity.status(403).build();
     }
@@ -152,12 +215,8 @@ public class FunctionController {
       @RequestBody final UpdateFunctionRequest req,
       final HttpServletRequest request) {
 
-    final HttpSession session = request.getSession(false);
-    final Object attr = session != null
-        ? session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)
-        : null;
-
-    if (!(attr instanceof final AdminSessionData data && data.currentUserIsSuperuser())) {
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null || !data.currentUserIsSuperuser()) {
       log.info("PUT /api/functions/{} — rejected: caller is not a superuser", functionId);
       return ResponseEntity.status(403).build();
     }
@@ -209,12 +268,8 @@ public class FunctionController {
       return ResponseEntity.status(403).build();
     }
 
-    final HttpSession session = request.getSession(false);
-    final Object attr = session != null
-        ? session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)
-        : null;
-
-    if (!(attr instanceof final AdminSessionData data && data.currentUserIsSuperuser())) {
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null || !data.currentUserIsSuperuser()) {
       log.info("DELETE /api/functions/{} — rejected: caller is not a superuser", functionId);
       return ResponseEntity.status(403).build();
     }

@@ -26,16 +26,14 @@ import java.util.Set;
  * Bootstrapped session data for an authenticated admin user.
  *
  * <p>Loaded after successful login via {@link se.swedenconnect.iam.admin.keycloak.AdminDataBootstrapService}
- * and stored in the HTTP session. The scope of the data reflects the user's rights:
- * superusers receive everything; regular admins receive only the organizations and users
- * within their authorized scope.</p>
+ * and stored in the HTTP session. Organizations and users are NOT cached here — they are
+ * fetched on-demand via the respective paginated API endpoints.</p>
  *
  * <p>When {@code functionConstraint} is non-null, the session was initiated via the SSO login
- * path with a {@code func} parameter. All session data (functions, attached functions on
- * organizations, and user rights) is already filtered to reflect only that function.</p>
+ * path with a {@code func} parameter. API responses are filtered to reflect only that function.</p>
  *
  * <p>When {@code orgConstraint} is non-null, the session was initiated via the SSO login path
- * with an {@code org} parameter. The session data is restricted to that single organization.</p>
+ * with an {@code org} parameter. API responses are restricted to that single organization.</p>
  *
  * @author Martin Lindström
  */
@@ -44,8 +42,6 @@ public record AdminSessionData(
     @Nullable String functionConstraint,
     @Nullable String orgConstraint,
     @NonNull List<FunctionInfo> functions,
-    @NonNull List<OrganizationInfo> organizations,
-    @NonNull List<UserInfo> users,
     @NonNull Set<String> adminOrgIdentifiers,
     @NonNull OrgRightsClaim claim) {
 }

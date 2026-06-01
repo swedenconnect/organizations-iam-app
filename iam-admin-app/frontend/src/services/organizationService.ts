@@ -3,27 +3,43 @@
  * Handles all organization-related data operations.
  */
 
-import type { Organization } from '@/types';
-import { loadFromStorage, saveToStorage, STORAGE_KEYS } from './storageService';
+import type { Organization, OrganizationPage } from '@/types';
+import { saveToStorage, STORAGE_KEYS } from './storageService';
 import { apiUrl, apiFetch } from '@/lib/api';
 
-// Mock initial data
-const INITIAL_ORGANIZATIONS: Organization[] = [
-  {
-    id: '1',
-    nameSv: 'Litsec AB',
-    nameEn: 'Litsec AB',
-    organizationNumber: '556677-8899',
-    contactEmail: 'contact@litsec.se',
-  },
-];
+export const DEFAULT_ORG_PAGE_SIZE = 20;
+
+/** Batch size used internally by fetchAllOrganizations — large enough to fetch everything in one round-trip for typical deployments. */
+const FETCH_ALL_BATCH_SIZE = 500;
 
 /**
- * Get all organizations
+ * Get a page of organizations from the backend.
  */
-export async function getOrganizations(): Promise<Organization[]> {
-  // TODO: Replace with fetch('/api/organizations')
-  return loadFromStorage(STORAGE_KEYS.ORGANIZATIONS, INITIAL_ORGANIZATIONS);
+export async function getOrganizations(page = 0, size = DEFAULT_ORG_PAGE_SIZE, search = ''): Promise<OrganizationPage> {
+  const searchParam = search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '';
+  const response = await apiFetch(apiUrl(`api/organizations?page=${page}&size=${size}${searchParam}`));
+  if (!response.ok) {
+    throw new Error(`Failed to fetch organizations: ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * Fetch all organizations by paging through the backend until all pages are loaded.
+ * Uses a large batch size to minimise the number of HTTP round-trips.
+ */
+export async function fetchAllOrganizations(): Promise<OrganizationPage> {
+  const first = await getOrganizations(0, FETCH_ALL_BATCH_SIZE);
+  if (first.totalPages <= 1) {
+    return first;
+  }
+  const rest = await Promise.all(
+    Array.from({ length: first.totalPages - 1 }, (_, i) => getOrganizations(i + 1, FETCH_ALL_BATCH_SIZE))
+  );
+  return {
+    ...first,
+    content: [first, ...rest].flatMap((p) => p.content),
+  };
 }
 
 /**
@@ -94,9 +110,18 @@ export async function deleteOrganization(id: string): Promise<void> {
  * Get a single organization by ID
  */
 export async function getOrganizationById(id: string): Promise<Organization | null> {
-  const organizations = await getOrganizations();
-  // TODO: Replace with fetch(`/api/organizations/${id}`)
-  return organizations.find((o) => o.id === id) || null;
+  const response = await apiFetch(apiUrl(`api/organizations/${id}`));
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Failed to fetch organization: ${response.status}`);
+  const o = await response.json();
+  return {
+    id: o.orgIdentifier,
+    organizationNumber: o.orgIdentifier,
+    nameSv: o.nameSv ?? '',
+    nameEn: o.nameEn ?? '',
+    contactEmail: o.contactEmail ?? undefined,
+    additionalData: o.contactPhone ? { contactPhone: o.contactPhone } : undefined,
+  };
 }
 
 /**
