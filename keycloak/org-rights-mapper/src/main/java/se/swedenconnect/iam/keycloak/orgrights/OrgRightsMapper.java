@@ -16,6 +16,8 @@
 package se.swedenconnect.iam.keycloak.orgrights;
 
 import org.jboss.logging.Logger;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.keycloak.models.ClientSessionContext;
 import org.keycloak.models.GroupModel;
 import org.keycloak.models.KeycloakSession;
@@ -33,9 +35,9 @@ import org.keycloak.representations.IDToken;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -137,28 +139,28 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
   // -------------------------------------------------------------------------
 
   @Override
-  public String getId() {
+  public @NonNull String getId() {
     return PROVIDER_ID;
   }
 
   @Override
-  public String getDisplayType() {
+  public @NonNull String getDisplayType() {
     return DISPLAY_TYPE;
   }
 
   @Override
-  public String getDisplayCategory() {
+  public @NonNull String getDisplayCategory() {
     return DISPLAY_CATEGORY;
   }
 
   @Override
-  public String getHelpText() {
+  public @NonNull String getHelpText() {
     return HELP_TEXT;
   }
 
   @Override
-  public List<ProviderConfigProperty> getConfigProperties() {
-    return new ArrayList<>();
+  public @NonNull List<ProviderConfigProperty> getConfigProperties() {
+    return List.of();
   }
 
   @Override
@@ -172,14 +174,19 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
     final UserModel user = userSession.getUser();
     final RealmModel realm = keycloakSession.getContext().getRealm();
 
+    LOG.debugf("[org-rights] Building %s claim for user '%s'", CLAIM_NAME, user.getUsername());
+
     // Step 1 — Check for superuser
     final RoleModel superuserRole = realm.getRole(REALM_ROLE_SUPERUSER);
     if (superuserRole != null && user.hasRole(superuserRole)) {
+      LOG.debugf("[org-rights] User '%s' has realm role '%s' — emitting superuser shortcut",
+          user.getUsername(), REALM_ROLE_SUPERUSER);
       final Map<String, Object> superuserEntry = new LinkedHashMap<>();
       superuserEntry.put(CLAIM_FIELD_SUPERUSER, true);
       token.getOtherClaims().put(CLAIM_NAME, List.of(superuserEntry));
       return;
     }
+    LOG.debugf("[org-rights] User '%s' is not a superuser", user.getUsername());
 
     // Step 2 — Find the `orgs` top-level group
     final GroupModel orgsGroup = realm.getTopLevelGroupsStream()
@@ -188,12 +195,17 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
         .orElse(null);
 
     if (orgsGroup == null) {
+      LOG.debugf("[org-rights] Top-level group '%s' not found in realm — emitting empty claim", GROUP_ORGS);
       token.getOtherClaims().put(CLAIM_NAME, List.of());
       return;
     }
+    LOG.debugf("[org-rights] Found top-level group '%s' (id=%s)", GROUP_ORGS, orgsGroup.getId());
 
-    // Step 3 — Get all groups the user belongs to
-    final Set<GroupModel> userGroups = user.getGroupsStream().collect(Collectors.toSet());
+    // Step 3 — Get all groups the user belongs to, preserving Keycloak's iteration order
+    final LinkedHashSet<GroupModel> userGroups =
+        user.getGroupsStream().collect(Collectors.toCollection(LinkedHashSet::new));
+
+    LOG.debugf("[org-rights] User '%s' belongs to %d group(s)", user.getUsername(), userGroups.size());
 
     if (userGroups.isEmpty()) {
       token.getOtherClaims().put(CLAIM_NAME, List.of());
@@ -201,13 +213,16 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
     }
 
     // Step 4 — Classify group memberships and accumulate function entries per org.
-    // key   = org identifier (group name under orgs)
+    // key   = org group name (= group name directly under orgs)
     // value = list of { "function": <name|"*">, "right": <right> } maps
     final Map<String, List<Map<String, String>>> orgFunctionEntries = new LinkedHashMap<>();
 
     for (final GroupModel group : userGroups) {
+      LOG.debugf("[org-rights] Inspecting group '%s' (id=%s)", group.getName(), group.getId());
+
       final String right = rightFromGroupName(group.getName());
       if (right == null) {
+        LOG.debugf("[org-rights]   Skipping '%s' — not a right group", group.getName());
         continue;
       }
 
@@ -215,13 +230,17 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
       // Determine depth from `orgs` by walking up the parent chain.
       final GroupModel parent = group.getParent();
       if (parent == null) {
+        LOG.debugf("[org-rights]   Skipping '%s' — no parent (orphaned right group)", group.getName());
         continue;
       }
+
+      LOG.debugf("[org-rights]   Parent of '%s' is '%s' (parentId=%s)",
+          group.getName(), parent.getName(), parent.getParentId());
 
       if (parent.getParentId() != null && parent.getParentId().equals(orgsGroup.getId())) {
         // parent is a direct child of orgs → org-level right; wildcard function
         final String orgIdentifier = parent.getName();
-        LOG.debugf("User has org-level right '%s' on org '%s'", right, orgIdentifier);
+        LOG.debugf("[org-rights]   Resolved to org-level right '%s' on org '%s'", right, orgIdentifier);
         orgFunctionEntries
             .computeIfAbsent(orgIdentifier, k -> new ArrayList<>())
             .add(functionEntry(FUNCTION_WILDCARD, right));
@@ -230,35 +249,56 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
         // Check if grandparent is a direct child of orgs → function-level right
         final GroupModel grandParent = parent.getParent();
         if (grandParent == null) {
+          LOG.debugf("[org-rights]   Skipping '%s' — grandparent is null, group not under '%s'",
+              group.getName(), GROUP_ORGS);
           continue;
         }
+        LOG.debugf("[org-rights]   Grandparent of '%s' is '%s' (parentId=%s)",
+            group.getName(), grandParent.getName(), grandParent.getParentId());
+
         if (grandParent.getParentId() != null && grandParent.getParentId().equals(orgsGroup.getId())) {
           final String orgIdentifier = grandParent.getName();
           final String functionName = parent.getName();
-          LOG.debugf("User has function-level right '%s' on org '%s', function '%s'",
+          LOG.debugf("[org-rights]   Resolved to function-level right '%s' on org '%s', function '%s'",
               right, orgIdentifier, functionName);
           orgFunctionEntries
               .computeIfAbsent(orgIdentifier, k -> new ArrayList<>())
               .add(functionEntry(functionName, right));
         }
+        else {
+          LOG.debugf("[org-rights]   Skipping '%s' — hierarchy too deep or not under '%s'",
+              group.getName(), GROUP_ORGS);
+        }
       }
     }
 
-    // Step 5 — Build one claim entry per organization
+    LOG.debugf("[org-rights] Classified memberships into %d org(s): %s",
+        orgFunctionEntries.size(), orgFunctionEntries.keySet());
+
+    // Step 5 — Build one claim entry per organization.
+    // Collect org sub-groups once to avoid one getSubGroupsStream() call per org.
+    final Map<String, GroupModel> orgGroupByName = orgsGroup.getSubGroupsStream()
+        .collect(Collectors.toMap(GroupModel::getName, g -> g));
+    LOG.debugf("[org-rights] Loaded %d org sub-group(s) from '%s'", orgGroupByName.size(), GROUP_ORGS);
+
     final List<Map<String, Object>> entries = new ArrayList<>();
 
     for (final Map.Entry<String, List<Map<String, String>>> e : orgFunctionEntries.entrySet()) {
       final String orgIdentifier = e.getKey();
       final List<Map<String, String>> functionEntries = e.getValue();
 
-      final GroupModel orgGroup = orgsGroup.getSubGroupsStream()
-          .filter(g -> orgIdentifier.equals(g.getName()))
-          .findFirst()
-          .orElse(null);
+      final GroupModel orgGroup = orgGroupByName.get(orgIdentifier);
+      if (orgGroup == null) {
+        LOG.debugf("[org-rights] Org group '%s' not found in lookup map — attributes will be empty",
+            orgIdentifier);
+      }
 
       final String orgNameSv = readOrgAttribute(orgGroup, ATTR_ORGANIZATION_NAME_SV, orgIdentifier);
       final String orgNameEn = readOrgAttribute(orgGroup, ATTR_ORGANIZATION_NAME_EN, orgIdentifier);
       final String orgId     = readOrgAttribute(orgGroup, ATTR_ORGANIZATION_IDENTIFIER, orgIdentifier);
+
+      LOG.debugf("[org-rights] Building entry for org '%s' (id=%s, sv='%s', en='%s') with %d function(s): %s",
+          orgIdentifier, orgId, orgNameSv, orgNameEn, functionEntries.size(), functionEntries);
 
       final Map<String, Object> entry = new LinkedHashMap<>();
       entry.put(ATTR_ORGANIZATION_IDENTIFIER, orgId);
@@ -267,6 +307,9 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
       entry.put(CLAIM_FIELD_FUNCTIONS, functionEntries);
       entries.add(entry);
     }
+
+    LOG.debugf("[org-rights] Emitting '%s' claim with %d org entr%s for user '%s'",
+        CLAIM_NAME, entries.size(), entries.size() == 1 ? "y" : "ies", user.getUsername());
 
     token.getOtherClaims().put(CLAIM_NAME, entries);
   }
@@ -278,7 +321,7 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
    * @return {@link #RIGHT_ADMIN}, {@link #RIGHT_WRITE}, {@link #RIGHT_READ},
    *         or {@code null} if the name is not a right group
    */
-  static String rightFromGroupName(final String name) {
+  static @Nullable String rightFromGroupName(final @NonNull String name) {
     return switch (name) {
       case RIGHT_GROUP_ADMIN -> RIGHT_ADMIN;
       case RIGHT_GROUP_WRITE -> RIGHT_WRITE;
@@ -294,7 +337,8 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
    * @param right the right string ({@link #RIGHT_ADMIN}, {@link #RIGHT_WRITE}, or {@link #RIGHT_READ})
    * @return a two-key map with {@link #CLAIM_FIELD_FUNCTION} and {@link #CLAIM_FIELD_RIGHT}
    */
-  private static Map<String, String> functionEntry(final String functionName, final String right) {
+  private static @NonNull Map<String, String> functionEntry(
+      final @NonNull String functionName, final @NonNull String right) {
     final Map<String, String> entry = new LinkedHashMap<>();
     entry.put(CLAIM_FIELD_FUNCTION, functionName);
     entry.put(CLAIM_FIELD_RIGHT, right);
@@ -310,19 +354,19 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
    * @param orgIdentifier the org identifier used in log messages
    * @return the first attribute value, or empty string if absent
    */
-  private String readOrgAttribute(final GroupModel group, final String attributeKey,
-      final String orgIdentifier) {
+  private @NonNull String readOrgAttribute(final @Nullable GroupModel group,
+      final @NonNull String attributeKey, final @NonNull String orgIdentifier) {
     if (group == null) {
-      LOG.warnf("Organization group '%s' not found under '%s' — using empty string for attribute '%s'",
+      LOG.warnf("[org-rights] Organization group '%s' not found under '%s' — using empty string for attribute '%s'",
           orgIdentifier, GROUP_ORGS, attributeKey);
       return "";
     }
     final List<String> values = group.getAttributes().get(attributeKey);
-    if (values == null || values.isEmpty() || values.get(0) == null || values.get(0).isBlank()) {
-      LOG.warnf("Organization group '%s' is missing attribute '%s' — using empty string",
+    if (values == null || values.isEmpty() || values.getFirst() == null || values.getFirst().isBlank()) {
+      LOG.warnf("[org-rights] Organization group '%s' is missing attribute '%s' — using empty string",
           orgIdentifier, attributeKey);
       return "";
     }
-    return values.get(0);
+    return values.getFirst();
   }
 }
