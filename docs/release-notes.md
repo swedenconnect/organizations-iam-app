@@ -22,9 +22,11 @@
 - Fixed a bug where removing a user's right at the organisation level failed
   with an unexpected error. The delete operation was silently dropping the
   required `right` query parameter before sending the request to the backend.
-- Implemented pagenation for orgnaizations, system can handle more that 10 organizations.
+- Implemented pagination for organizations, system can handle more that 10 organizations.
   Loading of users and organizations is now done in smaller sections. There is a backend implemented
   cache that handles search on organization names. When a write is made it is invalidated, and reloaded. 
+- Added debug statements to org-rights mapper Keycloak plugin. Fixed some ordering issues. Replace N calls to 
+  getSubGroupsStream() with a single lookup map (one Keycloak query regardless of how many orgs the user belongs to)
 
 ---
 
