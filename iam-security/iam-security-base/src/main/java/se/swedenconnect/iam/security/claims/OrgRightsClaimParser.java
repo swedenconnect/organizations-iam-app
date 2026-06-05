@@ -55,13 +55,15 @@ public class OrgRightsClaimParser {
    */
   public @NonNull OrgRightsClaim parse(final @Nullable Object rawClaim) {
     if (!(rawClaim instanceof final List<?> list) || list.isEmpty()) {
+      log.debug("[org-rights-parser] org_rights claim is absent or empty — returning empty claim");
       return new OrgRightsClaim(false, List.of());
     }
+    log.debug("[org-rights-parser] Parsing org_rights claim with {} item(s)", list.size());
 
     // First pass: check for superuser
     for (final Object item : list) {
       if (item instanceof final Map<?, ?> map && Boolean.TRUE.equals(map.get("superuser"))) {
-        log.debug("org_rights claim contains superuser marker");
+        log.debug("[org-rights-parser] Found superuser marker — returning superuser claim");
         return new OrgRightsClaim(true, List.of());
       }
     }
@@ -70,12 +72,13 @@ public class OrgRightsClaimParser {
     final List<OrgRightsClaim.OrgEntry> entries = new ArrayList<>();
     for (final Object item : list) {
       if (!(item instanceof final Map<?, ?> map)) {
+        log.debug("[org-rights-parser] Skipping non-map item in org_rights list");
         continue;
       }
 
       final String orgIdStr = (String) map.get("organization_identifier");
       if (orgIdStr == null) {
-        log.debug("Skipping org_rights entry without organization_identifier");
+        log.debug("[org-rights-parser] Skipping entry without organization_identifier");
         continue;
       }
 
@@ -84,7 +87,7 @@ public class OrgRightsClaimParser {
         orgId = OrganizationID.of(orgIdStr);
       }
       catch (final IllegalArgumentException e) {
-        log.debug("Skipping org_rights entry with invalid organization_identifier '{}': {}",
+        log.debug("[org-rights-parser] Skipping entry with invalid organization_identifier '{}': {}",
             orgIdStr, e.getMessage());
         continue;
       }
@@ -105,15 +108,22 @@ public class OrgRightsClaimParser {
             final String func = (String) funcMap.get("function");
             final String right = (String) funcMap.get("right");
             if (func != null && right != null) {
+              log.debug("[org-rights-parser]   org '{}' — function '{}', right '{}'", orgIdStr, func, right);
               functions.add(new OrgRightsClaim.FunctionEntry(func, right));
+            }
+            else {
+              log.debug("[org-rights-parser]   org '{}' — skipping function entry with missing func or right", orgIdStr);
             }
           }
         }
       }
 
+      log.debug("[org-rights-parser] Parsed org entry '{}' with {} function(s)", orgIdStr, functions.size());
       entries.add(new OrgRightsClaim.OrgEntry(orgId, name, List.copyOf(functions)));
     }
 
+    log.debug("[org-rights-parser] Finished parsing — {} org entr{} produced",
+        entries.size(), entries.size() == 1 ? "y" : "ies");
     return new OrgRightsClaim(false, List.copyOf(entries));
   }
 
@@ -134,7 +144,10 @@ public class OrgRightsClaimParser {
       final @Nullable String orgConstraint,
       final @Nullable String funcConstraint) throws InsufficientRightsException {
 
+    log.debug("[org-rights-parser] checkAdminConstraint: org='{}', function='{}'", orgConstraint, funcConstraint);
+
     if (claim.superuser()) {
+      log.debug("[org-rights-parser] Superuser — admin constraint satisfied");
       return;
     }
 
@@ -145,11 +158,13 @@ public class OrgRightsClaimParser {
           .filter(e -> orgConstraint.equals(e.orgIdentifier().toString()))
           .toList();
       if (orgs.isEmpty()) {
+        log.debug("[org-rights-parser] No rights entry found for organization '{}'", orgConstraint);
         throw new InsufficientRightsException("No rights for organization " + orgConstraint);
       }
     }
 
     if (orgs.isEmpty()) {
+      log.debug("[org-rights-parser] Claim has no org entries");
       throw new InsufficientRightsException("User has no organizational rights");
     }
 
@@ -162,6 +177,8 @@ public class OrgRightsClaimParser {
       }
       for (final OrgRightsClaim.FunctionEntry f : funcs) {
         if ("admin".equals(f.right())) {
+          log.debug("[org-rights-parser] Admin right found for org '{}', function '{}' — constraint satisfied",
+              org.orgIdentifier(), f.function());
           return;
         }
       }
@@ -201,8 +218,10 @@ public class OrgRightsClaimParser {
       final @NonNull OrgRightsClaim claim,
       final @NonNull String functionId) {
 
+    log.debug("[org-rights-parser] buildFunctionScopedAuthorities: function='{}'", functionId);
+
     if (claim.superuser()) {
-      log.debug("Superuser detected — issuing ROLE_SUPERUSER");
+      log.debug("[org-rights-parser] Superuser — issuing ROLE_SUPERUSER");
       return List.of(new SimpleGrantedAuthority("ROLE_SUPERUSER"));
     }
 
@@ -215,7 +234,7 @@ public class OrgRightsClaimParser {
               return OrganizationRight.parse(f.right());
             }
             catch (final IllegalArgumentException e) {
-              log.debug("Skipping unrecognized right value '{}' for org '{}', function '{}'",
+              log.debug("[org-rights-parser] Skipping unrecognized right '{}' for org '{}', function '{}'",
                   f.right(), org.orgIdentifier(), f.function());
               return null;
             }
@@ -223,10 +242,19 @@ public class OrgRightsClaimParser {
           .filter(r -> r != null)
           .max(Comparator.naturalOrder());
 
-      highestRight.ifPresent(right ->
-          authorities.add(FunctionScopedAuthority.of(org.orgIdentifier(), right)));
+      if (highestRight.isPresent()) {
+        log.debug("[org-rights-parser] org '{}' — highest effective right for function '{}': {}",
+            org.orgIdentifier(), functionId, highestRight.get());
+        authorities.add(FunctionScopedAuthority.of(org.orgIdentifier(), highestRight.get()));
+      }
+      else {
+        log.debug("[org-rights-parser] org '{}' — no matching entries for function '{}', skipping",
+            org.orgIdentifier(), functionId);
+      }
     }
 
+    log.debug("[org-rights-parser] Resolved {} function-scoped authorit{}", authorities.size(),
+        authorities.size() == 1 ? "y" : "ies");
     return List.copyOf(authorities);
   }
 
@@ -250,7 +278,10 @@ public class OrgRightsClaimParser {
       final @Nullable String orgConstraint,
       final @Nullable String funcConstraint) {
 
+    log.debug("[org-rights-parser] buildAuthorities: org='{}', function='{}'", orgConstraint, funcConstraint);
+
     if (claim.superuser()) {
+      log.debug("[org-rights-parser] Superuser — issuing ROLE_SUPERUSER");
       return List.of(new SimpleGrantedAuthority("ROLE_SUPERUSER"));
     }
 
@@ -259,6 +290,8 @@ public class OrgRightsClaimParser {
       orgs = orgs.stream()
           .filter(e -> orgConstraint.equals(e.orgIdentifier().toString()))
           .toList();
+      log.debug("[org-rights-parser] Filtered to org '{}': {} entr{} remaining",
+          orgConstraint, orgs.size(), orgs.size() == 1 ? "y" : "ies");
     }
 
     final List<GrantedAuthority> authorities = new ArrayList<>();
@@ -268,19 +301,25 @@ public class OrgRightsClaimParser {
         funcs = funcs.stream()
             .filter(f -> "*".equals(f.function()) || funcConstraint.equals(f.function()))
             .toList();
+        log.debug("[org-rights-parser] org '{}' — {} function entr{} after filtering for '{}'",
+            org.orgIdentifier(), funcs.size(), funcs.size() == 1 ? "y" : "ies", funcConstraint);
       }
       for (final OrgRightsClaim.FunctionEntry f : funcs) {
         try {
-          authorities.add(OrganizationalAuthority.of(
-              org.orgIdentifier(), f.function(), OrganizationRight.parse(f.right())));
+          final OrganizationalAuthority authority = OrganizationalAuthority.of(
+              org.orgIdentifier(), f.function(), OrganizationRight.parse(f.right()));
+          log.debug("[org-rights-parser] Adding authority: {}", authority.getAuthority());
+          authorities.add(authority);
         }
         catch (final IllegalArgumentException e) {
-          log.debug("Skipping unrecognized right value '{}' for org '{}', function '{}'",
+          log.debug("[org-rights-parser] Skipping unrecognized right '{}' for org '{}', function '{}'",
               f.right(), org.orgIdentifier(), f.function());
         }
       }
     }
 
+    log.debug("[org-rights-parser] Resolved {} authorit{}", authorities.size(),
+        authorities.size() == 1 ? "y" : "ies");
     return List.copyOf(authorities);
   }
 
