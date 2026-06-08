@@ -8,7 +8,7 @@
   <packaging>pom</packaging>
   <version>0.9.1-SNAPSHOT</version>
 
-  <name>Sween Connect :: IAM :: Organizations and Users Registration :: Parent POM</name>
+  <name>Sweden Connect :: IAM :: Organizations and Users Registration :: Parent POM</name>
   <description>Parent POM for the Sweden Connect IAM for Organizations and Users Registration</description>
   <url>https://www.swedenconnect.se</url>
 

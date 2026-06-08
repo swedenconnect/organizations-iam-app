@@ -28,6 +28,7 @@ import org.keycloak.models.UserModel;
 import org.keycloak.models.UserSessionModel;
 import org.keycloak.protocol.oidc.mappers.AbstractOIDCProtocolMapper;
 import org.keycloak.protocol.oidc.mappers.OIDCAccessTokenMapper;
+import org.keycloak.protocol.oidc.mappers.OIDCAttributeMapperHelper;
 import org.keycloak.protocol.oidc.mappers.OIDCIDTokenMapper;
 import org.keycloak.protocol.oidc.mappers.UserInfoTokenMapper;
 import org.keycloak.provider.ProviderConfigProperty;
@@ -40,6 +41,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import static org.keycloak.protocol.oidc.mappers.OIDCAttributeMapperHelper.TOKEN_CLAIM_NAME;
+
 /**
  * A Keycloak OIDC protocol mapper that adds the {@code org_rights} claim to tokens. The claim
  * describes all rights the user holds across organizations and functions, derived entirely from
@@ -49,6 +52,10 @@ import java.util.stream.Collectors;
  */
 public class OrgRightsMapper extends AbstractOIDCProtocolMapper
     implements OIDCAccessTokenMapper, OIDCIDTokenMapper, UserInfoTokenMapper {
+
+
+  private static final List<ProviderConfigProperty> configProperties = new ArrayList<>();
+
 
   private static final Logger LOG = Logger.getLogger(OrgRightsMapper.class);
 
@@ -63,7 +70,7 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
   // ---- Token claim name ----
 
   /** The name of the claim added to the token. */
-  public static final String CLAIM_NAME = "org_rights";
+  public static final String DEFAULT_CLAIM_NAME = "org_rights";
 
   // ---- Realm role ----
 
@@ -128,6 +135,16 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
   /** Claim entry field: the superuser flag, used in the superuser shortcut entry. */
   public static final String CLAIM_FIELD_SUPERUSER = "superuser";
 
+
+  static {
+    OIDCAttributeMapperHelper.addTokenClaimNameConfig(configProperties);
+    OIDCAttributeMapperHelper.addIncludeInTokensConfig(configProperties, OrgRightsMapper.class);
+    configProperties.stream()
+        .filter(property ->  property.getName().equals(TOKEN_CLAIM_NAME))
+        .forEach(property -> property.setDefaultValue(DEFAULT_CLAIM_NAME));
+
+  }
+
   // ---- Special function value ----
 
   /**
@@ -160,7 +177,7 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
 
   @Override
   public @NonNull List<ProviderConfigProperty> getConfigProperties() {
-    return List.of();
+    return configProperties;
   }
 
   @Override
@@ -173,9 +190,9 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
 
     final UserModel user = userSession.getUser();
     final RealmModel realm = keycloakSession.getContext().getRealm();
+    final String claimName = resolveClaimName(mappingModel);
 
-    LOG.debugf("[org-rights] Building %s claim for user '%s'", CLAIM_NAME, user.getUsername());
-
+    LOG.debugf("[org-rights] Building %s claim for user '%s'", claimName, user.getUsername());
     // Step 1 — Check for superuser
     final RoleModel superuserRole = realm.getRole(REALM_ROLE_SUPERUSER);
     if (superuserRole != null && user.hasRole(superuserRole)) {
@@ -183,7 +200,7 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
           user.getUsername(), REALM_ROLE_SUPERUSER);
       final Map<String, Object> superuserEntry = new LinkedHashMap<>();
       superuserEntry.put(CLAIM_FIELD_SUPERUSER, true);
-      token.getOtherClaims().put(CLAIM_NAME, List.of(superuserEntry));
+      token.getOtherClaims().put(claimName, List.of(superuserEntry));
       return;
     }
     LOG.debugf("[org-rights] User '%s' is not a superuser", user.getUsername());
@@ -196,7 +213,7 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
 
     if (orgsGroup == null) {
       LOG.debugf("[org-rights] Top-level group '%s' not found in realm — emitting empty claim", GROUP_ORGS);
-      token.getOtherClaims().put(CLAIM_NAME, List.of());
+      token.getOtherClaims().put(claimName, List.of());
       return;
     }
     LOG.debugf("[org-rights] Found top-level group '%s' (id=%s)", GROUP_ORGS, orgsGroup.getId());
@@ -208,7 +225,7 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
     LOG.debugf("[org-rights] User '%s' belongs to %d group(s)", user.getUsername(), userGroups.size());
 
     if (userGroups.isEmpty()) {
-      token.getOtherClaims().put(CLAIM_NAME, List.of());
+      token.getOtherClaims().put(claimName, List.of());
       return;
     }
 
@@ -309,9 +326,14 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
     }
 
     LOG.debugf("[org-rights] Emitting '%s' claim with %d org entr%s for user '%s'",
-        CLAIM_NAME, entries.size(), entries.size() == 1 ? "y" : "ies", user.getUsername());
+        claimName, entries.size(), entries.size() == 1 ? "y" : "ies", user.getUsername());
 
-    token.getOtherClaims().put(CLAIM_NAME, entries);
+    token.getOtherClaims().put(claimName, entries);
+  }
+
+  private @NonNull String resolveClaimName(final @NonNull ProtocolMapperModel mappingModel) {
+    final String configured = mappingModel.getConfig().get(TOKEN_CLAIM_NAME);
+    return (configured != null && !configured.isBlank()) ? configured : DEFAULT_CLAIM_NAME;
   }
 
   /**
