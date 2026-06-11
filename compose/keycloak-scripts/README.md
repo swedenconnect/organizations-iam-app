@@ -1,5 +1,17 @@
 # Keycloak Scripts
 
+> **Deprecated.** These scripts are Docker Compose wrappers that require a running
+> `keycloak-setup` container and are tied to the local development setup.
+>
+> They have been superseded by the standalone scripts in
+> [`keycloak/scripts/`](../../keycloak/scripts/README.md), which use the Keycloak
+> Admin REST API directly (`curl` + `python3`) and work against any reachable Keycloak
+> instance — locally or in production. New deployments should use those scripts instead.
+>
+> These wrappers will not be updated going forward.
+
+---
+
 Utility scripts for managing Keycloak realms via the Docker Compose setup.
 
 Each script in this directory is a thin wrapper that runs the corresponding inner script
