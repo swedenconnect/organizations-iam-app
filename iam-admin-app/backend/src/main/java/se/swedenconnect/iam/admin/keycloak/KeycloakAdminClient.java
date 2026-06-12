@@ -57,10 +57,9 @@ import java.util.concurrent.TimeUnit;
  * Low-level client for the KeyCloak Admin REST API.
  *
  * <p>Provides typed methods for the API operations needed by the IAM Admin application.
- * Service account token acquisition is delegated to Spring Security's
- * {@link OAuth2AuthorizedClientManager} using the {@code iam-admin-sa} client registration
- * (client_credentials grant, private_key_jwt authentication). Token caching and refresh
- * are handled automatically by the underlying {@code OAuth2AuthorizedClientService}.</p>
+ * Service account token acquisition is delegated to Spring Security's {@link OAuth2AuthorizedClientManager} using the
+ * {@code iam-admin-sa} client registration (client_credentials grant, private_key_jwt authentication). Token caching
+ * and refresh are handled automatically by the underlying {@code OAuth2AuthorizedClientService}.</p>
  *
  * @author Martin Lindström
  */
@@ -76,6 +75,7 @@ public class KeycloakAdminClient {
   private final boolean pnrUserids;
   private final IamAdminProperties properties;
   private CacheToken cacheToken;
+
   public KeycloakAdminClient(
       final @NonNull OAuth2AuthorizedClientManager authorizedClientManager,
       final RestClient.Builder restClientBuilder,
@@ -126,9 +126,10 @@ public class KeycloakAdminClient {
       this.expiryTime = expiryTime;
       this.tokenValue = tokenValue;
     }
+
     public boolean expired() {
       return System.currentTimeMillis() >
-          Math.min(this.expiryTime,this.expiryTime - TimeUnit.HOURS.toMillis(1));
+          Math.min(this.expiryTime, this.expiryTime - TimeUnit.HOURS.toMillis(1));
     }
   }
 
@@ -186,8 +187,8 @@ public class KeycloakAdminClient {
   // ---------------------------------------------------------------------------
 
   /**
-   * Posts {@code body} to {@code adminApiBase + path} and returns the {@code Location} header
-   * value from the response, or {@code null} if no such header is present.
+   * Posts {@code body} to {@code adminApiBase + path} and returns the {@code Location} header value from the response,
+   * or {@code null} if no such header is present.
    *
    * @param path relative path under the admin API base
    * @param body request body (serialised to JSON by Jackson)
@@ -230,10 +231,10 @@ public class KeycloakAdminClient {
   }
 
   /**
-   * Posts {@code body} to {@code adminApiBase + path}, reads the JSON response body, and
-   * returns the value of the {@code id} field. Use this for Authorization Services endpoints
-   * ({@code /authz/resource-server/policy/*}, {@code /authz/resource-server/permission/*})
-   * which return the created resource in the body rather than a {@code Location} header.
+   * Posts {@code body} to {@code adminApiBase + path}, reads the JSON response body, and returns the value of the
+   * {@code id} field. Use this for Authorization Services endpoints ({@code /authz/resource-server/policy/*},
+   * {@code /authz/resource-server/permission/*}) which return the created resource in the body rather than a
+   * {@code Location} header.
    *
    * @param path relative path under the admin API base
    * @param body request body (serialised to JSON by Jackson)
@@ -244,7 +245,8 @@ public class KeycloakAdminClient {
     return this.adminPostForId(path, body, true);
   }
 
-  private @NonNull String adminPostForId(final @NonNull String path, final @NonNull Object body, final boolean retryOn401) {
+  private @NonNull String adminPostForId(final @NonNull String path, final @NonNull Object body,
+      final boolean retryOn401) {
     final String token = this.getAccessToken();
     try {
       @SuppressWarnings("unchecked")
@@ -397,8 +399,8 @@ public class KeycloakAdminClient {
   }
 
   /**
-   * Extracts the Keycloak group UUID from a {@code Location} header value by returning the
-   * substring after the last {@code /}.
+   * Extracts the Keycloak group UUID from a {@code Location} header value by returning the substring after the last
+   * {@code /}.
    *
    * @param location the {@code Location} header value
    * @return the group UUID
@@ -464,8 +466,8 @@ public class KeycloakAdminClient {
   // ---------------------------------------------------------------------------
 
   /**
-   * Fetches all organization groups from the {@code orgs} top-level group, including each
-   * org's attached function sub-groups.
+   * Fetches all organization groups from the {@code orgs} top-level group, including each org's attached function
+   * sub-groups.
    *
    * @return list of organizations; never {@code null}
    */
@@ -473,7 +475,7 @@ public class KeycloakAdminClient {
     final List<OrganizationInfo> allOrgGroups = new ArrayList<>();
     int first = 0;
     while (true) {
-      final List<OrganizationInfo> page = this.fetchOrganizationGroupsPaged(first,PAGE_SIZE);
+      final List<OrganizationInfo> page = this.fetchOrganizationGroupsPaged(first, PAGE_SIZE);
       if (page == null || page.isEmpty()) {
         break;
       }
@@ -490,7 +492,7 @@ public class KeycloakAdminClient {
    * Fetches a single page of organization groups from Keycloak.
    *
    * @param first offset (0-based)
-   * @param max   maximum number of results to return
+   * @param max maximum number of results to return
    * @return list of organizations for the requested page; never {@code null}
    */
   public @NonNull List<OrganizationInfo> fetchOrganizationGroupsPaged(final int first, final int max) {
@@ -536,9 +538,9 @@ public class KeycloakAdminClient {
    * Fetches a single organization by its identifier.
    *
    * <p>Uses Keycloak's group search by name and filters to the exact path
-   * {@code /orgs/{orgIdentifier}}. Handles both the flat response format of Keycloak 23+ and
-   * the hierarchical response of older versions where matching sub-groups are nested inside
-   * their parent group under the {@code subGroups} key.</p>
+   * {@code /orgs/{orgIdentifier}}. Handles both the flat response format of Keycloak 23+ and the hierarchical response
+   * of older versions where matching sub-groups are nested inside their parent group under the {@code subGroups}
+   * key.</p>
    *
    * @param orgIdentifier the organization identifier (10-digit number)
    * @return the organization, or empty if not found
@@ -595,8 +597,7 @@ public class KeycloakAdminClient {
    * Returns the sorted list of organization identifiers that have the given function attached.
    *
    * <p>Uses Keycloak's global group search for groups named {@code functionId}, then filters
-   * to those at path depth {@code /orgs/{orgId}/{functionId}}. The result is sorted for
-   * stable pagination.</p>
+   * to those at path depth {@code /orgs/{orgId}/{functionId}}. The result is sorted for stable pagination.</p>
    *
    * @param functionId the function identifier
    * @return sorted list of org identifiers; never {@code null}
@@ -672,8 +673,7 @@ public class KeycloakAdminClient {
   }
 
   /**
-   * Checks whether an organization with the given identifier already exists under the
-   * {@code orgs} top-level group.
+   * Checks whether an organization with the given identifier already exists under the {@code orgs} top-level group.
    *
    * @param orgIdentifier the organization number (10 digits)
    * @return {@code true} if the organization exists, {@code false} otherwise
@@ -685,15 +685,15 @@ public class KeycloakAdminClient {
   }
 
   /**
-   * Creates a new organization group under the {@code orgs} top-level group, along with the
-   * standard {@code _admin}, {@code _write}, and {@code _read} sub-groups.
+   * Creates a new organization group under the {@code orgs} top-level group, along with the standard {@code _admin},
+   * {@code _write}, and {@code _read} sub-groups.
    *
    * <p>No rollback is performed if a sub-group creation fails — the caller should treat a
    * {@link KeycloakAdminException} as a partial-failure signal and investigate manually.</p>
    *
    * @param orgIdentifier the organization number (10 digits), used as the group name
-   * @param nameSv        Swedish organization name
-   * @param nameEn        English organization name
+   * @param nameSv Swedish organization name
+   * @param nameEn English organization name
    * @throws KeycloakAdminException on any Keycloak API error
    */
   public void createOrganization(
@@ -731,8 +731,7 @@ public class KeycloakAdminClient {
   }
 
   /**
-   * Checks whether a function with the given identifier exists under the {@code functions}
-   * top-level group.
+   * Checks whether a function with the given identifier exists under the {@code functions} top-level group.
    *
    * @param functionId the function identifier (group name)
    * @return {@code true} if the function exists, {@code false} otherwise
@@ -746,9 +745,9 @@ public class KeycloakAdminClient {
   /**
    * Creates a new function group under the {@code functions} top-level group.
    *
-   * @param functionId    the function identifier (group name), must match {@code [a-z0-9_-]+}
-   * @param nameSv        Swedish display name
-   * @param nameEn        English display name
+   * @param functionId the function identifier (group name), must match {@code [a-z0-9_-]+}
+   * @param nameSv Swedish display name
+   * @param nameEn English display name
    * @param descriptionSv Swedish description (optional)
    * @param descriptionEn English description (optional)
    * @throws KeycloakAdminException on any Keycloak API error
@@ -792,9 +791,9 @@ public class KeycloakAdminClient {
    * <p>Fetches the current group representation, merges the new attribute values, and
    * issues a PUT to persist the changes. The function identifier (group name) is immutable.</p>
    *
-   * @param functionId    the function identifier (group name)
-   * @param nameSv        new Swedish display name
-   * @param nameEn        new English display name
+   * @param functionId the function identifier (group name)
+   * @param nameSv new Swedish display name
+   * @param nameEn new English display name
    * @param descriptionSv new Swedish description, or {@code null} to clear
    * @param descriptionEn new English description, or {@code null} to clear
    * @throws KeycloakAdminException if the function group is not found or on API error
@@ -830,12 +829,14 @@ public class KeycloakAdminClient {
     attrs.put("name#en", List.of(nameEn));
     if (descriptionSv != null && !descriptionSv.isBlank()) {
       attrs.put("description#sv", List.of(descriptionSv));
-    } else {
+    }
+    else {
       attrs.remove("description#sv");
     }
     if (descriptionEn != null && !descriptionEn.isBlank()) {
       attrs.put("description#en", List.of(descriptionEn));
-    } else {
+    }
+    else {
       attrs.remove("description#en");
     }
 
@@ -868,8 +869,7 @@ public class KeycloakAdminClient {
    * skipped rather than causing a failure.</p>
    *
    * @param functionId the function identifier
-   * @throws KeycloakAdminException if the canonical function group is not found or on
-   *                                unexpected API errors
+   * @throws KeycloakAdminException if the canonical function group is not found or on unexpected API errors
    */
   public void deleteFunction(final @NonNull String functionId) {
     // Step 1 — Resolve canonical function group id
@@ -924,7 +924,8 @@ public class KeycloakAdminClient {
               this.adminDelete("/clients/" + clientUuid + "/authz/resource-server/permission/" + permId);
               log.debug("Deleted permission '{}' on client {}", permName, clientUuid);
             }
-          } else {
+          }
+          else {
             log.debug("Permission '{}' not found on client {} — skipping", permName, clientUuid);
           }
 
@@ -939,7 +940,8 @@ public class KeycloakAdminClient {
               this.adminDelete("/clients/" + clientUuid + "/authz/resource-server/policy/" + policyId);
               log.debug("Deleted policy '{}' on client {}", policyName, clientUuid);
             }
-          } else {
+          }
+          else {
             log.debug("Policy '{}' not found on client {} — skipping", policyName, clientUuid);
           }
 
@@ -954,10 +956,13 @@ public class KeycloakAdminClient {
             try {
               this.adminDelete("/clients/" + clientUuid + "/optional-client-scopes/" + scopeId);
               log.debug("Removed optional client scope '{}' from client {}", scopeName, clientUuid);
-            } catch (final KeycloakAdminException e) {
-              log.debug("Optional client scope '{}' not on client {} — skipping: {}", scopeName, clientUuid, e.getMessage());
             }
-          } else {
+            catch (final KeycloakAdminException e) {
+              log.debug("Optional client scope '{}' not on client {} — skipping: {}", scopeName, clientUuid,
+                  e.getMessage());
+            }
+          }
+          else {
             log.debug("Client scope '{}' not found — skipping optional scope removal", scopeName);
           }
         }
@@ -975,7 +980,8 @@ public class KeycloakAdminClient {
         if (scopeId != null) {
           this.adminDelete("/client-scopes/" + scopeId);
           log.debug("Deleted realm client scope '{}'", scopeName);
-        } else {
+        }
+        else {
           log.debug("Realm client scope '{}' not found — skipping", scopeName);
         }
       }
@@ -997,7 +1003,7 @@ public class KeycloakAdminClient {
    * Checks whether the given function is already attached to the given organization.
    *
    * @param orgIdentifier the organization identifier
-   * @param functionId    the function identifier
+   * @param functionId the function identifier
    * @return {@code true} if the function is already a sub-group of the org group
    */
   public boolean isFunctionAttachedToOrg(
@@ -1046,7 +1052,7 @@ public class KeycloakAdminClient {
    * {@link KeycloakAdminException} as a partial-failure signal.</p>
    *
    * @param orgIdentifier the organization identifier
-   * @param functionId    the function identifier
+   * @param functionId the function identifier
    * @throws KeycloakAdminException on any Keycloak API error
    */
   public void attachFunctionToOrg(
@@ -1083,10 +1089,10 @@ public class KeycloakAdminClient {
     }
 
     // Step 4 — Create 3 client scopes (IDs needed for optional-scope registration in step 6)
-    final String readScopeName  = orgIdentifier + ":" + functionId + ":read";
+    final String readScopeName = orgIdentifier + ":" + functionId + ":read";
     final String writeScopeName = orgIdentifier + ":" + functionId + ":write";
     final String adminScopeName = orgIdentifier + ":" + functionId + ":admin";
-    final String readScopeId  = this.createClientScope(readScopeName);
+    final String readScopeId = this.createClientScope(readScopeName);
     final String writeScopeId = this.createClientScope(writeScopeName);
     final String adminScopeId = this.createClientScope(adminScopeName);
     log.debug("Client scopes created — read:{}, write:{}, admin:{}", readScopeId, writeScopeId, adminScopeId);
@@ -1134,8 +1140,8 @@ public class KeycloakAdminClient {
   }
 
   /**
-   * Resolves the Keycloak group UUID for the given organization by looking it up as a direct
-   * child of the {@code orgs} top-level group.
+   * Resolves the Keycloak group UUID for the given organization by looking it up as a direct child of the {@code orgs}
+   * top-level group.
    *
    * @param orgIdentifier the organization identifier (group name)
    * @return the Keycloak group UUID, or {@code null} if not found
@@ -1238,11 +1244,11 @@ public class KeycloakAdminClient {
    * Creates an Authorization Services scope on the given client's resource server.
    *
    * <p>This is distinct from an OAuth2 client scope. KeyCloak's Authorization Services
-   * maintains its own scope registry per resource server, and scope permissions must
-   * reference scopes from this registry — not global client scope names or UUIDs.</p>
+   * maintains its own scope registry per resource server, and scope permissions must reference scopes from this
+   * registry — not global client scope names or UUIDs.</p>
    *
    * @param clientUuid the Keycloak UUID of the client
-   * @param scopeName  the scope name (e.g. {@code org:func:read})
+   * @param scopeName the scope name (e.g. {@code org:func:read})
    * @throws KeycloakAdminException if creation fails
    */
   private void createAuthzScope(final @NonNull String clientUuid, final @NonNull String scopeName) {
@@ -1253,8 +1259,8 @@ public class KeycloakAdminClient {
   }
 
   /**
-   * Creates a client scope with the given name and returns its Keycloak UUID extracted from
-   * the {@code Location} header.
+   * Creates a client scope with the given name and returns its Keycloak UUID extracted from the {@code Location}
+   * header.
    *
    * @param scopeName the scope name (e.g. {@code org:func:read})
    * @return the Keycloak UUID of the created scope
@@ -1278,15 +1284,15 @@ public class KeycloakAdminClient {
    * Creates a group policy and a scope permission for a given client, org/func/level combination.
    *
    * <p>Note: The permission endpoint expects scope references by <em>name</em>, not by UUID.
-   * The {@code scopeName} parameter is used for the permission body; {@code scopeId} is kept
-   * for future reference but is not sent to the permission endpoint.</p>
+   * The {@code scopeName} parameter is used for the permission body; {@code scopeId} is kept for future reference but
+   * is not sent to the permission endpoint.</p>
    *
-   * @param clientUuid    the Keycloak UUID of the client
+   * @param clientUuid the Keycloak UUID of the client
    * @param orgIdentifier the organization identifier
-   * @param functionId    the function identifier
-   * @param level         the rights level ({@code read}, {@code write}, or {@code admin})
-   * @param scopeName     the client scope name (e.g. {@code org:func:read})
-   * @param groupPaths    the group paths that grant access at this level
+   * @param functionId the function identifier
+   * @param level the rights level ({@code read}, {@code write}, or {@code admin})
+   * @param scopeName the client scope name (e.g. {@code org:func:read})
+   * @param groupPaths the group paths that grant access at this level
    * @throws KeycloakAdminException on any API error
    */
   private void createPolicyAndPermission(
@@ -1341,7 +1347,7 @@ public class KeycloakAdminClient {
    * within each right (nulls last).</p>
    *
    * @param orgIdentifier the organization identifier
-   * @param functionId    the function identifier
+   * @param functionId the function identifier
    * @return list of rights holders; never {@code null}
    * @throws KeycloakAdminException if the org group or function sub-group is not found
    */
@@ -1519,13 +1525,13 @@ public class KeycloakAdminClient {
    * Creates a new user in the realm with the given details.
    *
    * <p>The {@code name} is split on the first space into {@code firstName} and {@code lastName}.
-   * If there is no space the whole string is used as {@code firstName}. A random UUID is
-   * supplied as {@code username} because Keycloak 26 requires it.</p>
+   * If there is no space the whole string is used as {@code firstName}. A random UUID is supplied as {@code username}
+   * because Keycloak 26 requires it.</p>
    *
-   * @param name                   display name (split into first / last name)
-   * @param email                  optional email address
+   * @param name display name (split into first / last name)
+   * @param email optional email address
    * @param personalIdentityNumber 12-digit personal identity number
-   * @param phoneNumber            optional phone number
+   * @param phoneNumber optional phone number
    * @return the Keycloak UUID of the newly created user
    * @throws KeycloakAdminException on any Keycloak API error
    */
@@ -1537,7 +1543,7 @@ public class KeycloakAdminClient {
 
     final int spaceIdx = name.indexOf(' ');
     final String firstName = spaceIdx > 0 ? name.substring(0, spaceIdx) : name;
-    final String lastName  = spaceIdx > 0 ? name.substring(spaceIdx + 1) : "";
+    final String lastName = spaceIdx > 0 ? name.substring(spaceIdx + 1) : "";
 
     final Map<String, List<String>> attributes = new LinkedHashMap<>();
     attributes.put("personalIdentityNumber", List.of(personalIdentityNumber));
@@ -1573,8 +1579,8 @@ public class KeycloakAdminClient {
    * <p>Group path: {@code /orgs/<orgIdentifier>/_<right>}</p>
    *
    * @param orgIdentifier the organization identifier
-   * @param userId        the Keycloak user UUID
-   * @param right         the right level ({@code read}, {@code write}, or {@code admin})
+   * @param userId the Keycloak user UUID
+   * @param right the right level ({@code read}, {@code write}, or {@code admin})
    * @throws KeycloakAdminException if the org group or right group is not found, or on API error
    */
   public void addUserToOrgRight(
@@ -1610,7 +1616,8 @@ public class KeycloakAdminClient {
           this.adminDelete("/users/" + userId + "/groups/" + childId);
           log.debug("User '{}' removed from right group '{}' under org '{}'",
               userId, childName, orgIdentifier);
-        } catch (final KeycloakAdminException e) {
+        }
+        catch (final KeycloakAdminException e) {
           log.debug("User '{}' was not in right group '{}' under org '{}' — skipping removal",
               userId, childName, orgIdentifier);
         }
@@ -1624,9 +1631,9 @@ public class KeycloakAdminClient {
    * <p>Group path: {@code /orgs/<orgIdentifier>/<functionId>/_<right>}</p>
    *
    * @param orgIdentifier the organization identifier
-   * @param functionId    the function identifier
-   * @param userId        the Keycloak user UUID
-   * @param right         the right level ({@code read}, {@code write}, or {@code admin})
+   * @param functionId the function identifier
+   * @param userId the Keycloak user UUID
+   * @param right the right level ({@code read}, {@code write}, or {@code admin})
    * @throws KeycloakAdminException if any group in the path is not found, or on API error
    */
   public void addUserToFunctionRight(
@@ -1674,7 +1681,8 @@ public class KeycloakAdminClient {
           this.adminDelete("/users/" + userId + "/groups/" + childId);
           log.debug("User '{}' removed from right group '{}' under function '{}' of org '{}'",
               userId, childName, functionId, orgIdentifier);
-        } catch (final KeycloakAdminException e) {
+        }
+        catch (final KeycloakAdminException e) {
           log.debug("User '{}' was not in right group '{}' under function '{}' of org '{}' — skipping removal",
               userId, childName, functionId, orgIdentifier);
         }
@@ -1688,8 +1696,8 @@ public class KeycloakAdminClient {
    * <p>Group path: {@code /orgs/<orgIdentifier>/_<right>}</p>
    *
    * @param orgIdentifier the organization identifier
-   * @param userId        the Keycloak user UUID
-   * @param right         the right level ({@code read}, {@code write}, or {@code admin})
+   * @param userId the Keycloak user UUID
+   * @param right the right level ({@code read}, {@code write}, or {@code admin})
    * @throws KeycloakAdminException if the org group or right group is not found, or on API error
    */
   public void removeUserFromOrgRight(
@@ -1720,9 +1728,9 @@ public class KeycloakAdminClient {
    * <p>Group path: {@code /orgs/<orgIdentifier>/<functionId>/_<right>}</p>
    *
    * @param orgIdentifier the organization identifier
-   * @param functionId    the function identifier
-   * @param userId        the Keycloak user UUID
-   * @param right         the right level ({@code read}, {@code write}, or {@code admin})
+   * @param functionId the function identifier
+   * @param userId the Keycloak user UUID
+   * @param right the right level ({@code read}, {@code write}, or {@code admin})
    * @throws KeycloakAdminException if any group in the path is not found, or on API error
    */
   public void removeUserFromFunctionRight(
@@ -1763,13 +1771,12 @@ public class KeycloakAdminClient {
    * Updates a user's profile fields in Keycloak.
    *
    * <p>Splits {@code name} on the first space into {@code firstName} and {@code lastName}.
-   * Sets {@code email} at the top level. Stores {@code phoneNumber} in the
-   * {@code phoneNumber} custom attribute (replaces previous value, or removes the attribute
-   * if {@code null} or blank).</p>
+   * Sets {@code email} at the top level. Stores {@code phoneNumber} in the {@code phoneNumber} custom attribute
+   * (replaces previous value, or removes the attribute if {@code null} or blank).</p>
    *
-   * @param userId      the Keycloak user UUID
-   * @param name        the user's full name
-   * @param email       optional email address
+   * @param userId the Keycloak user UUID
+   * @param name the user's full name
+   * @param email optional email address
    * @param phoneNumber optional phone number
    * @throws KeycloakAdminException on any Keycloak API error
    */
@@ -1781,7 +1788,7 @@ public class KeycloakAdminClient {
 
     final int spaceIdx = name.indexOf(' ');
     final String firstName = spaceIdx > 0 ? name.substring(0, spaceIdx) : name;
-    final String lastName  = spaceIdx > 0 ? name.substring(spaceIdx + 1) : "";
+    final String lastName = spaceIdx > 0 ? name.substring(spaceIdx + 1) : "";
 
     // Fetch the current user representation to preserve existing attributes
     final Map<String, Object> existing = this.adminGet(
@@ -1797,7 +1804,8 @@ public class KeycloakAdminClient {
     // Preserve personalIdentityNumber; update phoneNumber
     if (phoneNumber != null && !phoneNumber.isBlank()) {
       existingAttrs.put("phoneNumber", List.of(phoneNumber));
-    } else {
+    }
+    else {
       existingAttrs.remove("phoneNumber");
     }
 
@@ -1830,16 +1838,14 @@ public class KeycloakAdminClient {
    * Updates the mutable attributes of an organization group in Keycloak.
    *
    * <p>Only non-null parameters are applied. {@code null} for {@code nameSv}/{@code nameEn}
-   * means "do not change". An empty string for {@code contactEmail} or {@code contactPhone}
-   * means "clear the attribute".</p>
+   * means "do not change". An empty string for {@code contactEmail} or {@code contactPhone} means "clear the
+   * attribute".</p>
    *
    * @param orgIdentifier the organization identifier
-   * @param nameSv        new Swedish name, or {@code null} to leave unchanged
-   * @param nameEn        new English name, or {@code null} to leave unchanged
-   * @param contactEmail  new contact email, or {@code null} to leave unchanged, or {@code ""}
-   *                      to clear
-   * @param contactPhone  new contact phone, or {@code null} to leave unchanged, or {@code ""}
-   *                      to clear
+   * @param nameSv new Swedish name, or {@code null} to leave unchanged
+   * @param nameEn new English name, or {@code null} to leave unchanged
+   * @param contactEmail new contact email, or {@code null} to leave unchanged, or {@code ""} to clear
+   * @param contactPhone new contact phone, or {@code null} to leave unchanged, or {@code ""} to clear
    * @throws KeycloakAdminException if the org group is not found or on API error
    */
   public void updateOrganization(
@@ -1878,10 +1884,12 @@ public class KeycloakAdminClient {
         contactInfo.remove("email");
         if (contactInfo.isEmpty()) {
           attrs.remove("contact_info");
-        } else {
+        }
+        else {
           attrs.put("contact_info", List.of(toContactInfoJson(contactInfo)));
         }
-      } else {
+      }
+      else {
         final String existingJson = getFirstListValue(attrs.get("contact_info"));
         final Map<String, String> contactInfo = parseContactInfo(existingJson);
         contactInfo.put("email", contactEmail);
@@ -1895,10 +1903,12 @@ public class KeycloakAdminClient {
         contactInfo.remove("phone_number");
         if (contactInfo.isEmpty()) {
           attrs.remove("contact_info");
-        } else {
+        }
+        else {
           attrs.put("contact_info", List.of(toContactInfoJson(contactInfo)));
         }
-      } else {
+      }
+      else {
         final String existingJson = getFirstListValue(attrs.get("contact_info"));
         final Map<String, String> contactInfo = parseContactInfo(existingJson);
         contactInfo.put("phone_number", contactPhone);
@@ -1920,8 +1930,8 @@ public class KeycloakAdminClient {
    * all sub-groups (_admin, _write, _read, and any attached function sub-groups).</p>
    *
    * <p>The caller is responsible for ensuring that no functions are attached before calling
-   * this method, and for cleaning up any client scopes / authz policies that were created
-   * when functions were attached. For now this method performs a simple group DELETE.</p>
+   * this method, and for cleaning up any client scopes / authz policies that were created when functions were attached.
+   * For now this method performs a simple group DELETE.</p>
    *
    * @param orgIdentifier the organization identifier
    * @throws KeycloakAdminException if the org group is not found or on API error
@@ -1936,8 +1946,8 @@ public class KeycloakAdminClient {
   }
 
   /**
-   * Detaches a function from an organization by removing the function sub-group and all
-   * associated Keycloak artifacts created during attachment.
+   * Detaches a function from an organization by removing the function sub-group and all associated Keycloak artifacts
+   * created during attachment.
    *
    * <p>Performs the following steps:
    * <ol>
@@ -1961,7 +1971,7 @@ public class KeycloakAdminClient {
    * {@link KeycloakAdminException}.</p>
    *
    * @param orgIdentifier the organization identifier
-   * @param functionId    the function identifier
+   * @param functionId the function identifier
    * @throws KeycloakAdminException if the org or function group is not found, or on API error
    */
   public void detachFunctionFromOrg(
@@ -2006,7 +2016,8 @@ public class KeycloakAdminClient {
         try {
           this.adminDelete("/clients/" + clientUuid + "/optional-client-scopes/" + scopeId);
           log.debug("Removed optional client scope '{}' from client {}", scopeName, clientUuid);
-        } catch (final KeycloakAdminException e) {
+        }
+        catch (final KeycloakAdminException e) {
           log.debug("Optional client scope '{}' not assigned to client {} — skipping: {}",
               scopeName, clientUuid, e.getMessage());
         }
@@ -2031,7 +2042,8 @@ public class KeycloakAdminClient {
             this.adminDelete("/clients/" + clientUuid + "/authz/resource-server/permission/" + permId);
             log.debug("Deleted permission '{}' on client {}", permName, clientUuid);
           }
-        } else {
+        }
+        else {
           log.debug("Permission '{}' not found on client {} — skipping", permName, clientUuid);
         }
 
@@ -2046,7 +2058,8 @@ public class KeycloakAdminClient {
             this.adminDelete("/clients/" + clientUuid + "/authz/resource-server/policy/" + policyId);
             log.debug("Deleted policy '{}' on client {}", policyName, clientUuid);
           }
-        } else {
+        }
+        else {
           log.debug("Policy '{}' not found on client {} — skipping", policyName, clientUuid);
         }
       }
@@ -2087,8 +2100,8 @@ public class KeycloakAdminClient {
    * <p>Returns basic user profile only — rights are not included. Use
    * {@link #fetchUserRights(String)} to fetch rights for a specific user.</p>
    *
-   * @param first  0-based offset
-   * @param max    maximum number of results to return
+   * @param first 0-based offset
+   * @param max maximum number of results to return
    * @return list of users for the requested page; never {@code null}
    */
   public @NonNull List<UserInfo> fetchUsersPaged(final int first, final int max) {
@@ -2115,12 +2128,12 @@ public class KeycloakAdminClient {
   /**
    * Fetches the rights for a specific user by inspecting their Keycloak group memberships.
    *
-   * <p>Group paths are parsed to extract organizational rights:
+   * <p>Group paths are parsed to extract organizational rights:</p>
    * <ul>
    *   <li>{@code /orgs/{orgId}/_admin|_write|_read} → org-level right</li>
    *   <li>{@code /orgs/{orgId}/{funcId}/_admin|_write|_read} → function-level right</li>
    * </ul>
-   * Groups outside the {@code /orgs/} hierarchy are ignored.</p>
+   * <p>Groups outside the {@code /orgs/} hierarchy are ignored.</p>
    *
    * @param userId the Keycloak user UUID
    * @return list of rights; never {@code null}
@@ -2296,8 +2309,8 @@ public class KeycloakAdminClient {
   // ---------------------------------------------------------------------------
 
   /**
-   * Returns the sorted list of unique user IDs that hold any right in any of the given
-   * organizations. Used to determine the pageable user set for a non-superuser admin.
+   * Returns the sorted list of unique user IDs that hold any right in any of the given organizations. Used to determine
+   * the pageable user set for a non-superuser admin.
    *
    * <p>Traverses org-level right groups and all function sub-groups' right groups.</p>
    *
@@ -2337,13 +2350,13 @@ public class KeycloakAdminClient {
   }
 
   /**
-   * Returns {@code true} if at least one other user (not {@code excludeUserId}) holds
-   * the org-level admin right for the given organization.
+   * Returns {@code true} if at least one other user (not {@code excludeUserId}) holds the org-level admin right for the
+   * given organization.
    *
    * <p>Returns {@code true} (non-blocking) when the org cannot be found.</p>
    *
-   * @param orgIdentifier  the organization identifier
-   * @param excludeUserId  the Keycloak user UUID to exclude from the check
+   * @param orgIdentifier the organization identifier
+   * @param excludeUserId the Keycloak user UUID to exclude from the check
    * @return {@code true} if another admin exists; {@code false} if the excluded user is the last admin
    */
   public boolean hasOtherOrgAdmin(final @NonNull String orgIdentifier, final @NonNull String excludeUserId) {
@@ -2365,15 +2378,15 @@ public class KeycloakAdminClient {
   }
 
   /**
-   * Returns {@code true} if at least one other user (not {@code excludeUserId}) holds
-   * admin rights for the given function within the given organization.
+   * Returns {@code true} if at least one other user (not {@code excludeUserId}) holds admin rights for the given
+   * function within the given organization.
    *
    * <p>Both org-level admin members and function-level admin members are considered,
    * since org-level admins implicitly cover all functions.</p>
    *
-   * @param orgIdentifier  the organization identifier
-   * @param functionId     the function identifier
-   * @param excludeUserId  the Keycloak user UUID to exclude from the check
+   * @param orgIdentifier the organization identifier
+   * @param functionId the function identifier
+   * @param excludeUserId the Keycloak user UUID to exclude from the check
    * @return {@code true} if another admin exists; {@code false} if the excluded user is the last admin
    */
   public boolean hasOtherFunctionAdmin(
@@ -2478,8 +2491,8 @@ public class KeycloakAdminClient {
   }
 
   /**
-   * Parses the {@code contact_info} group attribute value (a JSON string) into a mutable map.
-   * Returns an empty map if the value is null, blank, or not valid JSON.
+   * Parses the {@code contact_info} group attribute value (a JSON string) into a mutable map. Returns an empty map if
+   * the value is null, blank, or not valid JSON.
    */
   private static @NonNull Map<String, String> parseContactInfo(final @Nullable String json) {
     if (json == null || json.isBlank()) {
@@ -2497,7 +2510,8 @@ public class KeycloakAdminClient {
         }
       }
       return result;
-    } catch (final Exception e) {
+    }
+    catch (final Exception e) {
       log.debug("Failed to parse contact_info attribute '{}': {}", json, e.getMessage());
       return new LinkedHashMap<>();
     }

@@ -8,7 +8,7 @@
 
 ### Version 0.9.1
 
-**Date:** TBD
+**Date:** 2026-06-12
 
 - The admin application can now be deployed under a custom context path
   (e.g. `/iam-admin/`) in addition to the root path, without requiring a
