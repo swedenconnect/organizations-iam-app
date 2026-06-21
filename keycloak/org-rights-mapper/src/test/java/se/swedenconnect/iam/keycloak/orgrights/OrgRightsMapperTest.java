@@ -18,7 +18,9 @@ package se.swedenconnect.iam.keycloak.orgrights;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.keycloak.models.ClientModel;
 import org.keycloak.models.ClientSessionContext;
+import org.keycloak.models.Constants;
 import org.keycloak.models.GroupModel;
 import org.keycloak.models.KeycloakContext;
 import org.keycloak.models.KeycloakSession;
@@ -27,7 +29,8 @@ import org.keycloak.models.RealmModel;
 import org.keycloak.models.RoleModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.UserSessionModel;
-import org.keycloak.representations.IDToken;
+import org.keycloak.protocol.oidc.mappers.OIDCAttributeMapperHelper;
+import org.keycloak.representations.AccessToken;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -49,7 +52,7 @@ import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.CLAIM_FIEL
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.CLAIM_FIELD_FUNCTIONS;
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.CLAIM_FIELD_RIGHT;
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.CLAIM_FIELD_SUPERUSER;
-import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.CLAIM_NAME;
+import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.DEFAULT_CLAIM_NAME;
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.FUNCTION_WILDCARD;
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.GROUP_ORGS;
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.REALM_ROLE_SUPERUSER;
@@ -92,17 +95,26 @@ class OrgRightsMapperTest {
   @Mock
   private ClientSessionContext clientSessionCtx;
 
+  @Mock
+  private ClientModel client;
+
   @BeforeEach
   void setUp() {
     mapper = new OrgRightsMapper();
     when(keycloakSession.getContext()).thenReturn(keycloakContext);
     when(keycloakContext.getRealm()).thenReturn(realm);
+    when(keycloakContext.getClient()).thenReturn(client);
+    when(client.getAttribute(Constants.USE_LIGHTWEIGHT_ACCESS_TOKEN_ENABLED)).thenReturn(null);
     when(userSession.getUser()).thenReturn(user);
+    when(mappingModel.getConfig()).thenReturn(Map.of(
+        OIDCAttributeMapperHelper.TOKEN_CLAIM_NAME, DEFAULT_CLAIM_NAME,
+        OIDCAttributeMapperHelper.INCLUDE_IN_ACCESS_TOKEN, "true"
+    ));
   }
 
   /**
    * Test 1: Superuser. User has the superuser realm role.
-   * Verify the claim is [{superuser: true}] and nothing else.
+   * Verify the claim is [{superuser: true}] — an array, not a bare object.
    */
   @Test
   void testSuperuser() {
@@ -110,12 +122,12 @@ class OrgRightsMapperTest {
     when(realm.getRole(REALM_ROLE_SUPERUSER)).thenReturn(superuserRole);
     when(user.hasRole(superuserRole)).thenReturn(true);
 
-    final IDToken token = new IDToken();
-    mapper.setClaim(token, mappingModel, userSession, keycloakSession, clientSessionCtx);
+    final AccessToken token = new AccessToken();
+    mapper.transformAccessToken(token, mappingModel, keycloakSession, userSession, clientSessionCtx);
 
     @SuppressWarnings("unchecked")
     final List<Map<String, Object>> orgRights =
-        (List<Map<String, Object>>) token.getOtherClaims().get(CLAIM_NAME);
+        (List<Map<String, Object>>) token.getOtherClaims().get(DEFAULT_CLAIM_NAME);
 
     assertNotNull(orgRights);
     assertEquals(1, orgRights.size());
@@ -148,12 +160,12 @@ class OrgRightsMapperTest {
 
     when(user.getGroupsStream()).thenReturn(Stream.of(writeGroup));
 
-    final IDToken token = new IDToken();
-    mapper.setClaim(token, mappingModel, userSession, keycloakSession, clientSessionCtx);
+    final AccessToken token = new AccessToken();
+    mapper.transformAccessToken(token, mappingModel, keycloakSession, userSession, clientSessionCtx);
 
     @SuppressWarnings("unchecked")
     final List<Map<String, Object>> orgRights =
-        (List<Map<String, Object>>) token.getOtherClaims().get(CLAIM_NAME);
+        (List<Map<String, Object>>) token.getOtherClaims().get(DEFAULT_CLAIM_NAME);
 
     assertNotNull(orgRights);
     assertEquals(1, orgRights.size());
@@ -200,12 +212,12 @@ class OrgRightsMapperTest {
 
     when(user.getGroupsStream()).thenReturn(Stream.of(readGroup));
 
-    final IDToken token = new IDToken();
-    mapper.setClaim(token, mappingModel, userSession, keycloakSession, clientSessionCtx);
+    final AccessToken token = new AccessToken();
+    mapper.transformAccessToken(token, mappingModel, keycloakSession, userSession, clientSessionCtx);
 
     @SuppressWarnings("unchecked")
     final List<Map<String, Object>> orgRights =
-        (List<Map<String, Object>>) token.getOtherClaims().get(CLAIM_NAME);
+        (List<Map<String, Object>>) token.getOtherClaims().get(DEFAULT_CLAIM_NAME);
 
     assertNotNull(orgRights);
     assertEquals(1, orgRights.size());
@@ -258,28 +270,22 @@ class OrgRightsMapperTest {
     final GroupModel adminB = mockGroup("adminB-id", RIGHT_GROUP_ADMIN, "orgB-id");
     when(adminB.getParent()).thenReturn(orgB);
 
-    // getSubGroupsStream called once per org during entry-building phase
-    when(orgsGroup.getSubGroupsStream())
-        .thenReturn(Stream.of(orgA, orgB))
-        .thenReturn(Stream.of(orgA, orgB));
-
+    when(orgsGroup.getSubGroupsStream()).thenReturn(Stream.of(orgA, orgB));
     when(user.getGroupsStream()).thenReturn(Stream.of(readA, adminB));
 
-    final IDToken token = new IDToken();
-    mapper.setClaim(token, mappingModel, userSession, keycloakSession, clientSessionCtx);
+    final AccessToken token = new AccessToken();
+    mapper.transformAccessToken(token, mappingModel, keycloakSession, userSession, clientSessionCtx);
 
     @SuppressWarnings("unchecked")
     final List<Map<String, Object>> orgRights =
-        (List<Map<String, Object>>) token.getOtherClaims().get(CLAIM_NAME);
+        (List<Map<String, Object>>) token.getOtherClaims().get(DEFAULT_CLAIM_NAME);
 
     assertNotNull(orgRights);
     assertEquals(2, orgRights.size());
 
-    // Entries are in insertion order (order groups were iterated by Mockito)
     final Map<String, Object> firstEntry  = orgRights.get(0);
     final Map<String, Object> secondEntry = orgRights.get(1);
 
-    // Find which is org A and which is org B by identifier
     final Map<String, Object> orgAEntry = firstEntry.get(ATTR_ORGANIZATION_IDENTIFIER).equals("1111111111")
         ? firstEntry : secondEntry;
     final Map<String, Object> orgBEntry = firstEntry.get(ATTR_ORGANIZATION_IDENTIFIER).equals("2222222222")
@@ -332,12 +338,12 @@ class OrgRightsMapperTest {
 
     when(user.getGroupsStream()).thenReturn(Stream.of(orgReadGroup, funcWriteGroup));
 
-    final IDToken token = new IDToken();
-    mapper.setClaim(token, mappingModel, userSession, keycloakSession, clientSessionCtx);
+    final AccessToken token = new AccessToken();
+    mapper.transformAccessToken(token, mappingModel, keycloakSession, userSession, clientSessionCtx);
 
     @SuppressWarnings("unchecked")
     final List<Map<String, Object>> orgRights =
-        (List<Map<String, Object>>) token.getOtherClaims().get(CLAIM_NAME);
+        (List<Map<String, Object>>) token.getOtherClaims().get(DEFAULT_CLAIM_NAME);
 
     assertNotNull(orgRights);
     assertEquals(1, orgRights.size()); // single org entry
@@ -350,7 +356,6 @@ class OrgRightsMapperTest {
         (List<Map<String, String>>) entry.get(CLAIM_FIELD_FUNCTIONS);
     assertEquals(2, functions.size());
 
-    // Find the wildcard and named entries by function value
     final Map<String, String> wildcardEntry = functions.stream()
         .filter(f -> FUNCTION_WILDCARD.equals(f.get(CLAIM_FIELD_FUNCTION)))
         .findFirst()
@@ -379,12 +384,12 @@ class OrgRightsMapperTest {
     when(unrelatedGroup.getParent()).thenReturn(null);
     when(user.getGroupsStream()).thenReturn(Stream.of(unrelatedGroup));
 
-    final IDToken token = new IDToken();
-    mapper.setClaim(token, mappingModel, userSession, keycloakSession, clientSessionCtx);
+    final AccessToken token = new AccessToken();
+    mapper.transformAccessToken(token, mappingModel, keycloakSession, userSession, clientSessionCtx);
 
     @SuppressWarnings("unchecked")
     final List<Map<String, Object>> orgRights =
-        (List<Map<String, Object>>) token.getOtherClaims().get(CLAIM_NAME);
+        (List<Map<String, Object>>) token.getOtherClaims().get(DEFAULT_CLAIM_NAME);
 
     assertNotNull(orgRights);
     assertTrue(orgRights.isEmpty());
@@ -415,13 +420,13 @@ class OrgRightsMapperTest {
 
     when(user.getGroupsStream()).thenReturn(Stream.of(writeGroup));
 
-    final IDToken token = new IDToken();
+    final AccessToken token = new AccessToken();
     // Must not throw
-    mapper.setClaim(token, mappingModel, userSession, keycloakSession, clientSessionCtx);
+    mapper.transformAccessToken(token, mappingModel, keycloakSession, userSession, clientSessionCtx);
 
     @SuppressWarnings("unchecked")
     final List<Map<String, Object>> orgRights =
-        (List<Map<String, Object>>) token.getOtherClaims().get(CLAIM_NAME);
+        (List<Map<String, Object>>) token.getOtherClaims().get(DEFAULT_CLAIM_NAME);
 
     assertNotNull(orgRights);
     assertEquals(1, orgRights.size());
