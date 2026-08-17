@@ -16,15 +16,23 @@
 package se.swedenconnect.iam.admin.controllers.dto;
 
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 
 /**
  * JSON representation of the per-org rights held by the current user.
  *
+ * <p>{@code orgLevelRight} mirrors the {@code org_level_right} field of the {@code org_rights}
+ * claim. It is provenance only — it says the right was granted at the organization level, and is
+ * used solely to decide whether the user may administer the organization itself. Effective rights
+ * come from {@code functions}, which lists only functions attached to the organization and may be
+ * empty.</p>
+ *
  * @author Martin Lindström
  */
 public record OrgRightResponse(
     @NonNull String orgIdentifier,
+    @Nullable String orgLevelRight,
     @NonNull List<FunctionRightResponse> functions) {
 }

@@ -15,14 +15,24 @@ user has access to, with a nested `functions` array listing the individual right
 Rights are represented by the leaf groups `_admin`, `_write`, and `_read`. The mapper
 recognizes two grant patterns:
 
-- **Org-level right** — the user is a member of `orgs/{org}/{_admin|_write|_read}`. The
-  resulting `functions` entry uses `"*"` as the function name, indicating the right applies
-  across all functions in that organization.
+- **Org-level right** — the user is a member of `orgs/{org}/{_admin|_write|_read}`. The right is
+  **expanded** into one `functions` entry per function currently attached to that organization,
+  and additionally recorded in the `org_level_right` field for provenance. No wildcard is
+  emitted, so consumers never have to resolve the attachment set themselves.
 
 - **Function-level right** — the user is a member of `orgs/{org}/{function}/{_admin|_write|_read}`.
   The resulting `functions` entry names the specific function.
 
-**Example claim for a user with mixed memberships:**
+Where both apply to the same function, the **highest** right wins (`admin` > `write` > `read`),
+and exactly one entry per function is emitted.
+
+The attached functions of an organization are its sub-groups other than the three reserved right
+groups `_admin`, `_write` and `_read`. Matching those three names exactly — rather than
+filtering on a leading underscore — keeps a legal function identifier such as `_foo` from being
+dropped.
+
+**Example claim** for a user with org-level `write` on `5590026042` (which has `walletreg` and
+`reporting` attached) and an explicit function-level `admin` on `walletreg`:
 
 ```json
 "org_rights": [
@@ -30,13 +40,24 @@ recognizes two grant patterns:
     "organization_identifier": "5590026042",
     "organization_name#sv": "Exempelorganisationen",
     "organization_name#en": "Example Organization",
+    "org_level_right": "write",
     "functions": [
-      { "function": "walletreg", "right": "write" },
-      { "function": "reporting", "right": "read" }
+      { "function": "walletreg", "right": "admin" },
+      { "function": "reporting", "right": "write" }
     ]
   }
 ]
 ```
+
+**`org_level_right` confers no access.** It records only that the right was granted org-wide.
+Effective rights come exclusively from `functions`; a consumer that treats `org_level_right` as
+a grant would give access to functions that are not attached to the organization. Its one
+legitimate use is deciding whether the user may administer the organization itself.
+
+An org-level right on an organization with **no attached functions** yields an entry with
+`org_level_right` set and `"functions": []`. The entry is still emitted so the organization
+remains enumerable by relying parties; the empty array conveys that no function-level access
+follows.
 
 **Superuser shortcut** — if the user holds the `superuser` realm role the mapper emits a
 single-element array with just `{ "superuser": true }`, bypassing the group walk entirely:
@@ -60,7 +81,7 @@ orgs/
     _admin                 ← org-level admin right
     _write                 ← org-level write right
     _read                  ← org-level read right
-    {function-group}/
+    {function-group}/        ← an attached function (attribute: function_ref)
       _admin               ← function-level admin right
       _write               ← function-level write right
       _read                ← function-level read right
@@ -69,6 +90,11 @@ orgs/
 The organization attributes (`organization_identifier`, `organization_name#sv`,
 `organization_name#en`) are read from the org group and included verbatim in each
 `org_rights` entry.
+
+The function sub-groups are also the attachment set an org-level right is expanded onto. They
+are identified by name (anything that is not `_admin`, `_write` or `_read`) rather than by their
+`function_ref` attribute: reading the attribute would cost one extra load per sub-group, and a
+hand-provisioned realm that omitted it would silently lose the user's rights.
 
 ## Build
 

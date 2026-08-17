@@ -78,13 +78,15 @@ point users can be granted rights on that function within that organization.
 
 **Rights** come in three levels: `read`, `write`, and `admin`. They are hierarchical:
 `admin` implies `write` and `read`; `write` implies `read`. A user may hold a right at
-organization level — implicitly covering all attached functions — or on a specific function
-within an organization.
+organization level — covering every function *currently attached* to that organization — or on
+a specific function within an organization.
 
 **The `org_rights` claim** is a JSON array present in ID tokens. It provides a structured
 description of all rights the authenticated user holds across all organizations and
 functions. OIDC relying parties use this claim to determine what the user may act on in the
-application's UI.
+application's UI. A right granted at organization level arrives already expanded into one entry
+per attached function, so relying parties never have to know which functions an organization
+has attached.
 
 **OAuth2 scopes for API access** follow the pattern `{orgId}:{function}:{right}`, for
 example `5590026042:demo:write`. When a client application needs to call a downstream API
@@ -297,24 +299,31 @@ The iam-security library supports two authority modes. The mode is determined by
 
 **Function-scoped mode** (`iam.security.function` is set)
 
-The starter filters the `org_rights` claim to entries relevant to the configured function
-(both direct function rights and org-wide `*` rights that implicitly cover the function).
-When both `*` and an exact function entry exist for the same organization, the highest
-effective right is used. The resulting authorities are `FunctionScopedAuthority` instances
-with the simplified form `{orgId}:{right}` — the function identifier is implicit.
+The starter filters the `org_rights` claim to entries naming the configured function. Rights
+granted at the organization level require no special handling here — the Keycloak protocol
+mapper has already expanded them into one entry per function attached to the organization, so
+they match only if the configured function is actually attached. When several entries match
+the same organization, the highest effective right is used. The resulting authorities are
+`FunctionScopedAuthority` instances with the simplified form `{orgId}:{right}` — the function
+identifier is implicit.
 
-Example: a user has `{ "function": "*", "right": "read" }` and
-`{ "function": "demo", "right": "write" }` for organization `5590026042`. The effective
-right is `write`. The resulting authority is `5590026042:write`.
+Example: a user was granted `read` at the organization level of `5590026042` (which has `demo`
+and `walletreg` attached) plus `write` on `demo`. The claim carries
+`{ "function": "demo", "right": "write" }` and `{ "function": "walletreg", "right": "read" }`,
+so a `demo`-scoped application derives the authority `5590026042:write`.
+
+The `org_level_right` field of the claim is ignored when building authorities: it is provenance,
+not a grant. An org-level admin on an organization where the configured function is not attached
+therefore receives no authority at all.
 
 Use this mode for applications that serve a single function.
 
 **Full mode** (`iam.security.function` is not set)
 
 All organizational rights are included as `OrganizationalAuthority` instances with the form
-`{orgId}:{functionId}:{right}`. The `*` function identifier means an org-wide right covering
-all attached functions. Use this mode for applications that deal with multiple functions,
-such as the IAM admin application.
+`{orgId}:{functionId}:{right}`. Every `functionId` names a function attached to the
+organization — there is no wildcard form. Use this mode for applications that deal with
+multiple functions, such as the IAM admin application.
 
 **Superusers** receive the single authority `ROLE_SUPERUSER` in both modes. Applications
 that support superuser login must include `hasRole('SUPERUSER')` alongside their regular

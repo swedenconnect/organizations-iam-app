@@ -179,16 +179,24 @@ iam:
 ```
 
 In this mode the library:
-- Filters the `org_rights` claim to entries relevant to the configured function — both
-  direct function rights and org-wide (`*`) rights that implicitly cover the function
-- Resolves the **highest** effective right per organization when multiple matching
-  entries exist (e.g. `*:read` and `walletreg:write` → effective right is `write`)
+- Filters the `org_rights` claim to entries naming the configured function. Rights granted at
+  the organization level need no special handling: the protocol mapper has already expanded
+  them into one entry per attached function, so they match only if the configured function is
+  actually attached to the organization
+- Resolves the **highest** effective right per organization when several matching entries
+  exist (`admin` > `write` > `read`)
 - Produces `FunctionScopedAuthority` instances with the simplified form `{orgId}:{right}`
   — the function identifier is implicit and not encoded in the authority string
+- Ignores `org_level_right` entirely — that field is provenance, not a grant
 
-Example: a user has `org_rights` with `{ "function": "*", "right": "read" }` and
-`{ "function": "walletreg", "right": "write" }` for organization `5590026042`. The
-effective right is `write`. The resulting authority is `5590026042:write`.
+Example: a user was granted `read` at the organization level of `5590026042` (which has `demo`
+and `walletreg` attached) and `write` on `walletreg`. The claim therefore carries
+`{ "function": "demo", "right": "read" }` and `{ "function": "walletreg", "right": "write" }`,
+and a `walletreg`-scoped application derives the authority `5590026042:write`.
+
+Note the consequence for an organization the function is *not* attached to: an org-level admin
+there receives **no** authority from this application, because the mapper never expanded the
+right onto a function this application knows about.
 
 Example authorities after login:
 - `5590026042:write`
@@ -586,18 +594,62 @@ For a regular user:
     "organization_identifier": "5590026042",
     "organization_name#sv": "Litsec AB",
     "organization_name#en": "Litsec AB",
+    "org_level_right": "read",
     "functions": [
-      { "function": "*",         "right": "read"  },
+      { "function": "demo",      "right": "read"  },
       { "function": "walletreg", "right": "write" }
     ]
   }
 ]
 ```
 
+Every `functions` entry names a function attached to the organization — there is no wildcard.
+A right granted at the organization level is expanded onto each attached function and recorded
+in the optional `org_level_right` field.
+
+**`org_level_right` is provenance only and confers no access.** Derive authorities exclusively
+from `functions`; use `org_level_right` only to decide whether the user may administer the
+organization itself. The field is absent when no org-level right was granted, and `functions`
+may be empty (an organization with no attached functions).
+
 For a superuser:
 ```json
 "org_rights": [{ "superuser": true }]
 ```
+
+---
+
+## Enumerating organizations vs. deciding access
+
+Two different questions are answered by two different parts of the model. Conflating them is a
+source of bugs, so the library keeps them apart:
+
+| Question | Answered by |
+|---|---|
+| **Which** organizations is this user associated with? | `OrgRightsClaim.organizations()` |
+| **What** may this user do for function X in organization Y? | the granted authorities |
+
+Authorities are derived per `functions` entry. An organization with **no attached functions**
+therefore produces no authority at all — correctly, since there is nothing to act on — and so it
+is invisible to any consumer that enumerates authorities, even when the user administers that
+organization at the organization level. Enumerate organizations from the claim instead:
+
+```java
+public @NonNull List<OrgRightsClaim.Organization> organizations()
+
+public record Organization(
+    @NonNull OrganizationID orgIdentifier,
+    @NonNull LocalizedString name,
+    @Nullable String orgLevelRight)
+```
+
+Use `organizations()` whenever the goal is to list or display organizations, and the authorities
+whenever the goal is an access decision. Never turn an enumeration result into an access decision:
+`orgLevelRight` is provenance, and treating it as a grant would give access to functions that are
+not attached to the organization.
+
+For a **superuser** the claim carries no organization entries, so `organizations()` returns an
+empty list. Fetch the full list from `/iam-api/v1/organizations` in that case.
 
 ---
 
@@ -607,9 +659,11 @@ For a superuser:
 
 Authority string form: `{orgIdentifier}:{functionId}:{right}`
 
-Examples: `5590026042:walletreg:write`, `5590026042:*:admin`
+Examples: `5590026042:walletreg:write`, `5590026042:demo:admin`
 
-The `*` function identifier means an org-wide right covering all functions.
+The function identifier always names a function attached to the organization. A right granted at
+the organization level yields one authority per attached function, because the `org_rights`
+claim it is derived from is already expanded.
 
 ```java
 OrganizationalAuthority.parse("5590026042:walletreg:write");

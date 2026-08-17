@@ -18,7 +18,10 @@ export function formatPersonalIdentityNumber(value: string): string {
   return digits.length > 4 ? `${digits.slice(0, -4)}-${digits.slice(-4)}` : value;
 }
 
-/** True if the current user may manage users/roles at the whole-org level. */
+/**
+ * True if the current user may manage users/roles at the whole-org level. This requires admin
+ * granted at the organization level, which is stricter than admin on a single function.
+ */
 export function canAdminOrg(
   superuser: boolean,
   orgRights: UserOrgRight[],
@@ -26,7 +29,7 @@ export function canAdminOrg(
 ): boolean {
   if (superuser) return true;
   const org = orgRights.find((o) => o.orgIdentifier === orgId);
-  return org?.functions.some((f) => f.function === '*' && f.right === 'admin') ?? false;
+  return org?.orgLevelRight === 'admin';
 }
 
 /** True if the current user may manage users/roles for a specific function within an org. */
@@ -39,8 +42,6 @@ export function canAdminFunction(
   if (superuser) return true;
   const org = orgRights.find((o) => o.orgIdentifier === orgId);
   return (
-    org?.functions.some(
-      (f) => (f.function === '*' || f.function === functionId) && f.right === 'admin',
-    ) ?? false
+    org?.functions.some((f) => f.function === functionId && f.right === 'admin') ?? false
   );
 }

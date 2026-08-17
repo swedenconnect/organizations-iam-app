@@ -246,46 +246,66 @@ structured description of all rights held by the authenticated user.
 "organization_identifier": "5561234567",
 "organization_name#sv": "Exempel AB",
 "organization_name#en": "Example Corp",
+"org_level_right": "admin",
 "functions": [
-{"function": "*", "right": "admin"}
+{"function": "walletreg", "right": "admin"},
+{"function": "eidas", "right": "admin"}
 ]
 }
 ]
 ```
 
-Rights are expressed per function within each organization entry. The special value
-`"function": "*"` means the right was granted at the organization level and applies to all
-functions currently attached to that organization. A named function entry means the right was
-granted on that specific function only.
+Rights are expressed per function within each organization entry, and every entry names a
+function that is **currently attached** to the organization. There is no wildcard: a right
+granted at the organization level is expanded by the protocol mapper into one entry per
+attached function, so consumers never have to resolve the attachment set themselves. In the
+example above the user was granted `admin` at the organization level of `5561234567`, and
+`walletreg` and `eidas` are the two functions attached to it.
+
+**`org_level_right` is provenance only — it confers no access.** It records *how* a right was
+granted (`admin`, `write` or `read` at the organization level) and is absent when the user
+holds no org-level right. Effective rights come exclusively from the `functions` array.
+Treating `org_level_right` as granting access to a function would grant access to functions
+that are not attached to the organization, which is precisely what the expansion prevents. Its
+one legitimate use is answering "may this person administer the organization itself" — for
+example whether they may grant or revoke org-level rights, or edit the organization record.
 
 A user may hold different right levels on different functions within the same organization.
-For example, `read` at org level (expressed as `*`) and `write` on a specific function are
-both represented within the same organization entry:
+For example, `read` at the organization level combined with `write` on a specific function
+yields, for an organization with `demo` and `walletreg` attached:
 
 ```json
 {
   "organization_identifier": "5590026042",
   "organization_name#sv": "Litsec AB",
   "organization_name#en": "Litsec AB",
+  "org_level_right": "read",
   "functions": [
-    {
-      "function": "*",
-      "right": "read"
-    },
     {
       "function": "demo",
       "right": "write"
+    },
+    {
+      "function": "walletreg",
+      "right": "read"
     }
   ]
 }
 ```
 
-When evaluating the effective right for a specific function, a consumer must take the
-**highest right** among all entries that match the function (either the exact function name
-or `*`). Rights are hierarchical: `admin` > `write` > `read`.
+Where the expansion and an explicit function-level right meet on the same function, the
+**highest right** wins — `demo` above is `write`, not `read`. Rights are hierarchical:
+`admin` > `write` > `read`. The mapper resolves this, so at most one entry per function is
+emitted; a consumer that nevertheless sees duplicates should take the highest.
 
-There is no top-level `right` or `scope` field on the organization entry. All right
-information lives inside the `functions` array.
+An organization with **no attached functions** produces an entry with `org_level_right` set
+and an empty `functions` array. The entry is deliberately kept so the organization remains
+enumerable (relying parties read `organization_name#*` off the claim to know which
+organizations to display), and the empty array correctly conveys that no function-level access
+follows. Consumers must handle an empty `functions` array without error.
+
+Apart from `org_level_right`, there is no top-level `right` or `scope` field on the
+organization entry. All effective right information lives inside the `functions` array.
 
 **Token placement:**
 

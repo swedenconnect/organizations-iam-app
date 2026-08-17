@@ -45,6 +45,12 @@ import java.util.stream.Collectors;
  * describes all rights the user holds across organizations and functions, derived entirely from
  * the user's group memberships in the Keycloak group tree under the top-level {@code orgs} group.
  *
+ * <p>A right granted at the organization level (membership in {@code orgs/{orgId}/_admin},
+ * {@code /_write} or {@code /_read}) is expanded into one entry per function <em>currently
+ * attached</em> to that organization, and additionally recorded as
+ * {@link #CLAIM_FIELD_ORG_LEVEL_RIGHT} for provenance. Consumers therefore never have to resolve
+ * the attachment set themselves.</p>
+ *
  * @author Martin Lindström
  */
 public class OrgRightsMapper extends AbstractOIDCProtocolMapper
@@ -115,7 +121,7 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
 
   /**
    * Claim entry field (inside each element of {@link #CLAIM_FIELD_FUNCTIONS}):
-   * the function name, or {@link #FUNCTION_WILDCARD} for an org-level right.
+   * the name of a function attached to the organization.
    */
   public static final String CLAIM_FIELD_FUNCTION = "function";
 
@@ -125,16 +131,18 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
    */
   public static final String CLAIM_FIELD_RIGHT = "right";
 
+  /**
+   * Claim entry field: the right the user was granted at the organization level, if any.
+   *
+   * <p>This field records <em>how</em> a right was granted — it is provenance only and confers
+   * no access by itself. Effective rights are given exclusively by {@link #CLAIM_FIELD_FUNCTIONS},
+   * into which an org-level right has already been expanded (one entry per attached function).
+   * The field is absent when the user holds no org-level right.</p>
+   */
+  public static final String CLAIM_FIELD_ORG_LEVEL_RIGHT = "org_level_right";
+
   /** Claim entry field: the superuser flag, used in the superuser shortcut entry. */
   public static final String CLAIM_FIELD_SUPERUSER = "superuser";
-
-  // ---- Special function value ----
-
-  /**
-   * Wildcard function name used in the {@link #CLAIM_FIELD_FUNCTIONS} array to indicate
-   * that a right was granted at the organization level (covering all functions).
-   */
-  public static final String FUNCTION_WILDCARD = "*";
 
   // -------------------------------------------------------------------------
 
@@ -212,10 +220,10 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
       return;
     }
 
-    // Step 4 — Classify group memberships and accumulate function entries per org.
+    // Step 4 — Classify group memberships and accumulate rights per org.
     // key   = org group name (= group name directly under orgs)
-    // value = list of { "function": <name|"*">, "right": <right> } maps
-    final Map<String, List<Map<String, String>>> orgFunctionEntries = new LinkedHashMap<>();
+    // value = the org-level right (if any) plus the function-level rights, highest per function
+    final Map<String, OrgRights> orgRights = new LinkedHashMap<>();
 
     for (final GroupModel group : userGroups) {
       LOG.debugf("[org-rights] Inspecting group '%s' (id=%s)", group.getName(), group.getId());
@@ -238,12 +246,12 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
           group.getName(), parent.getName(), parent.getParentId());
 
       if (parent.getParentId() != null && parent.getParentId().equals(orgsGroup.getId())) {
-        // parent is a direct child of orgs → org-level right; wildcard function
+        // parent is a direct child of orgs → org-level right. The set of functions to expand it
+        // onto is not known until the org group is loaded in Step 5, so only record it here.
         final String orgIdentifier = parent.getName();
         LOG.debugf("[org-rights]   Resolved to org-level right '%s' on org '%s'", right, orgIdentifier);
-        orgFunctionEntries
-            .computeIfAbsent(orgIdentifier, k -> new ArrayList<>())
-            .add(functionEntry(FUNCTION_WILDCARD, right));
+        final OrgRights rights = orgRights.computeIfAbsent(orgIdentifier, k -> new OrgRights());
+        rights.orgLevelRight = highestRight(rights.orgLevelRight, right);
       }
       else {
         // Check if grandparent is a direct child of orgs → function-level right
@@ -261,9 +269,9 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
           final String functionName = parent.getName();
           LOG.debugf("[org-rights]   Resolved to function-level right '%s' on org '%s', function '%s'",
               right, orgIdentifier, functionName);
-          orgFunctionEntries
-              .computeIfAbsent(orgIdentifier, k -> new ArrayList<>())
-              .add(functionEntry(functionName, right));
+          orgRights
+              .computeIfAbsent(orgIdentifier, k -> new OrgRights())
+              .functionRights.merge(functionName, right, OrgRightsMapper::highestRight);
         }
         else {
           LOG.debugf("[org-rights]   Skipping '%s' — hierarchy too deep or not under '%s'",
@@ -273,9 +281,10 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
     }
 
     LOG.debugf("[org-rights] Classified memberships into %d org(s): %s",
-        orgFunctionEntries.size(), orgFunctionEntries.keySet());
+        orgRights.size(), orgRights.keySet());
 
-    // Step 5 — Build one claim entry per organization.
+    // Step 5 — Build one claim entry per organization, expanding org-level rights onto the
+    // functions currently attached to the organization.
     // Collect org sub-groups once to avoid one getSubGroupsStream() call per org.
     final Map<String, GroupModel> orgGroupByName = orgsGroup.getSubGroupsStream()
         .collect(Collectors.toMap(GroupModel::getName, g -> g));
@@ -283,9 +292,9 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
 
     final List<Map<String, Object>> entries = new ArrayList<>();
 
-    for (final Map.Entry<String, List<Map<String, String>>> e : orgFunctionEntries.entrySet()) {
+    for (final Map.Entry<String, OrgRights> e : orgRights.entrySet()) {
       final String orgIdentifier = e.getKey();
-      final List<Map<String, String>> functionEntries = e.getValue();
+      final OrgRights rights = e.getValue();
 
       final GroupModel orgGroup = orgGroupByName.get(orgIdentifier);
       if (orgGroup == null) {
@@ -297,13 +306,35 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
       final String orgNameEn = readOrgAttribute(orgGroup, ATTR_ORGANIZATION_NAME_EN, orgIdentifier);
       final String orgId     = readOrgAttribute(orgGroup, ATTR_ORGANIZATION_IDENTIFIER, orgIdentifier);
 
-      LOG.debugf("[org-rights] Building entry for org '%s' (id=%s, sv='%s', en='%s') with %d function(s): %s",
-          orgIdentifier, orgId, orgNameSv, orgNameEn, functionEntries.size(), functionEntries);
+      // Effective right per function: the org-level right expanded onto every attached function,
+      // then raised by any explicit function-level right the user holds.
+      final Map<String, String> effectiveRights = new LinkedHashMap<>();
+      final String orgLevelRight = rights.orgLevelRight;
+      if (orgLevelRight != null) {
+        for (final String functionId : attachedFunctions(orgGroup, orgIdentifier)) {
+          effectiveRights.put(functionId, orgLevelRight);
+        }
+        LOG.debugf("[org-rights] Expanded org-level right '%s' on org '%s' onto %d attached function(s)",
+            orgLevelRight, orgIdentifier, effectiveRights.size());
+      }
+      rights.functionRights.forEach((f, r) -> effectiveRights.merge(f, r, OrgRightsMapper::highestRight));
+
+      final List<Map<String, String>> functionEntries = effectiveRights.entrySet().stream()
+          .map(fr -> functionEntry(fr.getKey(), fr.getValue()))
+          .toList();
+
+      LOG.debugf("[org-rights] Building entry for org '%s' (id=%s, sv='%s', en='%s', %s=%s) "
+              + "with %d function(s): %s",
+          orgIdentifier, orgId, orgNameSv, orgNameEn, CLAIM_FIELD_ORG_LEVEL_RIGHT, orgLevelRight,
+          functionEntries.size(), functionEntries);
 
       final Map<String, Object> entry = new LinkedHashMap<>();
       entry.put(ATTR_ORGANIZATION_IDENTIFIER, orgId);
       entry.put(ATTR_ORGANIZATION_NAME_SV, orgNameSv);
       entry.put(ATTR_ORGANIZATION_NAME_EN, orgNameEn);
+      if (orgLevelRight != null) {
+        entry.put(CLAIM_FIELD_ORG_LEVEL_RIGHT, orgLevelRight);
+      }
       entry.put(CLAIM_FIELD_FUNCTIONS, functionEntries);
       entries.add(entry);
     }
@@ -331,9 +362,70 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
   }
 
   /**
+   * Returns the rank of a right, used to resolve the highest right when several apply to the same
+   * function. Rights are hierarchical: {@code admin} &gt; {@code write} &gt; {@code read}.
+   *
+   * @param right the right string
+   * @return the rank, or {@code 0} for an unrecognized right
+   */
+  private static int rightRank(final @NonNull String right) {
+    return switch (right) {
+      case RIGHT_ADMIN -> 3;
+      case RIGHT_WRITE -> 2;
+      case RIGHT_READ  -> 1;
+      default -> 0;
+    };
+  }
+
+  /**
+   * Returns the higher of two rights.
+   *
+   * @param current the right resolved so far, or {@code null} if none
+   * @param candidate the right to compare against
+   * @return {@code candidate} if it outranks {@code current}, otherwise {@code current}
+   */
+  private static @NonNull String highestRight(
+      final @Nullable String current, final @NonNull String candidate) {
+    return current == null || rightRank(candidate) > rightRank(current) ? candidate : current;
+  }
+
+  /**
+   * Returns the names of the functions currently attached to an organization.
+   *
+   * <p>Attachments are the org group's sub-groups, identified by exclusion: everything that is not
+   * one of the three reserved right groups ({@link #RIGHT_GROUP_ADMIN}, {@link #RIGHT_GROUP_WRITE},
+   * {@link #RIGHT_GROUP_READ}). Matching the reserved names exactly rather than filtering on a
+   * leading underscore keeps function identifiers such as {@code _foo} — legal per the admin
+   * application's {@code [a-z0-9_-]+} rule — from being silently dropped. The {@code function_ref}
+   * attribute each attachment sub-group carries is deliberately not required: reading it would cost
+   * one attribute load per sub-group, and a hand-provisioned realm that omitted it would silently
+   * lose the user's rights.</p>
+   *
+   * @param orgGroup the organization group, may be {@code null} if it could not be resolved
+   * @param orgIdentifier the org identifier used in log messages
+   * @return the attached function names, in Keycloak's iteration order; never {@code null}
+   */
+  private @NonNull List<String> attachedFunctions(
+      final @Nullable GroupModel orgGroup, final @NonNull String orgIdentifier) {
+
+    if (orgGroup == null) {
+      LOG.debugf("[org-rights] Cannot resolve attached functions for org '%s' — org group not found",
+          orgIdentifier);
+      return List.of();
+    }
+    final List<String> functions = orgGroup.getSubGroupsStream()
+        .map(GroupModel::getName)
+        .filter(name -> name != null && rightFromGroupName(name) == null)
+        .toList();
+    LOG.debugf("[org-rights] Org '%s' has %d attached function(s): %s",
+        orgIdentifier, functions.size(), functions);
+    return functions;
+  }
+
+  /**
    * Builds a single function-right entry for the {@link #CLAIM_FIELD_FUNCTIONS} array.
    *
-   * @param functionName the function name, or {@link #FUNCTION_WILDCARD} for an org-level right
+   * @param functionName the name of a function attached to the organization
    * @param right the right string ({@link #RIGHT_ADMIN}, {@link #RIGHT_WRITE}, or {@link #RIGHT_READ})
    * @return a two-key map with {@link #CLAIM_FIELD_FUNCTION} and {@link #CLAIM_FIELD_RIGHT}
    */
@@ -368,5 +460,18 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
       return "";
     }
     return values.getFirst();
+  }
+
+  /**
+   * The rights a user holds within a single organization, as accumulated from the user's group
+   * memberships before the org-level right is expanded onto the organization's attached functions.
+   */
+  private static final class OrgRights {
+
+    /** The highest right granted at the organization level, or {@code null} if none. */
+    private @Nullable String orgLevelRight;
+
+    /** The highest right granted per named function, keyed by function name. */
+    private final @NonNull Map<String, String> functionRights = new LinkedHashMap<>();
   }
 }

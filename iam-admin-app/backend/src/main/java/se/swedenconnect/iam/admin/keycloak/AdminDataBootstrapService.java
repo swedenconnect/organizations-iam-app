@@ -23,11 +23,9 @@ import org.springframework.stereotype.Component;
 import se.swedenconnect.iam.security.claims.OrgRightsClaim;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
 import se.swedenconnect.iam.admin.keycloak.model.FunctionInfo;
-import se.swedenconnect.iam.admin.keycloak.model.OrganizationInfo;
 
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -76,9 +74,12 @@ public class AdminDataBootstrapService {
       adminOrgIdentifiers = Set.of();
     }
     else {
-      // Derive org identifiers where the caller has admin rights
+      // Derive org identifiers where the caller has admin rights — either on a function within the
+      // organization, or at the organization level (which also covers an organization that has no
+      // functions attached, and therefore no function entries to match on).
       adminOrgIdentifiers = claim.orgEntries().stream()
-          .filter(e -> e.functions().stream().anyMatch(f -> "admin".equals(f.right())))
+          .filter(e -> "admin".equals(e.orgLevelRight())
+              || e.functions().stream().anyMatch(f -> "admin".equals(f.right())))
           .map(e -> e.orgIdentifier().getId())
           .collect(Collectors.toCollection(LinkedHashSet::new));
 
@@ -89,13 +90,7 @@ public class AdminDataBootstrapService {
             .collect(Collectors.toCollection(LinkedHashSet::new));
       }
 
-      // Fetch the minimal org details needed to filter the function list
-      final List<OrganizationInfo> adminOrgs = adminOrgIdentifiers.stream()
-          .map(id -> this.keycloakAdminClient.fetchOrganizationByIdentifier(id).orElse(null))
-          .filter(Objects::nonNull)
-          .toList();
-
-      functions = filterFunctionsForRegularAdmin(allFunctions, claim, adminOrgs);
+      functions = filterFunctionsForRegularAdmin(allFunctions, claim, adminOrgIdentifiers);
     }
 
     if (functionConstraint != null) {
@@ -115,29 +110,29 @@ public class AdminDataBootstrapService {
 
   /**
    * Returns the subset of {@code allFunctions} that the regular admin user has rights on.
+   *
+   * <p>The claim's function entries are authoritative: the protocol mapper has already expanded any
+   * organization-level right into one entry per function attached to that organization, so no
+   * organization details need to be loaded here.</p>
+   *
+   * @param allFunctions all functions defined in the realm
+   * @param claim the parsed {@code org_rights} claim
+   * @param allowedOrgIdentifiers the organizations to consider, i.e. those the caller administers
+   * @return the functions the caller has some right on; never {@code null}
    */
   private @NonNull List<FunctionInfo> filterFunctionsForRegularAdmin(
       final @NonNull List<FunctionInfo> allFunctions,
       final @NonNull OrgRightsClaim claim,
-      final @NonNull List<OrganizationInfo> allowedOrgs) {
-
-    final java.util.Map<String, OrganizationInfo> orgMap = allowedOrgs.stream()
-        .collect(Collectors.toMap(OrganizationInfo::orgIdentifier, o -> o));
+      final @NonNull Set<String> allowedOrgIdentifiers) {
 
     final Set<String> allowedFunctionIds = new LinkedHashSet<>();
 
     for (final OrgRightsClaim.OrgEntry orgEntry : claim.orgEntries()) {
-      final OrganizationInfo orgInfo = orgMap.get(orgEntry.orgIdentifier().toString());
-      if (orgInfo == null) {
+      if (!allowedOrgIdentifiers.contains(orgEntry.orgIdentifier().toString())) {
         continue;
       }
       for (final OrgRightsClaim.FunctionEntry funcEntry : orgEntry.functions()) {
-        if ("*".equals(funcEntry.function())) {
-          allowedFunctionIds.addAll(orgInfo.attachedFunctions());
-        }
-        else {
-          allowedFunctionIds.add(funcEntry.function());
-        }
+        allowedFunctionIds.add(funcEntry.function());
       }
     }
 

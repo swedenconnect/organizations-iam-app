@@ -231,15 +231,24 @@ directory, or configured as a Script Mapper if scripting is enabled.
 
   - Load the org group's attributes to obtain `organization_identifier`, `organization_name#sv`,
       `organization_name#en`.
-  - For each membership at path `orgs/{identifier}/_admin`, `/_write`, or `/_read`, add
-      a `{ "function": "*", "right": "<right>" }` entry to the `functions` array for this org.
   - For each membership at path `orgs/{identifier}/{function}/_admin`, `/_write`, or
-      `/_read`, add a `{ "function": "<function>", "right": "<right>" }` entry.
+      `/_read`, add a `{ "function": "<function>", "right": "<right>" }` entry to the
+      `functions` array for this org.
+  - For a membership at path `orgs/{identifier}/_admin`, `/_write`, or `/_read` — a right
+      granted at the organization level — record the right in the `org_level_right` field and
+      **expand** it: add one `{ "function": "<function>", "right": "<right>" }` entry for every
+      function currently attached to the organization. The attached functions are the org
+      group's sub-groups other than `_admin`, `_write` and `_read`.
   - Emit one record per organization containing all collected function entries.
 
-* A user may have both an org-level (`*`) entry and one or more function-level entries for
-   the same organization. Both are emitted — consumers take the highest right across all
-   matching entries when evaluating access to a specific function.
+* A user may hold both an org-level right and one or more function-level rights in the same
+   organization. Where they meet on the same function the **highest** right wins
+   (`admin` > `write` > `read`), so exactly one entry per function is emitted.
+
+* `org_level_right` is provenance only — it must not be treated as granting access. All
+   effective rights are in the `functions` array, which lists only attached functions. An
+   organization with no attached functions therefore yields an entry with `org_level_right` set
+   and `"functions": []`; that entry is still emitted so the organization remains enumerable.
 
 **Mapper configuration per client:**
 

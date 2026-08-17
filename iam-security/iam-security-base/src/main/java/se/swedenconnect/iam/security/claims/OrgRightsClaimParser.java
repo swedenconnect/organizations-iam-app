@@ -34,11 +34,13 @@ import java.util.Optional;
  *
  * <p>The {@code org_rights} claim is a JSON array produced by the KeyCloak protocol mapper.
  * Each entry is either a superuser marker ({@code {"superuser": true}}) or an organization object with an
- * {@code organization_identifier} and a {@code functions} array.</p>
+ * {@code organization_identifier}, a {@code functions} array, and an optional
+ * {@code org_level_right}.</p>
  *
  * <p>Authorities follow the pattern {@code {org_identifier}:{function}:{right}}, e.g.
- * {@code 5590026042:walletreg:admin} or {@code 5590026042:*:admin} for org-wide rights,
- * represented as {@link OrganizationalAuthority} instances.</p>
+ * {@code 5590026042:walletreg:admin}, represented as {@link OrganizationalAuthority} instances.
+ * They are derived exclusively from the {@code functions} array; {@code org_level_right} is
+ * provenance and grants nothing on its own.</p>
  *
  * <p>Superusers receive the single authority {@code ROLE_SUPERUSER}.</p>
  *
@@ -111,7 +113,9 @@ public class OrgRightsClaimParser {
         }
       }
 
-      entries.add(new OrgRightsClaim.OrgEntry(orgId, name, List.copyOf(functions)));
+      final String orgLevelRight = map.get("org_level_right") instanceof final String r ? r : null;
+
+      entries.add(new OrgRightsClaim.OrgEntry(orgId, name, orgLevelRight, List.copyOf(functions)));
     }
 
     return new OrgRightsClaim(false, List.copyOf(entries));
@@ -157,7 +161,7 @@ public class OrgRightsClaimParser {
       List<OrgRightsClaim.FunctionEntry> funcs = org.functions();
       if (funcConstraint != null) {
         funcs = funcs.stream()
-            .filter(f -> "*".equals(f.function()) || funcConstraint.equals(f.function()))
+            .filter(f -> funcConstraint.equals(f.function()))
             .toList();
       }
       for (final OrgRightsClaim.FunctionEntry f : funcs) {
@@ -184,8 +188,10 @@ public class OrgRightsClaimParser {
    * Builds a {@link GrantedAuthority} list in function-scoped mode.
    *
    * <p>In function-scoped mode the application is configured for a single function. The
-   * {@code org_rights} claim is filtered to entries relevant to {@code functionId} — both
-   * entries with an exact function match and entries with the org-wide ({@code *}) wildcard.
+   * {@code org_rights} claim is filtered to the entries matching {@code functionId}. An
+   * organization-level right needs no special handling here: the protocol mapper has already
+   * expanded it into one entry per attached function, so it matches only if {@code functionId} is
+   * actually attached to the organization.
    * For each organization the highest effective right across all matching entries is resolved
    * ({@code admin} &gt; {@code write} &gt; {@code read}), and a single
    * {@link FunctionScopedAuthority} of the form {@code {orgId}:{right}} is produced per
@@ -209,7 +215,7 @@ public class OrgRightsClaimParser {
     final List<GrantedAuthority> authorities = new ArrayList<>();
     for (final OrgRightsClaim.OrgEntry org : claim.orgEntries()) {
       final Optional<OrganizationRight> highestRight = org.functions().stream()
-          .filter(f -> "*".equals(f.function()) || functionId.equals(f.function()))
+          .filter(f -> functionId.equals(f.function()))
           .map(f -> {
             try {
               return OrganizationRight.parse(f.right());
@@ -234,7 +240,7 @@ public class OrgRightsClaimParser {
    * Builds a {@link GrantedAuthority} list from the claim, restricted to the given constraints.
    *
    * <p>When {@code orgConstraint} is set, only entries for that organization are included.
-   * When {@code funcConstraint} is set, only entries for that function (or {@code *}) are included. Both may be
+   * When {@code funcConstraint} is set, only entries for that function are included. Both may be
    * {@code null} to include all effective rights.</p>
    *
    * <p>For regular users the authorities are {@link OrganizationalAuthority} instances. For superusers
@@ -266,7 +272,7 @@ public class OrgRightsClaimParser {
       List<OrgRightsClaim.FunctionEntry> funcs = org.functions();
       if (funcConstraint != null) {
         funcs = funcs.stream()
-            .filter(f -> "*".equals(f.function()) || funcConstraint.equals(f.function()))
+            .filter(f -> funcConstraint.equals(f.function()))
             .toList();
       }
       for (final OrgRightsClaim.FunctionEntry f : funcs) {

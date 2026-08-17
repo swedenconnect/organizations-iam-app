@@ -26,14 +26,11 @@ import se.swedenconnect.iam.commons.types.LocalizedString;
 import se.swedenconnect.iam.commons.types.OrganizationID;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
 import se.swedenconnect.iam.admin.keycloak.model.FunctionInfo;
-import se.swedenconnect.iam.admin.keycloak.model.OrganizationInfo;
 import se.swedenconnect.iam.security.claims.OrgRightsClaim;
 
 import java.util.List;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 /**
@@ -60,19 +57,21 @@ class AdminDataBootstrapServiceTest {
     return new FunctionInfo(id, new LocalizedString(), null);
   }
 
-  private static OrganizationInfo orgInfo(final String orgIdentifier, final String groupId,
-      final List<String> attachedFunctions) {
-    return new OrganizationInfo(orgIdentifier, new LocalizedString(), groupId,
-        attachedFunctions, null, null);
-  }
-
   private static OrgRightsClaim superuserClaim() {
     return new OrgRightsClaim(true, List.of());
   }
 
   private static OrgRightsClaim.OrgEntry orgEntry(final String orgId,
       final OrgRightsClaim.FunctionEntry... functions) {
-    return new OrgRightsClaim.OrgEntry(OrganizationID.of(orgId), new LocalizedString(), List.of(functions));
+    return new OrgRightsClaim.OrgEntry(
+        OrganizationID.of(orgId), new LocalizedString(), null, List.of(functions));
+  }
+
+  /** As {@link #orgEntry(String, OrgRightsClaim.FunctionEntry...)}, but with an org-level right set. */
+  private static OrgRightsClaim.OrgEntry orgEntry(final String orgId, final String orgLevelRight,
+      final OrgRightsClaim.FunctionEntry... functions) {
+    return new OrgRightsClaim.OrgEntry(
+        OrganizationID.of(orgId), new LocalizedString(), orgLevelRight, List.of(functions));
   }
 
   @BeforeEach
@@ -191,14 +190,12 @@ class AdminDataBootstrapServiceTest {
   @Test
   void bootstrap_regularUser_adminOrgIdentifiersDerivedFromClaim() {
     final FunctionInfo demo = functionInfo("demo");
-    final OrganizationInfo org = orgInfo("5590026042", "group-1", List.of("demo"));
 
+    // Org-level admin, already expanded by the mapper onto the attached function 'demo'
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
-        orgEntry("5590026042", new OrgRightsClaim.FunctionEntry("*", "admin"))));
+        orgEntry("5590026042", "admin", new OrgRightsClaim.FunctionEntry("demo", "admin"))));
 
     when(keycloakAdminClient.fetchAllFunctions()).thenReturn(List.of(demo));
-    when(keycloakAdminClient.fetchOrganizationByIdentifier("5590026042"))
-        .thenReturn(Optional.of(org));
 
     final AdminSessionData result =
         service.bootstrap(claim, SUBJECT, null, null);
@@ -206,5 +203,48 @@ class AdminDataBootstrapServiceTest {
     assertThat(result.adminOrgIdentifiers()).containsExactly("5590026042");
     assertThat(result.currentUserIsSuperuser()).isFalse();
     assertThat(result.functions()).containsExactly(demo);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Test 8: the function list follows the claim's function entries only — a function that is not
+  // attached to the organization is never granted, even to an org-level admin
+  // ---------------------------------------------------------------------------
+
+  @Test
+  void bootstrap_regularUser_unattachedFunctionNotIncluded() {
+    final FunctionInfo demo = functionInfo("demo");
+    final FunctionInfo walletreg = functionInfo("walletreg");
+
+    // Org-level admin on an org where only 'demo' is attached
+    final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
+        orgEntry("5590026042", "admin", new OrgRightsClaim.FunctionEntry("demo", "admin"))));
+
+    when(keycloakAdminClient.fetchAllFunctions()).thenReturn(List.of(demo, walletreg));
+
+    final AdminSessionData result =
+        service.bootstrap(claim, SUBJECT, null, null);
+
+    assertThat(result.functions()).containsExactly(demo);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Test 9: org-level admin on an organization with no attached functions still counts as an
+  // administered organization, but yields no functions
+  // ---------------------------------------------------------------------------
+
+  @Test
+  void bootstrap_regularUser_orgLevelAdminWithNoAttachedFunctions() {
+    final FunctionInfo demo = functionInfo("demo");
+
+    final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
+        orgEntry("5590026042", "admin")));
+
+    when(keycloakAdminClient.fetchAllFunctions()).thenReturn(List.of(demo));
+
+    final AdminSessionData result =
+        service.bootstrap(claim, SUBJECT, null, null);
+
+    assertThat(result.adminOrgIdentifiers()).containsExactly("5590026042");
+    assertThat(result.functions()).isEmpty();
   }
 }
