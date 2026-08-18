@@ -6,7 +6,7 @@
 
 A centralized administration application for assigning and delegating rights for organizations and users against various target systems. Built on Keycloak with custom protocol mappers, a Spring Boot admin application, and shared security libraries.
 
-## NOTE: Action required after pulling the 2026-08-17 change
+## NOTE: Action required after pulling the 2026-08-18 change
 
 This change alters the `org_rights` claim format. The claim is written by the `org-rights-mapper`
 Keycloak plugin and read by the `iam-security` libraries, so both sides must be updated. If you

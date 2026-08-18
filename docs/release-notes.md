@@ -8,7 +8,7 @@
 
 ### Version 0.9.2
 
-**Date:** Not yet released
+**Date:** 2026-08-28
 
 - **Organisation-level rights are now expanded per function in the `org_rights` claim.**
   Previously a right granted at the organisation level was emitted as the wildcard
