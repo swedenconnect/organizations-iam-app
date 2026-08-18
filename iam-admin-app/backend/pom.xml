@@ -7,7 +7,7 @@
   <parent>
     <groupId>se.swedenconnect.iam</groupId>
     <artifactId>iam-admin-app</artifactId>
-    <version>0.9.2-SNAPSHOT</version>
+    <version>0.9.2</version>
   </parent>
 
   <artifactId>admin-app-backend</artifactId>
@@ -65,7 +65,7 @@
     <dependency>
       <groupId>org.springdoc</groupId>
       <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-      <version>3.0.3</version>
+      <version>3.1.0</version>
     </dependency>
 
     <dependency>
@@ -124,7 +124,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-dependency-plugin</artifactId>
-        <version>3.7.0</version>
+        <version>3.11.0</version>
         <executions>
           <execution>
             <id>unpack-frontend</id>
