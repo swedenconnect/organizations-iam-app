@@ -818,7 +818,7 @@ function AppContent() {
         isOpen={isOrgFormOpen}
         isSuperuser={sessionData?.superuser ?? false}
         currentUserOrgAdminIds={(sessionData?.orgRights ?? [])
-          .filter(o => o.functions.some(f => f.function === '*' && f.right === 'admin'))
+          .filter(o => o.orgLevelRight === 'admin')
           .map(o => o.orgIdentifier)}
         onClose={() => {
           setIsOrgFormOpen(false);

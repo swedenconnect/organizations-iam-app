@@ -1,6 +1,3 @@
-### Claude ###
-.claude/settings.local.json
-
 ### Common ###
 HELP.md
 target/
@@ -20,7 +17,12 @@ logs/
 .sts4-cache
 
 ### IntelliJ IDEA ###
-.idea
+### IntelliJ IDEA ###
+.idea/*
+!.idea/copyright/
+!.idea/inspectionProfiles/
+!.idea/runConfigurations/
+!.idea/codeStyles/
 *.iws
 *.iml
 *.ipr

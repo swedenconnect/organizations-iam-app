@@ -52,12 +52,16 @@ export interface FunctionData {
 }
 
 export interface UserFunctionRight {
-  function: string; // "*" = org-wide
+  function: string; // a function attached to the organization
   right: 'admin' | 'write' | 'read';
 }
 
 export interface UserOrgRight {
   orgIdentifier: string;
+  // Provenance only: the right granted at the organization level, absent if none. Confers no
+  // access by itself — effective rights are in `functions`, which lists only attached functions
+  // and may be empty. Use it solely to decide who may administer the organization itself.
+  orgLevelRight?: 'admin' | 'write' | 'read' | null;
   functions: UserFunctionRight[];
 }
 

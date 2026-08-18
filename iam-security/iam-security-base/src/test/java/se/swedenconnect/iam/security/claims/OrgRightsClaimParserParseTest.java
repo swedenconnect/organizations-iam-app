@@ -59,6 +59,62 @@ class OrgRightsClaimParserParseTest {
     assertThat(entry.name().get("de")).isEqualTo("Litsec AB (Deutsch)");
   }
 
+  /** An entry without {@code org_level_right} parses to a {@code null} org-level right. */
+  @Test
+  void parse_orgLevelRightAbsent() {
+    final List<Map<String, Object>> rawClaim = List.of(Map.of(
+        "organization_identifier", "5590026042",
+        "functions", List.of(Map.of("function", "walletreg", "right", "write"))
+    ));
+
+    final OrgRightsClaim claim = this.parser.parse(rawClaim);
+
+    assertThat(claim.orgEntries()).hasSize(1);
+    assertThat(claim.orgEntries().getFirst().orgLevelRight()).isNull();
+  }
+
+  /** {@code org_level_right} is read alongside the expanded function entries. */
+  @Test
+  void parse_orgLevelRightPresent() {
+    final List<Map<String, Object>> rawClaim = List.of(Map.of(
+        "organization_identifier", "5590026042",
+        "org_level_right", "admin",
+        "functions", List.of(
+            Map.of("function", "demo", "right", "admin"),
+            Map.of("function", "walletreg", "right", "admin")
+        )
+    ));
+
+    final OrgRightsClaim claim = this.parser.parse(rawClaim);
+
+    assertThat(claim.orgEntries()).hasSize(1);
+
+    final OrgRightsClaim.OrgEntry entry = claim.orgEntries().getFirst();
+    assertThat(entry.orgLevelRight()).isEqualTo("admin");
+    assertThat(entry.functions()).containsExactly(
+        new OrgRightsClaim.FunctionEntry("demo", "admin"),
+        new OrgRightsClaim.FunctionEntry("walletreg", "admin"));
+  }
+
+  /**
+   * An org-level right on an organization with no attached functions parses to an entry with an
+   * empty functions list — the entry is kept so the organization remains enumerable.
+   */
+  @Test
+  void parse_orgLevelRightWithEmptyFunctions() {
+    final List<Map<String, Object>> rawClaim = List.of(Map.of(
+        "organization_identifier", "5590026042",
+        "org_level_right", "admin",
+        "functions", List.of()
+    ));
+
+    final OrgRightsClaim claim = this.parser.parse(rawClaim);
+
+    assertThat(claim.orgEntries()).hasSize(1);
+    assertThat(claim.orgEntries().getFirst().orgLevelRight()).isEqualTo("admin");
+    assertThat(claim.orgEntries().getFirst().functions()).isEmpty();
+  }
+
   @Test
   void parse_skipsEntryWithInvalidOrgId() {
     final List<Map<String, Object>> rawClaim = List.of(

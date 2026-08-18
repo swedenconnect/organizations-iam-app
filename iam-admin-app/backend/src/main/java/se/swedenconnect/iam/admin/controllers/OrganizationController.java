@@ -362,12 +362,16 @@ public class OrganizationController {
         o.contactPhone());
   }
 
+  /**
+   * True if the caller holds {@code admin} at the <em>organization</em> level for the given
+   * organization, which is what updating the organization record itself requires. Derived from
+   * {@code org_level_right} — the one legitimate use of that provenance field.
+   */
   private static boolean hasOrgAdminRight(
       final AdminSessionData data,
       final String orgIdentifier) {
     return data.claim().orgEntries().stream()
         .filter(e -> orgIdentifier.equals(e.orgIdentifier().toString()))
-        .flatMap(e -> e.functions().stream())
-        .anyMatch(f -> "*".equals(f.function()) && "admin".equals(f.right()));
+        .anyMatch(e -> "admin".equals(e.orgLevelRight()));
   }
 }

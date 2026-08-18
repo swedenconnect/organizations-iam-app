@@ -35,7 +35,14 @@ class OrgRightsClaimParserFunctionScopedTest {
   private final OrgRightsClaimParser parser = new OrgRightsClaimParser();
 
   private static OrgRightsClaim.OrgEntry orgEntry(final String orgId, final OrgRightsClaim.FunctionEntry... functions) {
-    return new OrgRightsClaim.OrgEntry(OrganizationID.of(orgId), new LocalizedString(), List.of(functions));
+    return new OrgRightsClaim.OrgEntry(OrganizationID.of(orgId), new LocalizedString(), null, List.of(functions));
+  }
+
+  /** As {@link #orgEntry(String, OrgRightsClaim.FunctionEntry...)}, but with an org-level right set. */
+  private static OrgRightsClaim.OrgEntry orgEntry(final String orgId, final String orgLevelRight,
+      final OrgRightsClaim.FunctionEntry... functions) {
+    return new OrgRightsClaim.OrgEntry(
+        OrganizationID.of(orgId), new LocalizedString(), orgLevelRight, List.of(functions));
   }
 
   /** Superuser always receives ROLE_SUPERUSER regardless of function. */
@@ -46,15 +53,42 @@ class OrgRightsClaimParserFunctionScopedTest {
     assertThat(authorities).containsExactly(new SimpleGrantedAuthority("ROLE_SUPERUSER"));
   }
 
-  /** User with only a wildcard (*) right gets that right as a FunctionScopedAuthority. */
+  /**
+   * An org-level right the mapper expanded onto the configured function produces that right as a
+   * FunctionScopedAuthority.
+   */
   @Test
-  void wildcardOnly_producesCorrectAuthority() {
+  void orgLevelRightExpandedOntoFunction_producesCorrectAuthority() {
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
-        orgEntry("5590026042", new OrgRightsClaim.FunctionEntry("*", "read"))
+        orgEntry("5590026042", "read", new OrgRightsClaim.FunctionEntry("walletreg", "read"))
     ));
     final List<GrantedAuthority> authorities = this.parser.buildFunctionScopedAuthorities(claim, "walletreg");
     assertThat(authorities).containsExactly(
         FunctionScopedAuthority.of(OrganizationID.of("5590026042"), OrganizationRight.READ));
+  }
+
+  /**
+   * An org-level right grants nothing for a function that is not attached to the organization — the
+   * mapper expanded it only onto {@code demo}, so a walletreg-scoped application sees no right.
+   * {@code orgLevelRight} must never be treated as a grant in its own right.
+   */
+  @Test
+  void orgLevelRightOnUnattachedFunction_producesNoAuthority() {
+    final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
+        orgEntry("5590026042", "admin", new OrgRightsClaim.FunctionEntry("demo", "admin"))
+    ));
+    final List<GrantedAuthority> authorities = this.parser.buildFunctionScopedAuthorities(claim, "walletreg");
+    assertThat(authorities).isEmpty();
+  }
+
+  /** An org-level right on an organization with no attached functions grants nothing. */
+  @Test
+  void orgLevelRightWithNoAttachedFunctions_producesNoAuthority() {
+    final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
+        orgEntry("5590026042", "admin")
+    ));
+    final List<GrantedAuthority> authorities = this.parser.buildFunctionScopedAuthorities(claim, "walletreg");
+    assertThat(authorities).isEmpty();
   }
 
   /** User with only an exact function match right gets that right as a FunctionScopedAuthority. */
@@ -68,12 +102,12 @@ class OrgRightsClaimParserFunctionScopedTest {
         FunctionScopedAuthority.of(OrganizationID.of("5590026042"), OrganizationRight.WRITE));
   }
 
-  /** When both wildcard and exact function entries are present, the highest right wins. */
+  /** When several entries name the same function, the highest right wins. */
   @Test
-  void wildcardAndExact_highestRightWins() {
+  void duplicateFunctionEntries_highestRightWins() {
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
         orgEntry("5590026042",
-            new OrgRightsClaim.FunctionEntry("*", "read"),
+            new OrgRightsClaim.FunctionEntry("walletreg", "read"),
             new OrgRightsClaim.FunctionEntry("walletreg", "write"))
     ));
     final List<GrantedAuthority> authorities = this.parser.buildFunctionScopedAuthorities(claim, "walletreg");
@@ -95,8 +129,8 @@ class OrgRightsClaimParserFunctionScopedTest {
   @Test
   void multipleOrgs_eachGetHighestRight() {
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
-        orgEntry("5590026042",
-            new OrgRightsClaim.FunctionEntry("*", "read"),
+        orgEntry("5590026042", "read",
+            new OrgRightsClaim.FunctionEntry("demo", "read"),
             new OrgRightsClaim.FunctionEntry("walletreg", "admin")),
         orgEntry("5561234567",
             new OrgRightsClaim.FunctionEntry("walletreg", "write"))

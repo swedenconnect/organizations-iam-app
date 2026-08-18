@@ -35,9 +35,11 @@ import org.mockito.quality.Strictness;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -47,10 +49,10 @@ import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.ATTR_ORGAN
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.ATTR_ORGANIZATION_NAME_SV;
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.CLAIM_FIELD_FUNCTION;
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.CLAIM_FIELD_FUNCTIONS;
+import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.CLAIM_FIELD_ORG_LEVEL_RIGHT;
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.CLAIM_FIELD_RIGHT;
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.CLAIM_FIELD_SUPERUSER;
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.CLAIM_NAME;
-import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.FUNCTION_WILDCARD;
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.GROUP_ORGS;
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.REALM_ROLE_SUPERUSER;
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.RIGHT_ADMIN;
@@ -124,11 +126,12 @@ class OrgRightsMapperTest {
   }
 
   /**
-   * Test 2: Org-level right. User is a member of orgs/5590026042/_write.
-   * Expected: one entry with functions=[{function:"*", right:"write"}].
+   * Test 2: Org-level right. User is a member of orgs/5590026042/_write, and the organization has
+   * the functions demo and walletreg attached.
+   * Expected: org_level_right=write, and the right expanded onto both attached functions.
    */
   @Test
-  void testOrgLevelRight() {
+  void testOrgLevelRightExpandsOntoAttachedFunctions() {
     when(realm.getRole(REALM_ROLE_SUPERUSER)).thenReturn(null);
 
     final GroupModel orgsGroup = mockGroup("orgs-id", GROUP_ORGS, null);
@@ -142,6 +145,8 @@ class OrgRightsMapperTest {
         ATTR_ORGANIZATION_NAME_SV,    List.of("Litsec AB"),
         ATTR_ORGANIZATION_NAME_EN,    List.of("Litsec AB")));
     when(orgGroup.getParentId()).thenReturn("orgs-id");
+    mockOrgChildren(orgGroup, "demo", "walletreg",
+        RIGHT_GROUP_ADMIN, RIGHT_GROUP_WRITE, RIGHT_GROUP_READ);
 
     final GroupModel writeGroup = mockGroup("org-write-id", RIGHT_GROUP_WRITE, "org1-id");
     when(writeGroup.getParent()).thenReturn(orgGroup);
@@ -162,19 +167,103 @@ class OrgRightsMapperTest {
     assertEquals("5590026042", entry.get(ATTR_ORGANIZATION_IDENTIFIER));
     assertEquals("Litsec AB",  entry.get(ATTR_ORGANIZATION_NAME_SV));
     assertEquals("Litsec AB",  entry.get(ATTR_ORGANIZATION_NAME_EN));
+    assertEquals(RIGHT_WRITE,  entry.get(CLAIM_FIELD_ORG_LEVEL_RIGHT));
     assertTrue(entry.containsKey(CLAIM_FIELD_FUNCTIONS));
+
+    assertEquals(Map.of("demo", RIGHT_WRITE, "walletreg", RIGHT_WRITE), functionRights(entry));
+  }
+
+  /**
+   * Test 2b: The attachment set is identified by excluding the three reserved right-group names,
+   * not by a leading underscore — a function identifier such as {@code _foo} is legal per the admin
+   * application's {@code [a-z0-9_-]+} rule and must still receive the expanded right.
+   */
+  @Test
+  void testOrgLevelRightExpandsOntoUnderscoreFunctionId() {
+    when(realm.getRole(REALM_ROLE_SUPERUSER)).thenReturn(null);
+
+    final GroupModel orgsGroup = mockGroup("orgs-id", GROUP_ORGS, null);
+    when(realm.getTopLevelGroupsStream()).thenReturn(Stream.of(orgsGroup));
+    when(orgsGroup.getId()).thenReturn("orgs-id");
+
+    final GroupModel orgGroup = mockGroup("org1-id", "5590026042", "orgs-id");
+    when(orgsGroup.getSubGroupsStream()).thenReturn(Stream.of(orgGroup));
+    when(orgGroup.getAttributes()).thenReturn(Map.of(
+        ATTR_ORGANIZATION_IDENTIFIER, List.of("5590026042"),
+        ATTR_ORGANIZATION_NAME_SV,    List.of("Litsec AB"),
+        ATTR_ORGANIZATION_NAME_EN,    List.of("Litsec AB")));
+    when(orgGroup.getParentId()).thenReturn("orgs-id");
+    mockOrgChildren(orgGroup, "_foo", RIGHT_GROUP_ADMIN, RIGHT_GROUP_WRITE, RIGHT_GROUP_READ);
+
+    final GroupModel adminGroup = mockGroup("org-admin-id", RIGHT_GROUP_ADMIN, "org1-id");
+    when(adminGroup.getParent()).thenReturn(orgGroup);
+
+    when(user.getGroupsStream()).thenReturn(Stream.of(adminGroup));
+
+    final IDToken token = new IDToken();
+    mapper.setClaim(token, mappingModel, userSession, keycloakSession, clientSessionCtx);
+
+    @SuppressWarnings("unchecked")
+    final List<Map<String, Object>> orgRights =
+        (List<Map<String, Object>>) token.getOtherClaims().get(CLAIM_NAME);
+
+    assertNotNull(orgRights);
+    assertEquals(Map.of("_foo", RIGHT_ADMIN), functionRights(orgRights.get(0)));
+  }
+
+  /**
+   * Test 2c: Org-level right on an organization with no functions attached.
+   * Expected: the entry is still emitted, carrying org_level_right and an empty functions array.
+   */
+  @Test
+  void testOrgLevelRightWithNoAttachedFunctions() {
+    when(realm.getRole(REALM_ROLE_SUPERUSER)).thenReturn(null);
+
+    final GroupModel orgsGroup = mockGroup("orgs-id", GROUP_ORGS, null);
+    when(realm.getTopLevelGroupsStream()).thenReturn(Stream.of(orgsGroup));
+    when(orgsGroup.getId()).thenReturn("orgs-id");
+
+    final GroupModel orgGroup = mockGroup("org1-id", "5561234567", "orgs-id");
+    when(orgsGroup.getSubGroupsStream()).thenReturn(Stream.of(orgGroup));
+    when(orgGroup.getAttributes()).thenReturn(Map.of(
+        ATTR_ORGANIZATION_IDENTIFIER, List.of("5561234567"),
+        ATTR_ORGANIZATION_NAME_SV,    List.of("Exempel AB"),
+        ATTR_ORGANIZATION_NAME_EN,    List.of("Example Corp")));
+    when(orgGroup.getParentId()).thenReturn("orgs-id");
+    // Only the right groups exist — no function has been attached
+    mockOrgChildren(orgGroup, RIGHT_GROUP_ADMIN, RIGHT_GROUP_WRITE, RIGHT_GROUP_READ);
+
+    final GroupModel adminGroup = mockGroup("org-admin-id", RIGHT_GROUP_ADMIN, "org1-id");
+    when(adminGroup.getParent()).thenReturn(orgGroup);
+
+    when(user.getGroupsStream()).thenReturn(Stream.of(adminGroup));
+
+    final IDToken token = new IDToken();
+    mapper.setClaim(token, mappingModel, userSession, keycloakSession, clientSessionCtx);
+
+    @SuppressWarnings("unchecked")
+    final List<Map<String, Object>> orgRights =
+        (List<Map<String, Object>>) token.getOtherClaims().get(CLAIM_NAME);
+
+    assertNotNull(orgRights);
+    assertEquals(1, orgRights.size());
+
+    final Map<String, Object> entry = orgRights.get(0);
+    assertEquals("5561234567", entry.get(ATTR_ORGANIZATION_IDENTIFIER));
+    assertEquals("Example Corp", entry.get(ATTR_ORGANIZATION_NAME_EN));
+    assertEquals(RIGHT_ADMIN, entry.get(CLAIM_FIELD_ORG_LEVEL_RIGHT));
 
     @SuppressWarnings("unchecked")
     final List<Map<String, String>> functions =
         (List<Map<String, String>>) entry.get(CLAIM_FIELD_FUNCTIONS);
-    assertEquals(1, functions.size());
-    assertEquals(FUNCTION_WILDCARD, functions.get(0).get(CLAIM_FIELD_FUNCTION));
-    assertEquals(RIGHT_WRITE,       functions.get(0).get(CLAIM_FIELD_RIGHT));
+    assertNotNull(functions);
+    assertTrue(functions.isEmpty());
   }
 
   /**
    * Test 3: Function-level right. User is a member of orgs/5590026042/walletreg/_read.
-   * Expected: one entry with functions=[{function:"walletreg", right:"read"}].
+   * Expected: one entry with functions=[{function:"walletreg", right:"read"}] and no
+   * org_level_right field.
    */
   @Test
   void testFunctionLevelRight() {
@@ -212,6 +301,7 @@ class OrgRightsMapperTest {
 
     final Map<String, Object> entry = orgRights.get(0);
     assertEquals("5590026042", entry.get(ATTR_ORGANIZATION_IDENTIFIER));
+    assertFalse(entry.containsKey(CLAIM_FIELD_ORG_LEVEL_RIGHT));
 
     @SuppressWarnings("unchecked")
     final List<Map<String, String>> functions =
@@ -257,6 +347,7 @@ class OrgRightsMapperTest {
 
     final GroupModel adminB = mockGroup("adminB-id", RIGHT_GROUP_ADMIN, "orgB-id");
     when(adminB.getParent()).thenReturn(orgB);
+    mockOrgChildren(orgB, "demo", RIGHT_GROUP_ADMIN, RIGHT_GROUP_WRITE, RIGHT_GROUP_READ);
 
     // getSubGroupsStream called once per org during entry-building phase
     when(orgsGroup.getSubGroupsStream())
@@ -285,23 +376,18 @@ class OrgRightsMapperTest {
     final Map<String, Object> orgBEntry = firstEntry.get(ATTR_ORGANIZATION_IDENTIFIER).equals("2222222222")
         ? firstEntry : secondEntry;
 
-    @SuppressWarnings("unchecked")
-    final List<Map<String, String>> funcA = (List<Map<String, String>>) orgAEntry.get(CLAIM_FIELD_FUNCTIONS);
-    assertEquals(1, funcA.size());
-    assertEquals("walletreg", funcA.get(0).get(CLAIM_FIELD_FUNCTION));
-    assertEquals(RIGHT_READ,  funcA.get(0).get(CLAIM_FIELD_RIGHT));
+    assertFalse(orgAEntry.containsKey(CLAIM_FIELD_ORG_LEVEL_RIGHT));
+    assertEquals(Map.of("walletreg", RIGHT_READ), functionRights(orgAEntry));
 
-    @SuppressWarnings("unchecked")
-    final List<Map<String, String>> funcB = (List<Map<String, String>>) orgBEntry.get(CLAIM_FIELD_FUNCTIONS);
-    assertEquals(1, funcB.size());
-    assertEquals(FUNCTION_WILDCARD, funcB.get(0).get(CLAIM_FIELD_FUNCTION));
-    assertEquals(RIGHT_ADMIN,       funcB.get(0).get(CLAIM_FIELD_RIGHT));
+    assertEquals(RIGHT_ADMIN, orgBEntry.get(CLAIM_FIELD_ORG_LEVEL_RIGHT));
+    assertEquals(Map.of("demo", RIGHT_ADMIN), functionRights(orgBEntry));
   }
 
   /**
    * Test 5: Org-level and function-level on the same organization. User is a member of both
-   * orgs/5590026042/_read and orgs/5590026042/walletreg/_write. Both must appear in a single
-   * org entry's functions array.
+   * orgs/5590026042/_read and orgs/5590026042/walletreg/_write, with demo and walletreg attached.
+   * The org-level read is expanded onto both functions, and the explicit write on walletreg wins
+   * over it.
    */
   @Test
   void testOrgAndFunctionLevelOnSameOrg() {
@@ -318,6 +404,8 @@ class OrgRightsMapperTest {
         ATTR_ORGANIZATION_NAME_SV,    List.of("Litsec AB"),
         ATTR_ORGANIZATION_NAME_EN,    List.of("Litsec AB")));
     when(orgGroup.getParentId()).thenReturn("orgs-id");
+    mockOrgChildren(orgGroup, "demo", "walletreg",
+        RIGHT_GROUP_ADMIN, RIGHT_GROUP_WRITE, RIGHT_GROUP_READ);
 
     // Org-level _read membership
     final GroupModel orgReadGroup = mockGroup("org-read-id", RIGHT_GROUP_READ, "org1-id");
@@ -344,24 +432,10 @@ class OrgRightsMapperTest {
 
     final Map<String, Object> entry = orgRights.get(0);
     assertEquals("5590026042", entry.get(ATTR_ORGANIZATION_IDENTIFIER));
+    assertEquals(RIGHT_READ, entry.get(CLAIM_FIELD_ORG_LEVEL_RIGHT));
 
-    @SuppressWarnings("unchecked")
-    final List<Map<String, String>> functions =
-        (List<Map<String, String>>) entry.get(CLAIM_FIELD_FUNCTIONS);
-    assertEquals(2, functions.size());
-
-    // Find the wildcard and named entries by function value
-    final Map<String, String> wildcardEntry = functions.stream()
-        .filter(f -> FUNCTION_WILDCARD.equals(f.get(CLAIM_FIELD_FUNCTION)))
-        .findFirst()
-        .orElseThrow();
-    final Map<String, String> walletregEntry = functions.stream()
-        .filter(f -> "walletreg".equals(f.get(CLAIM_FIELD_FUNCTION)))
-        .findFirst()
-        .orElseThrow();
-
-    assertEquals(RIGHT_READ,  wildcardEntry.get(CLAIM_FIELD_RIGHT));
-    assertEquals(RIGHT_WRITE, walletregEntry.get(CLAIM_FIELD_RIGHT));
+    // demo gets the expanded org-level read; walletreg keeps the higher explicit write
+    assertEquals(Map.of("demo", RIGHT_READ, "walletreg", RIGHT_WRITE), functionRights(entry));
   }
 
   /**
@@ -409,6 +483,7 @@ class OrgRightsMapperTest {
         ATTR_ORGANIZATION_IDENTIFIER, List.of("5590026042"),
         ATTR_ORGANIZATION_NAME_EN,    List.of("Litsec AB")));
     when(orgGroup.getParentId()).thenReturn("orgs-id");
+    mockOrgChildren(orgGroup, "demo", RIGHT_GROUP_ADMIN, RIGHT_GROUP_WRITE, RIGHT_GROUP_READ);
 
     final GroupModel writeGroup = mockGroup("org-write-id", RIGHT_GROUP_WRITE, "org1-id");
     when(writeGroup.getParent()).thenReturn(orgGroup);
@@ -437,5 +512,24 @@ class OrgRightsMapperTest {
     when(g.getName()).thenReturn(name);
     when(g.getParentId()).thenReturn(parentId);
     return g;
+  }
+
+  /**
+   * Stubs the sub-groups of an org group — the attached function groups plus the org's own right
+   * groups. A fresh stream is answered on every call so repeated reads are safe.
+   */
+  private void mockOrgChildren(final GroupModel orgGroup, final String... childNames) {
+    when(orgGroup.getSubGroupsStream()).thenAnswer(invocation -> Stream.of(childNames)
+        .map(name -> mockGroup(orgGroup.getId() + "-" + name, name, orgGroup.getId())));
+  }
+
+  /** Reduces an org entry's functions array to a function-to-right map for easier assertions. */
+  private static Map<String, String> functionRights(final Map<String, Object> orgEntry) {
+    @SuppressWarnings("unchecked")
+    final List<Map<String, String>> functions =
+        (List<Map<String, String>>) orgEntry.get(CLAIM_FIELD_FUNCTIONS);
+    assertNotNull(functions);
+    return functions.stream().collect(
+        Collectors.toMap(f -> f.get(CLAIM_FIELD_FUNCTION), f -> f.get(CLAIM_FIELD_RIGHT)));
   }
 }

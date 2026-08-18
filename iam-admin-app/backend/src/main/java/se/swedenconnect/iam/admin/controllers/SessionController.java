@@ -100,6 +100,7 @@ public class SessionController {
     return claim.orgEntries().stream()
         .map(e -> new OrgRightResponse(
             e.orgIdentifier().toString(),
+            e.orgLevelRight(),
             e.functions().stream()
                 .map(f -> new FunctionRightResponse(f.function(), f.right()))
                 .toList()))

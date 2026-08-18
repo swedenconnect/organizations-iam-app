@@ -109,6 +109,29 @@ class OrgRightsOidcUserServiceTest {
     claimParser.checkAdminConstraint(claim, null, null);
   }
 
+  @Test
+  void checkAdminConstraint_orgLevelAdminOnUnattachedFunction_throws() {
+    // Org-level admin, expanded by the mapper onto the only attached function ('demo').
+    // A walletreg-constrained login must be rejected — org_level_right grants nothing by itself.
+    final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
+        orgEntry("5590026042", "admin", new OrgRightsClaim.FunctionEntry("demo", "admin"))
+    ));
+
+    assertThatThrownBy(() -> claimParser.checkAdminConstraint(claim, "5590026042", "walletreg"))
+        .isInstanceOf(InsufficientRightsException.class)
+        .hasMessageContaining("walletreg");
+  }
+
+  @Test
+  void checkAdminConstraint_orgLevelAdminWithNoAttachedFunctions_throws() {
+    final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
+        orgEntry("5590026042", "admin")
+    ));
+
+    assertThatThrownBy(() -> claimParser.checkAdminConstraint(claim, null, null))
+        .isInstanceOf(InsufficientRightsException.class);
+  }
+
   // ---------------------------------------------------------------------------
   // buildAuthorities tests (delegated to OrgRightsClaimParser)
   // ---------------------------------------------------------------------------
@@ -157,6 +180,14 @@ class OrgRightsOidcUserServiceTest {
 
   private static OrgRightsClaim.OrgEntry orgEntry(final String orgId,
       final OrgRightsClaim.FunctionEntry... functions) {
-    return new OrgRightsClaim.OrgEntry(OrganizationID.of(orgId), new LocalizedString(), List.of(functions));
+    return new OrgRightsClaim.OrgEntry(
+        OrganizationID.of(orgId), new LocalizedString(), null, List.of(functions));
+  }
+
+  /** As {@link #orgEntry(String, OrgRightsClaim.FunctionEntry...)}, but with an org-level right set. */
+  private static OrgRightsClaim.OrgEntry orgEntry(final String orgId, final String orgLevelRight,
+      final OrgRightsClaim.FunctionEntry... functions) {
+    return new OrgRightsClaim.OrgEntry(
+        OrganizationID.of(orgId), new LocalizedString(), orgLevelRight, List.of(functions));
   }
 }

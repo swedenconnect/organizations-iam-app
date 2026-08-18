@@ -135,8 +135,11 @@ Authorization: Bearer <token>
 **Authorization:** Requires one of:
 
 - The `superuser` realm role (`ROLE_SUPERUSER`); or
-- An `org_rights` claim granting `admin` on `(orgIdentifier, functionId)` — including
-  via the org-wide wildcard `(orgIdentifier, *, admin)`.
+- An `org_rights` claim granting `admin` on `(orgIdentifier, functionId)`. A right granted at
+  the organization level qualifies because the protocol mapper expands it onto every function
+  attached to the organization — but only for those functions. The `org_level_right` field
+  itself grants nothing, so an org-level admin has no access to a function that is not attached
+  to that organization.
 
 Authorization is evaluated before any Keycloak lookup; unauthorized callers cannot
 distinguish a non-existent org/function from an existing-but-forbidden one.

@@ -34,6 +34,7 @@ import se.swedenconnect.iam.security.claims.OrgRightsClaimParser;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -109,20 +110,39 @@ class ListRightsHoldersControllerTest {
   }
 
   // -----------------------------------------------------------------------
-  // 200 — org-wide admin (wildcard)
+  // 200 — org-level admin, expanded onto the requested (attached) function
   // -----------------------------------------------------------------------
 
   @Test
-  void listRightsHolders_orgWideAdmin_returnsOk() {
-    setupNonSuperuserAuth(orgRightsClaimRaw(ORG, "*", "admin"));
+  void listRightsHolders_orgLevelAdmin_returnsOk() {
+    final Object claim = orgRightsClaimRawOrgLevel(ORG, "admin", FUNC, "other-function");
+    setupNonSuperuserAuth(claim);
     when(this.keycloakAdminClient.organizationExists(ORG)).thenReturn(true);
     when(this.keycloakAdminClient.isFunctionAttachedToOrg(ORG, FUNC)).thenReturn(true);
     when(this.keycloakAdminClient.fetchFunctionRightsHolders(ORG, FUNC)).thenReturn(List.of());
 
     final ResponseEntity<?> response = this.controller.listRightsHolders(ORG, FUNC,
-        jwtWithOrgRights(orgRightsClaimRaw(ORG, "*", "admin")));
+        jwtWithOrgRights(claim));
 
     assertThat(response.getStatusCode().value()).isEqualTo(200);
+  }
+
+  // -----------------------------------------------------------------------
+  // 403 — org-level admin, but the requested function is not attached to the org, so the mapper
+  // never expanded the right onto it. org_level_right must not grant access on its own.
+  // -----------------------------------------------------------------------
+
+  @Test
+  void listRightsHolders_orgLevelAdminButFunctionNotAttached_returns403() {
+    final Object claim = orgRightsClaimRawOrgLevel(ORG, "admin", "other-function");
+    setupNonSuperuserAuth(claim);
+
+    final ResponseEntity<?> response = this.controller.listRightsHolders(ORG, FUNC,
+        jwtWithOrgRights(claim));
+
+    assertThat(response.getStatusCode().value()).isEqualTo(403);
+    verify(this.keycloakAdminClient, never()).organizationExists(anyString());
+    verify(this.keycloakAdminClient, never()).fetchFunctionRightsHolders(anyString(), anyString());
   }
 
   // -----------------------------------------------------------------------
@@ -282,6 +302,22 @@ class ListRightsHoldersControllerTest {
         "organization_identifier", orgId,
         "organization_name#sv", "Test Org",
         "functions", List.of(Map.of("function", function, "right", right))));
+  }
+
+  /**
+   * Builds a raw {@code org_rights} claim value for a right granted at the organization level, as
+   * the Keycloak protocol mapper emits it: the {@code org_level_right} provenance field plus one
+   * function entry per function attached to the organization.
+   */
+  private static Object orgRightsClaimRawOrgLevel(
+      final String orgId, final String right, final String... attachedFunctions) {
+    return List.of(Map.of(
+        "organization_identifier", orgId,
+        "organization_name#sv", "Test Org",
+        "org_level_right", right,
+        "functions", Stream.of(attachedFunctions)
+            .map(f -> Map.of("function", f, "right", right))
+            .toList()));
   }
 
 }
