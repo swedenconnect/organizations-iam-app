@@ -162,16 +162,47 @@ script.
 
 Base services should use host ports in the range: `16900-17000`.
 
+<a name="metadata-aggregator"></a>
+#### Metadata Aggregator
+
+Handles SAML metadata for the "federation" that our Keycloak uses for user authentication.
+
+**Ports:**
+
+- `16900`: Port exposing SAML metadata
+
+**Configuration directory:** [config/md-aggregator](config/md-aggregator)
+
 <a name="postgres-db"></a>
 #### Postgres DB
 
-Postgres Database.
+Postgres Database used by Keycloak.
 
 **Ports:**
 
 - `16905`: Postgres port
 
 **Configuration directory:** [config/postgres](config/postgres)
+
+<a name="saml-identity-provider></a>
+#### SAML Identity Provider
+
+The SAML identity provider that is used by Keycloak to authenticate users. It uses 
+`http://local.dev.swedenconnect.se/idp` as its SAML entityID.
+
+**Ports:**
+
+- `16910`: The port exposed for authentication.
+
+**SAML entityID:**
+
+- `http://local.dev.swedenconnect.se/idp`
+
+**URL:s**
+
+- https://local.dev.swedenconnect.se:16010/idp/saml2/metadata - Exposes the IdP metadata
+
+**Configuration directory:** [config/swedish-eid-idp](config/swedish-eid-idp)
 
 ## Keycloak
 

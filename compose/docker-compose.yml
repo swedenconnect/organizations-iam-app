@@ -65,6 +65,55 @@ services:
       JAVA_OPTS: "-Djava.net.preferIPv4Stack=true -Dorg.apache.xml.security.ignoreLineBreaks=true -Djavax.net.ssl.trustStore=/opt/common/trust.jks -Djavax.net.ssl.trustStorePassword=secret"
       JAVA_TOOL_OPTIONS: "-Djava.net.preferIPv4Stack=true -Dorg.apache.xml.security.ignoreLineBreaks=true -Djavax.net.ssl.trustStore=/opt/common/trust.jks -Djavax.net.ssl.trustStorePassword=secret"
 
+  metadata-aggregator:
+    image: ghcr.io/swedenconnect/metadata-aggregator:latest
+    container_name: metadata-aggregator
+    ports:
+      - "16900:8443"
+    domainname: local.dev.swedenconnect.se
+    restart: on-failure
+    networks:
+      - swedenconnect-local
+    extra_hosts:
+      - "local.dev.swedenconnect.se:host-gateway"
+    volumes:
+      - ./config/md-aggregator:/opt/aggregator
+      - ./config/md-aggregator/pyff:/opt/pyff
+      - ./config/common:/opt/common
+    environment:
+      SPRING_CONFIG_LOCATION: /opt/aggregator/
+      TZ: "Europe/Stockholm"
+      JAVA_OPTS: "-Djava.net.preferIPv4Stack=true -Dorg.apache.xml.security.ignoreLineBreaks=true"
+    healthcheck:
+      test: curl -f --insecure https://metadata-aggregator:8443/metadata/feed || exit 1
+      interval: 10s
+      retries: 4
+
+  swedish-eid-idp:
+    image: ghcr.io/swedenconnect/swedish-eid-idp:latest
+    depends_on:
+      metadata-aggregator:
+        condition: service_healthy
+    container_name: swedish-eid-idp
+    ports:
+      - 16910:8443
+    networks:
+      - swedenconnect-local
+    domainname: local.dev.swedenconnect.se
+    restart: on-failure
+    volumes:
+      - ./config/swedish-eid-idp:/opt/swedish-eid-idp
+      - ./config/common:/opt/common
+    environment:
+      HOST_PORT: 16910
+      IDP_DIR: /opt/swedish-eid-idp/data
+      IDP_CONFIG_DIR: /opt/swedish-eid-idp
+      COMMON_CONFIG_DIR: /opt/common
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/opt/swedish-eid-idp/
+      SPRING_PROFILES_ACTIVE: localdev
+      TZ: "Europe/Stockholm"
+      JAVA_OPTS: "-Djava.net.preferIPv4Stack=true -Dorg.apache.xml.security.ignoreLineBreaks=true"
+
   iam-demo-app:
     image: ghcr.io/swedenconnect/iam-demo-app:latest
     depends_on:
@@ -130,6 +179,8 @@ services:
     image: keycloak/keycloak:26.5.7
     depends_on:
       postgres:
+        condition: service_healthy
+      swedish-eid-idp:
         condition: service_healthy
     ports:
       - "17000:8443"

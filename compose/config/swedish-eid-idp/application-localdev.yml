@@ -1,0 +1,69 @@
+#
+# Configuration for the Swedish eID Reference IdP in the local development environment.
+#
+
+spring:
+  ssl:
+    bundle:
+      jks:
+        server:
+          key:
+            alias: tls
+            password: secret
+          keystore:
+            location: file:${COMMON_CONFIG_DIR}/tls.jks
+            password: secret
+            type: jks
+
+server:
+  port: 8443
+  servlet:
+    context-path: /idp
+  ssl:
+    enabled: true
+    bundle: server
+
+authn:
+  supported-loas:
+    - http://id.elegnamnden.se/loa/1.0/loa2
+    - http://id.elegnamnden.se/loa/1.0/loa3
+    - http://id.swedenconnect.se/loa/1.0/uncertified-loa3
+
+saml:
+  idp:
+    base-url: https://local.dev.swedenconnect.se:${HOST_PORT}/idp
+    entity-id: http://local.dev.swedenconnect.se/idp
+    metadata-providers:
+      - location: https://metadata-aggregator:8443/metadata/mdx/role/sp.xml
+        skip-hostname-verification: true
+        backup-location: ${IDP_DIR}/cache/metadata-backup.xml
+        validation-certificate: file:${COMMON_CONFIG_DIR}/metadata.crt
+    credentials:
+      sign:
+        resource: file:${IDP_CONFIG_DIR}/idp-credentials.jks
+        alias: sign
+        password: secret
+        key-password: secret
+        name: Signing
+      encrypt:
+        resource: file:${IDP_CONFIG_DIR}/idp-credentials.jks
+        alias: encrypt
+        password: secret
+        key-password: secret
+        name: Encryption
+      metadata-sign:
+        resource: file:${IDP_CONFIG_DIR}/idp-credentials.jks
+        alias: metadata
+        password: secret
+        key-password: secret
+        name: "Metadata Signing"
+
+#
+# Logging
+#
+logging:
+  level:
+    se:
+      swedenconnect:
+        spring:
+          saml: DEBUG

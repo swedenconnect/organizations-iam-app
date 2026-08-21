@@ -1,0 +1,35 @@
+- when normalize:
+    - xslt:
+        stylesheet: tidy.xsl
+    - xslt:
+        stylesheet: unsign.xsl
+    - break
+- when clean:
+    - check_xml_namespaces
+    - break
+- when update:
+    - load:
+        - /opt/pyff/metadata via normalize cleanup clean
+#        - https://idp.sandbox.swedenconnect.se/idp/metadata/idp.xml via normalize cleanup clean
+#        - https://con.sandbox.swedenconnect.se/idp/metadata/idp.xml via normalize cleanup clean
+#        - https://ps.sandbox.swedenconnect.se/eidas-ps/nat-metadata-private-sp via normalize cleanup clean
+    - break
+- when request:
+    - select
+    - pipe:
+        - when accept application/xml:
+             - xslt:
+                 stylesheet: tidy.xsl
+             - first
+             - finalize:
+                cacheDuration: PT20M
+                validUntil: P7D
+             - sign:
+                 key: /opt/pyff/cred/key2.pem
+                 cert: /opt/pyff/cred/cert.crt
+             - emit application/xml
+             - break
+        - when accept application/json:
+             - discojson
+             - emit application/json:
+             - break
