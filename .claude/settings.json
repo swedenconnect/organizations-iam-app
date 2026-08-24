@@ -12,10 +12,18 @@
       "Bash(grep:*)",
       "Bash(tail:*)",
       "Bash(for f:*)",
+      "Bash(mkdir:*)",
+      "Bash(unzip -l:*)",
+      "Bash(docker compose ps:*)",
+      "Bash(docker compose logs:*)",
+      "Bash(docker compose config:*)",
       "mcp__jetbrains__list_directory_tree",
       "mcp__jetbrains__build_project",
       "mcp__jetbrains__get_file_problems",
       "mcp__jetbrains__replace_text_in_file",
+      "mcp__jetbrains__get_project_modules",
+      "mcp__jetbrains__get_project_dependencies",
+      "mcp__jetbrains__get_run_configurations",
       "mcp__ide__getDiagnostics"
     ]
   },

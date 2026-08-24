@@ -1,0 +1,102 @@
+<md:EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata" xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata"
+                     xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" xmlns:ds="http://www.w3.org/2000/09/xmldsig#"
+                     entityID="https://local.dev.swedenconnect.se:17000/realms/orgiam"
+                     ID="ID_81966784-fa04-47c6-af28-aa0709fb0883">
+  <md:Extensions xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata">
+    <mdattr:EntityAttributes xmlns:mdattr="urn:oasis:names:tc:SAML:metadata:attribute">
+      <saml2:Attribute xmlns:saml2="urn:oasis:names:tc:SAML:2.0:assertion"
+                       Name="http://macedir.org/entity-category"
+                       NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">
+        <saml2:AttributeValue xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                              xsi:type="xsd:string">
+          http://id.elegnamnden.se/ec/1.0/loa3-pnr
+        </saml2:AttributeValue>
+        <saml2:AttributeValue xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                              xsi:type="xsd:string">
+          http://id.swedenconnect.se/ec/sc/uncertified-loa3-pnr
+        </saml2:AttributeValue>
+        <saml2:AttributeValue xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                              xsi:type="xsd:string">
+          http://id.swedenconnect.se/general-ec/1.0/secure-authenticator-binding
+        </saml2:AttributeValue>
+        <saml2:AttributeValue xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                              xsi:type="xsd:string">
+          http://id.swedenconnect.se/general-ec/1.0/accepts-coordination-number
+        </saml2:AttributeValue>
+      </saml2:Attribute>
+    </mdattr:EntityAttributes>
+  </md:Extensions>
+  <md:SPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol" AuthnRequestsSigned="true"
+                      WantAssertionsSigned="true">
+    <md:Extensions>
+      <mdui:UIInfo xmlns:mdui="urn:oasis:names:tc:SAML:metadata:ui">
+        <mdui:DisplayName xml:lang="sv">Organisationsadmin</mdui:DisplayName>
+        <mdui:DisplayName xml:lang="en">Org Admin</mdui:DisplayName>
+        <mdui:Description xml:lang="sv">Applikation för att administrera användare</mdui:Description>
+        <mdui:Description xml:lang="en">Application for administering users</mdui:Description>
+        <mdui:Logo height="256" width="256" xmlns:mdui="urn:oasis:names:tc:SAML:metadata:ui">
+          https://local.dev.swedenconnect.se:16910/idp/images/logo-notext.svg
+        </mdui:Logo>
+        <mdui:Logo height="56" width="280" xmlns:mdui="urn:oasis:names:tc:SAML:metadata:ui">
+          https://local.dev.swedenconnect.se:16910/idp/images/logo.svg
+        </mdui:Logo>
+      </mdui:UIInfo>
+    </md:Extensions>
+    <md:KeyDescriptor use="signing">
+      <ds:KeyInfo>
+        <ds:KeyName>--UcZuF0snKtIlYD40OUZGyXER38JLVNlIne_43li_A</ds:KeyName>
+        <ds:X509Data>
+          <ds:X509Certificate>
+            MIICmzCCAYMCBgGdlo3ETTANBgkqhkiG9w0BAQsFADARMQ8wDQYDVQQDDAZvcmdpYW0wHhcNMjYwNDE2MTM0NzQ2WhcNMzYwNDE2MTM0OTI2WjARMQ8wDQYDVQQDDAZvcmdpYW0wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC4BMG/cD1pvjBgHCKYZfurcWtPPuPZkELo5pzur05NArEGO4xosf7nXw82BCjBKzFcvGYf4FRAq62SEF8WSiqag78sd7XCjqGbxlEW8Yim3EqK9HoaRFtvyV3d7IDt5Y502TEwjNK6tzD50I2MdoS5xIzQCZp+tiwALxLNMoR63kwKPMsGd/ryssHfSaMj6JEXCkUTHJr9mefK6F7hUG4ittvyiN4gElsXdFXy8UfpOTMNLi/zrncvB/ZtbCgGHGzpyuUnclTMqsxafjvRaogo6YIDe3DbAXDNjGUhe6T2H5M9GxSLWsiAmQtUuEHs0g2KF1nASaDdVsK5O/9QluyLAgMBAAEwDQYJKoZIhvcNAQELBQADggEBABDjRSFnpAarOh8SbQgyXeWMQMZ9ZL2VNNLRIosenkJFdFFrfBVsMqdfE/XE0TB7ErQeFrwe/4Rbu3KUeFIal/9Vo7ouWJAqVxcWjLZU29sqTfKt99WHSC2R0RZm11nYNHfQ1oh92P72G+vGZ9E+RP6OpNoHmlDoF6cfoyzCGaC5msXQ95Bxlk1lPvjzuKHgd3eqwXzNcKfmL1cNY0ys67m7ymtdVSp21vmYd8/SutKX8FgwfPb9pjBv1m4lJahPUO/UZh8L1aewycPv9HIcGr10G+egqfVepfHFB0JlkvrNC2dlzc3twd3Iy1W/mOlxAa8aNrRTHB92xFvHZ+iCI6Q=
+          </ds:X509Certificate>
+        </ds:X509Data>
+      </ds:KeyInfo>
+    </md:KeyDescriptor>
+    <md:KeyDescriptor use="encryption">
+      <ds:KeyInfo>
+        <ds:KeyName>Ci_5Vf7o9bz1_JEL_5WP-BMGZTMvy4gsrvggnQgI5Fg</ds:KeyName>
+        <ds:X509Data>
+          <ds:X509Certificate>
+            MIICmzCCAYMCBgGdlo3EgjANBgkqhkiG9w0BAQsFADARMQ8wDQYDVQQDDAZvcmdpYW0wHhcNMjYwNDE2MTM0NzQ2WhcNMzYwNDE2MTM0OTI2WjARMQ8wDQYDVQQDDAZvcmdpYW0wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC3qT8FFJzcEUuTl693eSzGxqNeMN6w0p4pdErbpB+8mBwCM6q8Mmx4FPL8/0817r5Eqbg+VZAFH2+4GYqXo1myLM7igLRczJOq3gSZTkzAxbtHO52KtYz13q+TfKtS7GJd6J9lWvmzN3dHuB9xwtKDezLF/1PsYaO/ZoFFRGMHRAuHtfRZ7VGKA9UXyMfZrdt3FTdWA1cCqQn0btCy//kZwB6CioVqFR9d/FDS8ozFxfHmz0vii96zeV5xW/qrGRC+zv/ZF5GtQj4diY5xjFDlpfza2cNcZlPEplE8w8PrcxqyHDwm8JiXp3jG7GuY2Wd8DW+RjDW3Gk0copc3slFjAgMBAAEwDQYJKoZIhvcNAQELBQADggEBAE3xpVC5QIHRRY5/08LegFV2l45N0h673RirftGrqbYFoxaJCxFt06jYzn27G5pGKysKlq2EzNXx1j3R3BoNzZJLdaCDC0ThVtTujvVh2WZJbPYIF2pGjAxcU0XpMCuImtUppGHVvKewBEL1q4jrOF0N3a0QaHoT9fRaaCIyKSasXVRdRDW0nTte2AKnULKWVGKAoeCzcyOf3cBXKNvO2qLgvdMffSHGMiOXfkBJWSuSY9ap/o7Fzg/v24VoDb2DVH+MFuxrxyCclD/KdyK1lMSDLc+/Df4ghtsSL1DsODWxm4r01lscdfMB8A24tRoEpaTPIsaAqjSqwQ8YKvkjcOQ=
+          </ds:X509Certificate>
+        </ds:X509Data>
+      </ds:KeyInfo>
+      <md:EncryptionMethod Algorithm="http://www.w3.org/2001/04/xmlenc#rsa-oaep-mgf1p"/>
+      <md:EncryptionMethod Algorithm="http://www.w3.org/2009/xmlenc11#rsa-oaep"/>
+    </md:KeyDescriptor>
+    <md:SingleLogoutService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
+                            Location="https://local.dev.swedenconnect.se:17000/realms/orgiam/broker/eid/endpoint"/>
+    <md:SingleLogoutService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
+                            Location="https://local.dev.swedenconnect.se:17000/realms/orgiam/broker/eid/endpoint"/>
+    <md:NameIDFormat>urn:oasis:names:tc:SAML:2.0:nameid-format:persistent</md:NameIDFormat>
+    <md:AssertionConsumerService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
+                                 Location="https://local.dev.swedenconnect.se:17000/realms/orgiam/broker/eid/endpoint"
+                                 isDefault="true" index="1"/>
+    <md:AssertionConsumerService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect"
+                                 Location="https://local.dev.swedenconnect.se:17000/realms/orgiam/broker/eid/endpoint"
+                                 index="2"/>
+    <md:AssertionConsumerService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Artifact"
+                                 Location="https://local.dev.swedenconnect.se:17000/realms/orgiam/broker/eid/endpoint"
+                                 index="3"/>
+    <md:Organization>
+      <md:OrganizationName xml:lang="sv">Myndigheten för digital förvaltning</md:OrganizationName>
+      <md:OrganizationName xml:lang="en">Authority for digital government</md:OrganizationName>
+      <md:OrganizationDisplayName xml:lang="sv">Digg</md:OrganizationDisplayName>
+      <md:OrganizationDisplayName xml:lang="en">Digg</md:OrganizationDisplayName>
+      <md:OrganizationURL xml:lang="sv">https://www.digg.se</md:OrganizationURL>
+      <md:OrganizationURL xml:lang="en">https://www.digg.se/en</md:OrganizationURL>
+    </md:Organization>
+    <md:ContactPerson contactType="support">
+      <md:Company>Digg</md:Company>
+      <md:EmailAddress>operations@swedenconnect.se</md:EmailAddress>
+    </md:ContactPerson>
+    <md:ContactPerson contactType="technical">
+      <md:Company>Digg</md:Company>
+      <md:EmailAddress>operations@swedenconnect.se</md:EmailAddress>
+    </md:ContactPerson>
+  </md:SPSSODescriptor>
+</md:EntityDescriptor>

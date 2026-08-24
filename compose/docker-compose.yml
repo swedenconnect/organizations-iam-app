@@ -99,6 +99,8 @@ services:
       - 16910:8443
     networks:
       - swedenconnect-local
+    extra_hosts:
+      - "local.dev.swedenconnect.se:host-gateway"
     domainname: local.dev.swedenconnect.se
     restart: on-failure
     volumes:
@@ -119,8 +121,6 @@ services:
     depends_on:
       keycloak:
         condition: service_healthy
-      iam-admin-app:
-        condition: service_started
     container_name: iam-demo-app
     ports:
       - "16990:16990"
@@ -181,7 +181,7 @@ services:
       postgres:
         condition: service_healthy
       swedish-eid-idp:
-        condition: service_healthy
+        condition: service_started
     ports:
       - "17000:8443"
     domainname: local.dev.swedenconnect.se

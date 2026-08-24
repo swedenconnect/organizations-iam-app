@@ -200,7 +200,7 @@ The SAML identity provider that is used by Keycloak to authenticate users. It us
 
 **URL:s**
 
-- https://local.dev.swedenconnect.se:16010/idp/saml2/metadata - Exposes the IdP metadata
+- https://local.dev.swedenconnect.se:16910/idp/saml2/metadata - Exposes the IdP metadata
 
 **Configuration directory:** [config/swedish-eid-idp](config/swedish-eid-idp)
 

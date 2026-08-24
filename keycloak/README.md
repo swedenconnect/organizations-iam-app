@@ -9,6 +9,7 @@
 | [org-rights-mapper](org-rights-mapper/README.md) | Adds the `org_rights` claim derived from the user's group memberships under the `orgs` group. |
 | [scope-org-identifier-mapper](scope-org-identifier-mapper/README.md) | Extracts the organization identifier from the granted scope string and emits it as the `organization_identifier` claim. |
 | [resource-aud-plugin](resource-aud-plugin/README.md) | Validates the OAuth2 `resource` parameter against the target client's `client_functions` attribute and sets the `aud` claim to `[client_id, function]`. |
+| [idp-user-matcher](idp-user-matcher/README.md) | First broker login authenticator that resolves an incoming brokered identity to a pre-provisioned local user by matching on a configured user attribute. |
 
 ## Build
 
@@ -41,7 +42,7 @@ cp <module>/target/<module>-<version>.jar /opt/keycloak/providers/
 See each module's README for what it does and how to configure it in the Admin Console.
 
 > **Note:** For the project's local Docker Compose environment, use the convenience script
-> `compose/config/keycloak/install-keycloak-plugins.sh` which builds these plugins, also
+> `compose/keycloak-scripts/install-keycloak-plugins.sh` which builds these plugins, also
 > downloads the external `oidc-sweden-claims-plugin` from Maven Central, and installs all
 > JARs into `compose/config/keycloak/spi/` in one step. See
 > [compose/README.md](../compose/README.md) for full instructions.

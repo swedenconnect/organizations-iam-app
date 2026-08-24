@@ -33,6 +33,7 @@
     <module>org-rights-mapper</module>
     <module>scope-org-identifier-mapper</module>
     <module>resource-aud-plugin</module>
+    <module>idp-user-matcher</module>
   </modules>
 
   <dependencyManagement>

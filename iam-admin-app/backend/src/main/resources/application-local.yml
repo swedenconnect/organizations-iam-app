@@ -50,7 +50,7 @@ iam:
             key-password: secret
   admin:
     admin-api-base: https://local.dev.swedenconnect.se:17000/admin/realms/orgiam
-    pnr-userids: true
+    pnr-userids: false
 #    authz-client-ids:
 #      - "https://local.dev.swedenconnect.se:17005"
 #      - "https://local.dev.swedenconnect.se:17010"
