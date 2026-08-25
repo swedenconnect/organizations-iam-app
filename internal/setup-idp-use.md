@@ -54,6 +54,7 @@ Set:
 | :--- | :--- |
 | Want Assertions Signed | On |
 | Want Assertions Encrypted | On |
+| Force Authentication | On |
 
 Both must be on before the SP descriptor is downloaded in step 3. Keycloak only puts an encryption
 `KeyDescriptor` in the descriptor when **Want Assertions Encrypted** is on, and without it the IdP
