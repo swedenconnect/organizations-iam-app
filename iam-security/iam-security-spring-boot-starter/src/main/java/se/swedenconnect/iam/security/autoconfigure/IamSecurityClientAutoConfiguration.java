@@ -16,6 +16,7 @@
 package se.swedenconnect.iam.security.autoconfigure;
 
 import com.nimbusds.jose.jwk.JWK;
+import com.nimbusds.jose.jwk.KeyUse;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -123,7 +124,9 @@ public class IamSecurityClientAutoConfiguration {
           "iam.security.client.credential is not configured — cannot create OIDC client JWK");
     }
     final PkiCredential credential = pkiCredentialFactory.createCredential(credentialProps);
-    return JwkTransformerFunction.function().apply(credential);
+    return JwkTransformerFunction.function()
+        .withKeyUseFunction(pkiCredential -> KeyUse.SIGNATURE)
+        .apply(credential);
   }
 
   /**
