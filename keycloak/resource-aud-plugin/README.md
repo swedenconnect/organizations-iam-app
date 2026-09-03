@@ -2,7 +2,7 @@
 
 # resource-aud-plugin
 
-A Keycloak 26.x plugin that validates the OAuth2 `resource` parameter (RFC 8707) against the target client's `client_functions` attribute and sets the `aud` claim in access tokens to a multi-valued array.
+A Keycloak 26.x plugin that validates the OAuth2 `resource` parameter (RFC 8707) against the target client's `client_functions` attribute, enforces per-user entitlement on org-scoped scopes, and sets the `aud` claim in access tokens to a multi-valued array.
 
 ## What it does
 
@@ -10,13 +10,46 @@ The plugin contains two Keycloak SPI components:
 
 ### 1. Resource Function Executor (Client Policy Executor)
 
-Intercepts authorization and token requests. When a request carries a `resource` parameter, the executor:
+The executor performs two independent checks.
+
+**Resource validation.** When an authorization or token request carries a `resource` parameter, the executor:
 
 1. Extracts the function identifier from the requested scope (pattern: `{org}:{function}:{right}`).
 2. Looks up the Keycloak client indicated by the `resource` value.
 3. Checks that the client's `client_functions` attribute contains the requested function.
 4. Rejects the request with an `invalid_target` error if the function is not supported.
 5. For authorization requests, stores the validated `resource` value in an auth session note so the mapper can read it at token generation time.
+
+**Scope entitlement.** On every token request the executor additionally checks that the user is
+entitled to each requested org-scoped scope:
+
+1. Extracts every scope of the form `{org}:{function}:{right}` from the client session's scope
+   note (falling back to the `scope` form parameter).
+2. Resolves the user from the authorization code's session.
+3. Grants everything if the user holds the `superuser` realm role.
+4. Otherwise requires membership of at least one qualifying group per scope. A higher right
+   qualifies for a lower one, and an org-wide group qualifies for every function of that org:
+
+   | Requested right | Qualifying groups |
+   |-----------------|-------------------|
+   | `read` | `/orgs/{org}/_read`, `/orgs/{org}/_write`, `/orgs/{org}/_admin`, `/orgs/{org}/{function}/_read`, `/orgs/{org}/{function}/_write`, `/orgs/{org}/{function}/_admin` |
+   | `write` | `/orgs/{org}/_write`, `/orgs/{org}/_admin`, `/orgs/{org}/{function}/_write`, `/orgs/{org}/{function}/_admin` |
+   | `admin` | `/orgs/{org}/_admin`, `/orgs/{org}/{function}/_admin` |
+
+5. Rejects the request with `invalid_scope` if any requested scope is not covered.
+
+This check exists because Keycloak grants an optional client scope to whoever requests it and
+never evaluates the Authorization Services scope permissions during standard token issuance.
+Without it, any authenticated user of a managed client could obtain any organization's scope.
+
+Entitlement is read from live group memberships rather than from a token, so a revoked right
+takes effect on the next token request. Service account tokens (`client_credentials`) are
+exempt — they are issued to the client, not to a user. Refresh tokens keep the scopes they were
+issued with until they expire.
+
+The qualifying-group rule mirrors `KeycloakAdminClient.qualifyingGroupPaths` in the IAM admin
+application, which builds the Authorization Services group policies from the same table. The two
+must stay in step.
 
 ### 2. Resource Audience Mapper (Protocol Mapper)
 

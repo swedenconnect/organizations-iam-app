@@ -63,7 +63,10 @@ public class ResourceFunctionExecutorFactory implements ClientPolicyExecutorProv
     return "Validates the OAuth2 resource parameter (RFC 8707) against the target client's "
         + "client_functions attribute. Rejects requests where the function extracted from the "
         + "requested scope is not listed in client_functions. Stores the validated resource "
-        + "value in an auth session note for the Resource Audience Mapper to use at token time.";
+        + "value in an auth session note for the Resource Audience Mapper to use at token time. "
+        + "On token requests it also enforces scope entitlement: a scope of the form "
+        + "{org}:{function}:{right} is granted only if the user holds a qualifying group under "
+        + "/orgs/{org}, or the superuser realm role.";
   }
 
   @Override

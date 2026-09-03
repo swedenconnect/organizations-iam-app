@@ -437,9 +437,20 @@ parameter against the target resource server's `client_functions` attribute. If 
 resource server does not support the function extracted from the requested scope, the
 request is rejected with an `invalid_target` error (RFC 8707).
 
+The same executor also enforces **scope entitlement** on token requests. A scope of the form
+`{org}:{function}:{right}` is granted only if the user is a member of a qualifying group under
+`/orgs/{org}` (or holds the `superuser` realm role); otherwise the token request is rejected
+with an `invalid_scope` error. This is what stops any authenticated user of a managed client
+from obtaining any organization's scope — Keycloak itself grants optional client scopes to
+whoever requests them, and does not evaluate the Authorization Services permissions during
+standard token issuance. See
+[Scope Creation and Authorization Policies](#scope-creation-and-authorization-policies) for the
+qualifying groups.
+
 The executor is activated via a Client Policy profile and policy, which are created
 automatically by `bootstrap-realm.sh`. The policy applies to all confidential clients in
-the realm.
+the realm. **A realm whose client policy is missing this executor performs no entitlement
+check at all**, so verify it is present after upgrading Keycloak or restoring a realm.
 
 **Client Policy configuration (created by `bootstrap-realm.sh`):**
 

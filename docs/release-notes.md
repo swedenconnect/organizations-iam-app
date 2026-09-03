@@ -8,6 +8,42 @@
 
 **Date:** 
 
+- **Org-scoped scopes are now checked against the user's rights at token issuance.**
+  The `resource-function-executor` Client Policy executor in the `resource-aud-plugin` rejects a
+  token request with `invalid_scope` if the user is not entitled to a requested scope of the form
+  `{org}:{function}:{right}`.
+
+  This closes a gap in how Keycloak treats optional client scopes: it grants one to whoever asks
+  for it, and it never evaluates the Authorization Services scope permissions during standard
+  token issuance — those are only consulted by the `uma-ticket` grant and the policy evaluation
+  API. The group policies created alongside each scope were therefore not enforcing anything at
+  token time, and any authenticated user of a managed client could obtain any organisation's
+  scope.
+
+  A scope is granted if the user holds the `superuser` realm role, or is a member of at least one
+  qualifying group under `/orgs/{org}`. A higher right qualifies for a lower one, and an
+  organisation-wide group qualifies for every function of that organisation:
+
+  | Requested right | Qualifying groups |
+  |-----------------|-------------------|
+  | `read` | `/orgs/{org}/_read`, `/orgs/{org}/_write`, `/orgs/{org}/_admin`, `/orgs/{org}/{function}/_read`, `/orgs/{org}/{function}/_write`, `/orgs/{org}/{function}/_admin` |
+  | `write` | `/orgs/{org}/_write`, `/orgs/{org}/_admin`, `/orgs/{org}/{function}/_write`, `/orgs/{org}/{function}/_admin` |
+  | `admin` | `/orgs/{org}/_admin`, `/orgs/{org}/{function}/_admin` |
+
+  This is the same rule the admin application uses when it builds the group policies for a newly
+  attached function, so no rights that were correct before are lost.
+
+  Entitlement is read from live group memberships rather than from a claim, so a right revoked
+  after login takes effect on the next token request. Scopes that are not org-scoped are
+  untouched. Service account tokens (`client_credentials`) are exempt — they are issued to the
+  client, not to a user. A refresh token keeps the scopes it was issued with until it expires.
+
+  **Deployment:** deploy the new `resource-aud-plugin` JAR as usual; a `start --optimized`
+  installation needs an explicit `kc.sh build`. No realm configuration changes are required, but
+  the check only runs where the Client Policy profile containing `resource-function-executor` is
+  present — a realm missing it performs no entitlement check at all. Verify the profile after
+  upgrading Keycloak or restoring a realm.
+
 - **Managed clients can be administered from the IAM admin application.** A superuser can
   register, edit and delete OIDC clients under a new **Services** tab, instead of running
   `add-oidc-client.sh` and `set-iam-admin-managed.sh` against the Keycloak host. A client is
