@@ -100,6 +100,8 @@ for the source definition.
 | `iam.admin.pnr-userids` | When `true`, the personal identity number (12 digits) is used as the Keycloak username for newly created users instead of a random UUID. Useful during local development to allow username/password login. | `Boolean` | `false` |
 | `iam.admin.allow-function-removal` | When `true`, superusers are permitted to permanently delete a function definition and all its Keycloak artifacts (group, org sub-groups, client scopes, authorization policies and permissions). | `Boolean` | `false` |
 | `iam.admin.allow-org-rights` | When `true`, users may be assigned rights at the organization level, implicitly covering all functions. When `false`, only function-level assignments are permitted. Existing org-level memberships remain visible and removable. | `Boolean` | `true` |
+| `iam.admin.client-reconciliation.enabled` | When `true`, managed clients are reconciled against the org/function topology on a schedule. Reconciliation also runs whenever a client is created or updated, and whenever a function is attached to or detached from an organization, so the schedule only exists to repair drift. | `Boolean` | `false` |
+| `iam.admin.client-reconciliation.cron` | Cron expression controlling how often scheduled reconciliation runs. Only used when reconciliation is enabled. | `String` | `0 */15 * * * *` |
 
 <a name="example"></a>
 ## Example Configuration
@@ -192,6 +194,9 @@ iam:
     pnr-userids: true
     allow-function-removal: true
     allow-org-rights: true
+    client-reconciliation:
+      enabled: false
+      cron: "0 */15 * * * *"
 ```
 
 ---

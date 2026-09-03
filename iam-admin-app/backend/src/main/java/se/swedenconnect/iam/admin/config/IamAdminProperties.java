@@ -25,6 +25,7 @@ import java.util.List;
  * Configuration properties for the IAM Admin application.
  *
  * @author Martin Lindström
+ * @author Felix Hellman
  */
 @ConfigurationProperties("iam.admin")
 public class IamAdminProperties {
@@ -100,6 +101,15 @@ public class IamAdminProperties {
   private boolean allowFunctionRemoval = false;
 
   /**
+   * Settings for the scheduled reconciliation of managed clients. Disabled by default —
+   * reconciliation also runs whenever a client or a function attachment changes, so the schedule
+   * exists only to repair drift.
+   */
+  @Getter
+  @Setter
+  private ClientReconciliation clientReconciliation = new ClientReconciliation();
+
+  /**
    * When {@code true} (the default), users may be assigned rights at the organization level,
    * implicitly covering all functions. When {@code false}, only function-level assignments
    * are permitted via this application. Existing org-level Keycloak memberships remain
@@ -108,5 +118,25 @@ public class IamAdminProperties {
   @Getter
   @Setter
   private boolean allowOrgRights = true;
+
+  /**
+   * Settings for the scheduled reconciliation of managed clients.
+   */
+  public static class ClientReconciliation {
+
+    /**
+     * Whether managed clients are reconciled on a schedule. Default: {@code false}.
+     */
+    @Getter
+    @Setter
+    private boolean enabled = false;
+
+    /**
+     * The cron expression controlling how often reconciliation runs. Default: every 15 minutes.
+     */
+    @Getter
+    @Setter
+    private String cron = "0 */15 * * * *";
+  }
 
 }

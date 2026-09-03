@@ -8,7 +8,56 @@
 
 **Date:** 
 
--
+- **Managed clients can be administered from the IAM admin application.** A superuser can
+  register, edit and delete OIDC clients under a new **Clients** tab, instead of running
+  `add-oidc-client.sh` and `set-iam-admin-managed.sh` against the Keycloak host. A client is
+  registered with the same settings the script applies: `private_key_jwt` authentication,
+  Authorization Services, the three protocol mappers, and the `naturalPersonNumber` and
+  `phone` optional scopes. Redirect URIs must be exact — wildcards are rejected. Deletion is
+  permanent, and is open to any superuser.
+
+- **Clients and resource servers are administered in one place, and a client can be both.**
+  The **Services** tab lists everything the application administers. A client carries two
+  independent roles, set with toggles when it is registered: *OIDC client* (logs users in and
+  requests org-scoped tokens) and *resource server* (may be named as an OAuth2 `resource`
+  target and appears in `aud`). Redirect URIs and client keys are asked for only when the OIDC
+  client role is on. A client with both roles is the shape for a service that answers requests
+  and calls another service onwards. The resource server role is marked with the new
+  `iam_admin_resource_server=true` attribute, which `add-resource-server.sh` now sets as well;
+  resource servers registered before this release need the attribute set once before they
+  appear in the application.
+
+- **Client artifacts are reconciled instead of only created on attach.** A managed client is
+  now brought in line with the org/function topology whenever it is created or updated, when
+  a function is attached to or detached from an organization, on demand from the Clients tab,
+  and — when `iam.admin.client-reconciliation.enabled` is set — on a schedule. This repairs
+  the case a client registered *after* functions were already attached to organizations,
+  which previously left the client without any of the scopes and policies its users need, as
+  well as drift from partial failures and manual edits in the Keycloak admin console.
+  Reconciliation only creates by default; removing the artifacts of functions a client no
+  longer handles requires opting in to pruning.
+
+- **`client_functions` now scopes which functions a client receives artifacts for.** The
+  attribute was previously honoured only by the `resource-aud-plugin` at token issuance; the
+  admin application gave every managed client artifacts for every function. The attribute is
+  now the complete list of functions a client handles, and an empty or absent attribute means
+  **no functions, not all of them**. Functions are optional when registering a client; one
+  registered without them is inert until functions are assigned.
+
+  **Upgrade action required.** A managed client that carries no `client_functions` attribute —
+  which includes every client registered with `add-oidc-client.sh` before this release — stops
+  receiving artifacts for newly attached functions. Its existing scopes, policies and
+  permissions are left in place, so nothing breaks immediately, but the client will not pick up
+  functions attached from now on. Assign functions to such clients from the admin application,
+  or with `set-client-functions.sh`. Unscoped clients are flagged in the application and named
+  in a warning on every reconciliation run.
+
+- **Fixed: scope permissions were never removed when a function was detached or deleted.**
+  Permissions are created as `permission-{org}-{function}-{right}`, but the cleanup paths
+  looked for `permission-{org}:{function}:{right}`. The lookup never matched, so every
+  function detach and function deletion left its scope permissions behind in Keycloak. Both
+  paths now derive the name from the same place. Permissions orphaned by earlier releases are
+  removed by a reconciliation run with pruning enabled.
 
 ---
 

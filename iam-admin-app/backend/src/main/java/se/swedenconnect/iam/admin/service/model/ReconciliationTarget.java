@@ -13,27 +13,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package se.swedenconnect.iam.admin.controllers.dto;
+package se.swedenconnect.iam.admin.service.model;
 
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
-
-import java.util.List;
-import java.util.Set;
 
 /**
- * JSON response body for {@code GET /api/session}.
+ * One (client, organization, function) combination to reconcile.
  *
- * @author Martin Lindström
+ * @param clientUuid the Keycloak UUID of the client
+ * @param clientId the OAuth2 client_id of the client, used in log and error messages
+ * @param orgIdentifier the organization identifier
+ * @param functionId the function identifier
+ *
  * @author Felix Hellman
  */
-public record AdminSessionResponse(
-    boolean superuser,
-    @Nullable String functionConstraint,
-    @Nullable String orgConstraint,
-    boolean allowFunctionRemoval,
-    boolean allowOrgRights,
-    @NonNull List<FunctionResponse> functions,
-    @NonNull List<OrgRightResponse> orgRights,
-    @NonNull Set<String> adminOrgIdentifiers) {
+public record ReconciliationTarget(
+    @NonNull String clientUuid,
+    @NonNull String clientId,
+    @NonNull String orgIdentifier,
+    @NonNull String functionId) {
 }

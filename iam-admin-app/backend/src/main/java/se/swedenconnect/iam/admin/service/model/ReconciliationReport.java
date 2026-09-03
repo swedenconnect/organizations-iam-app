@@ -13,27 +13,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package se.swedenconnect.iam.admin.controllers.dto;
+package se.swedenconnect.iam.admin.service.model;
 
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 import java.util.List;
-import java.util.Set;
 
 /**
- * JSON response body for {@code GET /api/session}.
+ * The outcome of a reconciliation run.
  *
- * @author Martin Lindström
+ * @param clients the number of clients the run covered
+ * @param created the number of KeyCloak artifacts created
+ * @param removed the number of KeyCloak artifacts removed
+ * @param errors one message per (client, organization, function) combination that failed; the run
+ *     continues past a failure so that one broken client does not block the others
+ *
  * @author Felix Hellman
  */
-public record AdminSessionResponse(
-    boolean superuser,
-    @Nullable String functionConstraint,
-    @Nullable String orgConstraint,
-    boolean allowFunctionRemoval,
-    boolean allowOrgRights,
-    @NonNull List<FunctionResponse> functions,
-    @NonNull List<OrgRightResponse> orgRights,
-    @NonNull Set<String> adminOrgIdentifiers) {
+public record ReconciliationReport(
+    int clients,
+    int created,
+    int removed,
+    @NonNull List<String> errors) {
 }

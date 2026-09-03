@@ -127,6 +127,31 @@ The starter supports two authority modes controlled by `iam.security.function`:
 - **Function-scoped** (`iam.security.function=demo`): authorities are `{orgId}:{right}`, type `FunctionScopedAuthority`. Used by single-function apps like the demo.
 - **Superuser**: single authority `ROLE_SUPERUSER` when the `org_rights` claim contains `{"superuser": true}`.
 
+### Managed clients
+
+A managed client is a Keycloak client carrying `iam_admin_managed=true` (or listed in
+`iam.admin.authz-client-ids`). `client_functions` is the complete list of functions it receives
+artifacts for — an empty or absent attribute means **no** functions, never all of them. Functions are optional when
+registering a client; one with none is inert until they are assigned.
+
+A client carries two independent roles. `iam_admin_managed=true` is the **OIDC client** role:
+it requests tokens, takes the confidential/`client-jwt`/authz-services shape, and is
+reconciled. `iam_admin_resource_server=true` is the **resource server** role: it may be named
+in the OAuth2 `resource` parameter, needs no client settings of its own, and holds no
+artifacts. Both may be set on one client. `resolveIamAdminManagedClients()` returns clients
+holding the OIDC client role; `resolveAdministeredClients()` returns everything administered.
+`ManagedClientInfo.reconcilable()` is the check to use before reconciling.
+
+`ClientReconciliationService` creates whatever a managed client is missing — realm client
+scopes, authz scopes, `policy-{org}-{func}-{level}`, `permission-{org}-{func}-{level}`, and
+the optional client scope bindings. It runs on client create/update, on function
+attach/detach, on demand via `/api/clients/reconcile`, and optionally on a cron schedule.
+Artifacts for functions a client no longer handles are removed on every run.
+
+Artifact names are produced by `KeycloakAdminClient.scopeName` / `policyName` /
+`permissionName` — creation and removal must always go through them, never through inline
+string concatenation.
+
 ### Client authentication
 
 All clients use `private_key_jwt` (RFC 7523) rather than client secrets. The starter auto-wires the credential from `iam.security.client.credential` (JKS or PEM via the `credentials-support` library) and creates the Nimbus JWT converter automatically.
@@ -246,4 +271,7 @@ iam:
     pnr-userids: false         # Use personal identity number as Keycloak username
     allow-function-removal: false
     allow-org-rights: true
+    client-reconciliation:
+      enabled: false           # Scheduled drift repair for managed clients
+      cron: "0 */15 * * * *"
 ```

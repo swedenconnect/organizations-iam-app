@@ -16,24 +16,22 @@
 package se.swedenconnect.iam.admin.controllers.dto;
 
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 import java.util.List;
-import java.util.Set;
 
 /**
- * JSON response body for {@code GET /api/session}.
+ * The outcome of a client reconciliation run.
  *
- * @author Martin Lindström
+ * @param clients the number of clients the run covered
+ * @param created the number of Keycloak artifacts created
+ * @param removed the number of Keycloak artifacts removed
+ * @param errors one message per combination that failed; the run continues past a failure
+ *
  * @author Felix Hellman
  */
-public record AdminSessionResponse(
-    boolean superuser,
-    @Nullable String functionConstraint,
-    @Nullable String orgConstraint,
-    boolean allowFunctionRemoval,
-    boolean allowOrgRights,
-    @NonNull List<FunctionResponse> functions,
-    @NonNull List<OrgRightResponse> orgRights,
-    @NonNull Set<String> adminOrgIdentifiers) {
+public record ReconciliationReportResponse(
+    int clients,
+    int created,
+    int removed,
+    @NonNull List<String> errors) {
 }
