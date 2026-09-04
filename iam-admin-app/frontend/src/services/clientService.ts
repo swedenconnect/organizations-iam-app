@@ -16,6 +16,8 @@ function toBody(client: ManagedClientInput) {
     redirectUris: client.redirectUris,
     jwksUri: client.jwksUri || undefined,
     jwksString: client.jwksString || undefined,
+    orgRightsIdToken: client.orgRightsIdToken,
+    orgRightsAccessToken: client.orgRightsAccessToken,
   };
 }
 
@@ -85,6 +87,8 @@ export async function deleteClient(id: string): Promise<void> {
   });
   if (response.status === 403) throw new Error('FORBIDDEN');
   if (response.status === 404) throw new Error('NOT_FOUND');
+  // A client holding a service account is registered by script and protected server-side
+  if (response.status === 409) throw new Error('SERVICE_ACCOUNT_PROTECTED');
   if (!response.ok) throw new Error('DELETE_CLIENT_FAILED');
 }
 

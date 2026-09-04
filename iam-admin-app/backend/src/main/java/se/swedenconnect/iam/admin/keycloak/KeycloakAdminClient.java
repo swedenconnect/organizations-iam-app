@@ -71,6 +71,16 @@ public class KeycloakAdminClient {
 
   private static final int PAGE_SIZE = 500;
 
+  /** The name of the protocol mapper emitting the {@code org_rights} claim. */
+  private static final String ORG_RIGHTS_MAPPER = "org-rights-mapper";
+
+  /**
+   * Records whether a service account user is wanted. Keycloak turns {@code serviceAccountsEnabled}
+   * back on by itself when Authorization Services are enabled, so the flag on the client cannot be
+   * read as the answer — the attribute carries the intent instead.
+   */
+  private static final String SERVICE_ACCOUNT_ATTRIBUTE = "iam_admin_service_account";
+
   private final RestClient restClient;
   private final OAuth2AuthorizedClientManager authorizedClientManager;
   private final String adminApiBase;
@@ -1100,7 +1110,7 @@ public class KeycloakAdminClient {
     // Source 1 — dynamic discovery via iam_admin_managed attribute
     for (final Map<String, Object> client : allClients) {
       if ("true".equals(clientAttribute(client, "iam_admin_managed"))) {
-        final ManagedClientInfo info = toManagedClientInfo(client);
+        final ManagedClientInfo info = this.toManagedClientInfo(client);
         if (info != null && info.oidcClient()) {
           result.put(info.uuid(), info);
         }
@@ -1115,7 +1125,7 @@ public class KeycloakAdminClient {
       for (final String clientId : fallbackIds) {
         final ManagedClientInfo info = allClients.stream()
             .filter(c -> clientId.equals(getString(c, "clientId")))
-            .map(KeycloakAdminClient::toManagedClientInfo)
+            .map(this::toManagedClientInfo)
             .filter(Objects::nonNull)
             .findFirst()
             .orElseThrow(() -> new KeycloakAdminException("Keycloak client not found: " + clientId));
@@ -1146,7 +1156,7 @@ public class KeycloakAdminClient {
     final List<ManagedClientInfo> result = new ArrayList<>();
     for (final Map<String, Object> client : this.fetchAllClients()) {
       if ("true".equals(clientAttribute(client, "iam_admin_resource_server"))) {
-        final ManagedClientInfo info = toManagedClientInfo(client);
+        final ManagedClientInfo info = this.toManagedClientInfo(client);
         if (info != null) {
           result.add(info);
         }
@@ -1221,7 +1231,7 @@ public class KeycloakAdminClient {
    * @param client the client representation
    * @return the managed client, or {@code null} if the representation has no id or clientId
    */
-  private static @Nullable ManagedClientInfo toManagedClientInfo(final @NonNull Map<String, Object> client) {
+  private @Nullable ManagedClientInfo toManagedClientInfo(final @NonNull Map<String, Object> client) {
     final String uuid = getString(client, "id");
     final String clientId = getString(client, "clientId");
     if (uuid == null || clientId == null) {
@@ -1241,8 +1251,94 @@ public class KeycloakAdminClient {
         redirectUris,
         "true".equals(clientAttribute(client, "use.jwks.url")) ? clientAttribute(client, "jwks.url") : null,
         "true".equals(clientAttribute(client, "use.jwks.string")) ? clientAttribute(client, "jwks.string") : null,
-        Boolean.TRUE.equals(client.get("serviceAccountsEnabled")),
+        this.serviceAccountWanted(client, uuid),
+        orgRightsClaimEnabled(client, "id.token.claim"),
+        orgRightsClaimEnabled(client, "access.token.claim"),
         !Boolean.FALSE.equals(client.get("enabled")));
+  }
+
+  /**
+   * Tells whether a client is meant to have a service account user.
+   *
+   * <p>The {@link #SERVICE_ACCOUNT_ATTRIBUTE} attribute answers it for every client this
+   * application has written. A client provisioned outside it carries no such attribute, and is
+   * read from {@code serviceAccountsEnabled}.</p>
+   *
+   * @param client the client representation
+   * @param clientUuid the Keycloak UUID of the client
+   * @return {@code true} if the client keeps a service account user
+   */
+  private boolean serviceAccountWanted(
+      final @NonNull Map<String, Object> client, final @NonNull String clientUuid) {
+
+    final String attribute = clientAttribute(client, SERVICE_ACCOUNT_ATTRIBUTE);
+    if (attribute != null) {
+      return "true".equals(attribute);
+    }
+    if (!Boolean.TRUE.equals(client.get("serviceAccountsEnabled"))) {
+      return false;
+    }
+    // A client provisioned outside this application carries no attribute, and neither the flag
+    // nor the user proves anything: Keycloak turns the flag on and creates the user by itself for
+    // every client with Authorization Services enabled. A service account that was actually asked
+    // for is the one carrying the realm-management roles the scripts assign to it
+    return this.hasAdminRoleMappings(clientUuid);
+  }
+
+  /**
+   * Tells whether a client's service account user holds {@code realm-management} roles, i.e.
+   * whether it was created deliberately rather than as a by-product of Authorization Services.
+   *
+   * @param clientUuid the Keycloak UUID of the client
+   * @return {@code true} if the client has a service account user with {@code realm-management}
+   *     role mappings
+   */
+  private boolean hasAdminRoleMappings(final @NonNull String clientUuid) {
+    final String userId = this.findServiceAccountUserId(clientUuid);
+    if (userId == null) {
+      return false;
+    }
+    try {
+      final Map<String, Object> mappings = this.adminGet(
+          "/users/" + userId + "/role-mappings", new ParameterizedTypeReference<>() {});
+      return mappings != null
+          && mappings.get("clientMappings") instanceof final Map<?, ?> clientMappings
+          && clientMappings.containsKey("realm-management");
+    }
+    catch (final KeycloakAdminException e) {
+      log.debug("Could not read role mappings for the service account of client {}: {}",
+          clientUuid, e.getMessage());
+      return false;
+    }
+  }
+
+  /**
+   * Reads a claim inclusion flag from the {@code org-rights-mapper} of a Keycloak client
+   * representation.
+   *
+   * <p>A representation that carries no such mapper is reported as emitting the claim: that is
+   * what a managed client is given when it is registered, and it is also the safe reading for a
+   * client that has not been given its mappers yet.</p>
+   *
+   * @param client the client representation
+   * @param configKey the mapper configuration key, {@code id.token.claim} or
+   *     {@code access.token.claim}
+   * @return {@code false} only if the mapper is present and has the flag set to {@code false}
+   */
+  private static boolean orgRightsClaimEnabled(
+      final @NonNull Map<String, Object> client, final @NonNull String configKey) {
+
+    if (!(client.get("protocolMappers") instanceof final List<?> mappers)) {
+      return true;
+    }
+    for (final Object mapper : mappers) {
+      if (mapper instanceof final Map<?, ?> m
+          && ORG_RIGHTS_MAPPER.equals(m.get("name"))
+          && m.get("config") instanceof final Map<?, ?> config) {
+        return !"false".equals(config.get(configKey));
+      }
+    }
+    return true;
   }
 
   /**
@@ -1370,7 +1466,7 @@ public class KeycloakAdminClient {
     log.debug("Client '{}' created with id {}", clientId, clientUuid);
 
     this.writeClientSettings(clientUuid, client, name, oidcClient, resourceServer,
-        redirectUris, functions, jwksUri, jwksString);
+        redirectUris, functions, jwksUri, jwksString, serviceAccount);
 
     if (oidcClient) {
       this.handleServiceAccount(clientUuid, clientId, serviceAccount);
@@ -1394,6 +1490,9 @@ public class KeycloakAdminClient {
    * @param functions the functions the client handles
    * @param jwksUri the JWKS URI, or {@code null} if {@code jwksString} is given
    * @param jwksString the inline JWK Set, or {@code null} if {@code jwksUri} is given
+   * @param serviceAccount whether the client keeps a service account user
+   * @param orgRightsIdToken whether {@code org_rights} is emitted in the ID token
+   * @param orgRightsAccessToken whether {@code org_rights} is emitted in the access token
    * @return the updated client
    * @throws KeycloakAdminException if the client does not exist, or on any Keycloak API error
    */
@@ -1405,7 +1504,10 @@ public class KeycloakAdminClient {
       final @NonNull List<String> redirectUris,
       final @NonNull Set<String> functions,
       final @Nullable String jwksUri,
-      final @Nullable String jwksString) {
+      final @Nullable String jwksString,
+      final boolean serviceAccount,
+      final boolean orgRightsIdToken,
+      final boolean orgRightsAccessToken) {
 
     final Map<String, Object> client = this.fetchClientByClientId(clientId);
     if (client == null) {
@@ -1418,13 +1520,20 @@ public class KeycloakAdminClient {
 
     final boolean wasOidcClient = "true".equals(clientAttribute(client, "iam_admin_managed"));
     this.writeClientSettings(clientUuid, client, name, oidcClient, resourceServer,
-        redirectUris, functions, jwksUri, jwksString);
+        redirectUris, functions, jwksUri, jwksString, serviceAccount);
 
-    if (oidcClient && !wasOidcClient) {
-      // The client is taking on the OIDC client role — it needs the mappers and base scopes that
-      // a client registered in that role gets from the start
-      this.addProtocolMappers(clientUuid, true, true);
-      this.addBaseOptionalScopes(clientUuid);
+    if (oidcClient) {
+      // The service account itself is never touched here — only the attribute recording it, which
+      // writeClientSettings has already carried over
+      if (!wasOidcClient) {
+        // The client is taking on the OIDC client role — it needs the mappers and base scopes
+        // that a client registered in that role gets from the start
+        this.addProtocolMappers(clientUuid, orgRightsIdToken, orgRightsAccessToken);
+        this.addBaseOptionalScopes(clientUuid);
+      }
+      else {
+        this.writeOrgRightsMapperConfig(clientUuid, orgRightsIdToken, orgRightsAccessToken);
+      }
     }
 
     log.info("Client '{}' updated — oidcClient={}, resourceServer={}",
@@ -1474,6 +1583,8 @@ public class KeycloakAdminClient {
    * @param functions the functions the client handles
    * @param jwksUri the JWKS URI, or {@code null}; ignored unless {@code oidcClient}
    * @param jwksString the inline JWK Set, or {@code null}; ignored unless {@code oidcClient}
+   * @param serviceAccount whether the client keeps a service account user; recorded in
+   *     {@link #SERVICE_ACCOUNT_ATTRIBUTE}, never acted on. Ignored unless {@code oidcClient}
    * @throws KeycloakAdminException on any Keycloak API error
    */
   private void writeClientSettings(
@@ -1485,7 +1596,8 @@ public class KeycloakAdminClient {
       final @NonNull List<String> redirectUris,
       final @NonNull Set<String> functions,
       final @Nullable String jwksUri,
-      final @Nullable String jwksString) {
+      final @Nullable String jwksString,
+      final boolean serviceAccount) {
 
     final Map<String, Object> body = new LinkedHashMap<>(current);
     body.put("implicitFlowEnabled", false);
@@ -1503,6 +1615,7 @@ public class KeycloakAdminClient {
     attributes.put("client_functions", String.join(",", functions));
 
     if (oidcClient) {
+      attributes.put(SERVICE_ACCOUNT_ATTRIBUTE, String.valueOf(serviceAccount));
       body.put("rootUrl", body.get("clientId"));
       body.put("redirectUris", redirectUris);
       body.put("clientAuthenticatorType", "client-jwt");
@@ -1522,6 +1635,7 @@ public class KeycloakAdminClient {
     }
     else {
       body.put("redirectUris", List.of());
+      attributes.remove(SERVICE_ACCOUNT_ATTRIBUTE);
       attributes.remove("iam_admin_managed");
       attributes.remove("use.jwks.url");
       attributes.remove("jwks.url");
@@ -1558,15 +1672,34 @@ public class KeycloakAdminClient {
       log.debug("Service account kept for client '{}'", clientId);
       return;
     }
-    final Map<String, Object> serviceAccountUser = this.adminGet(
-        "/clients/" + clientUuid + "/service-account-user", new ParameterizedTypeReference<>() {});
-    final String userId = serviceAccountUser == null ? null : getString(serviceAccountUser, "id");
+    final String userId = this.findServiceAccountUserId(clientUuid);
     if (userId == null) {
       log.debug("No service account user found for client '{}' — nothing to delete", clientId);
       return;
     }
     this.adminDelete("/users/" + userId);
     log.debug("Service account user deleted for client '{}'", clientId);
+  }
+
+  /**
+   * Looks up the service account user of a client.
+   *
+   * <p>Keycloak answers {@code 404} for a client that has none, which is an expected outcome
+   * here rather than an error.</p>
+   *
+   * @param clientUuid the Keycloak UUID of the client
+   * @return the user id, or {@code null} if the client has no service account user
+   */
+  private @Nullable String findServiceAccountUserId(final @NonNull String clientUuid) {
+    try {
+      final Map<String, Object> user = this.adminGet(
+          "/clients/" + clientUuid + "/service-account-user", new ParameterizedTypeReference<>() {});
+      return user == null ? null : getString(user, "id");
+    }
+    catch (final KeycloakAdminException e) {
+      log.debug("No service account user for client {}: {}", clientUuid, e.getMessage());
+      return null;
+    }
   }
 
   /**
@@ -1590,16 +1723,16 @@ public class KeycloakAdminClient {
     final List<Map<String, Object>> existing = this.adminGet(path, new ParameterizedTypeReference<>() {});
     final Set<String> present = namesOf(existing == null ? List.of() : existing);
 
-    if (!present.contains("org-rights-mapper")) {
+    if (!present.contains(ORG_RIGHTS_MAPPER)) {
       this.adminPost(path, Map.of(
-          "name", "org-rights-mapper",
+          "name", ORG_RIGHTS_MAPPER,
           "protocol", "openid-connect",
-          "protocolMapper", "org-rights-mapper",
+          "protocolMapper", ORG_RIGHTS_MAPPER,
           "consentRequired", false,
           "config", Map.of(
               "id.token.claim", String.valueOf(orgRightsIdToken),
               "access.token.claim", String.valueOf(orgRightsAccessToken))));
-      log.debug("Added org-rights-mapper to client {}", clientUuid);
+      log.debug("Added {} to client {}", ORG_RIGHTS_MAPPER, clientUuid);
     }
 
     if (!present.contains("scope-org-identifier-mapper")) {
@@ -1627,6 +1760,50 @@ public class KeycloakAdminClient {
             + " deployed and has Keycloak been rebuilt? {}", clientUuid, e.getMessage());
       }
     }
+  }
+
+  /**
+   * Writes the claim inclusion flags onto a client's existing {@code org-rights-mapper}.
+   *
+   * <p>A client that has no such mapper is left alone: {@link #addProtocolMappers} creates it with
+   * the wanted configuration, and a client that never received it is repaired there.</p>
+   *
+   * @param clientUuid the Keycloak UUID of the client
+   * @param orgRightsIdToken whether {@code org_rights} is emitted in the ID token
+   * @param orgRightsAccessToken whether {@code org_rights} is emitted in the access token
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  private void writeOrgRightsMapperConfig(
+      final @NonNull String clientUuid,
+      final boolean orgRightsIdToken,
+      final boolean orgRightsAccessToken) {
+
+    final String path = "/clients/" + clientUuid + "/protocol-mappers/models";
+    final List<Map<String, Object>> mappers = this.adminGet(path, new ParameterizedTypeReference<>() {});
+    if (mappers == null) {
+      return;
+    }
+    for (final Map<String, Object> mapper : mappers) {
+      if (!ORG_RIGHTS_MAPPER.equals(mapper.get("name"))) {
+        continue;
+      }
+      final String mapperId = getString(mapper, "id");
+      if (mapperId == null) {
+        log.debug("Mapper '{}' on client {} has no id — cannot update it", ORG_RIGHTS_MAPPER, clientUuid);
+        return;
+      }
+      final Map<String, Object> body = new LinkedHashMap<>(mapper);
+      final Map<String, Object> config = mapper.get("config") instanceof final Map<?, ?> current
+          ? new LinkedHashMap<>(castAttributes(current)) : new LinkedHashMap<>();
+      config.put("id.token.claim", String.valueOf(orgRightsIdToken));
+      config.put("access.token.claim", String.valueOf(orgRightsAccessToken));
+      body.put("config", config);
+      this.adminPutWithBody(path + "/" + mapperId, body);
+      log.debug("Configured {} on client {} — idToken={}, accessToken={}",
+          ORG_RIGHTS_MAPPER, clientUuid, orgRightsIdToken, orgRightsAccessToken);
+      return;
+    }
+    log.debug("Client {} has no '{}' — nothing to configure", clientUuid, ORG_RIGHTS_MAPPER);
   }
 
   /**

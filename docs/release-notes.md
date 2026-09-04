@@ -9,7 +9,7 @@
 **Date:** 
 
 - **Managed clients can be administered from the IAM admin application.** A superuser can
-  register, edit and delete OIDC clients under a new **Clients** tab, instead of running
+  register, edit and delete OIDC clients under a new **Services** tab, instead of running
   `add-oidc-client.sh` and `set-iam-admin-managed.sh` against the Keycloak host. A client is
   registered with the same settings the script applies: `private_key_jwt` authentication,
   Authorization Services, the three protocol mappers, and the `naturalPersonNumber` and

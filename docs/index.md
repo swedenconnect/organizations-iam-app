@@ -36,6 +36,10 @@ a Spring Boot admin application.
 - [IAM Admin Application Configuration](iam-admin-configuration.md) — Configuration
   reference for the IAM admin application.
 
+- [Registering a Client](registering-a-client.md) — Step-by-step registration of an
+  OIDC client or resource server, through the admin application, the scripts, or the
+  REST API.
+
 ### Operations
 
 - [Keycloak Setup](keycloak-setup.md) — Step-by-step Keycloak realm configuration,

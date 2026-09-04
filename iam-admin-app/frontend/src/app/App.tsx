@@ -725,6 +725,8 @@ function AppContent() {
       console.error('Error deleting client:', error);
       if (error instanceof Error && error.message === 'FORBIDDEN') {
         showError(t('error.title.notAllowed'), t('error.body.forbidden'));
+      } else if (error instanceof Error && error.message === 'SERVICE_ACCOUNT_PROTECTED') {
+        showError(t('error.title.notAllowed'), t('clients.error.serviceAccountProtected'));
       } else {
         showError(t('error.title.deleteFailed'), t('clients.error.delete'));
       }

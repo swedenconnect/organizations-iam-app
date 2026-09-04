@@ -134,6 +134,18 @@ A managed client is a Keycloak client carrying `iam_admin_managed=true` (or list
 artifacts for — an empty or absent attribute means **no** functions, never all of them. Functions are optional when
 registering a client; one with none is inert until they are assigned.
 
+The `org-rights-mapper`'s `id.token.claim` / `access.token.claim` say where `org_rights` is
+emitted; both are settable on create and update, from the form as well as the API.
+
+Service accounts are **script-only**. `iam_admin_service_account` records whether a client
+keeps one. Keycloak enables `serviceAccountsEnabled` and creates the service account user by
+itself for every client with Authorization Services on, so neither the flag nor the user's
+existence is a signal — for a client without the attribute, the check is whether its service
+account user holds `realm-management` roles (`hasAdminRoleMappings`). `ClientController` never creates, attaches or
+removes a service account: create passes `false`, update passes the client's existing value
+through, and delete refuses a client holding one with a `409`. The GUI shows it as a pill and
+disables the delete button.
+
 A client carries two independent roles. `iam_admin_managed=true` is the **OIDC client** role:
 it requests tokens, takes the confidential/`client-jwt`/authz-services shape, and is
 reconciled. `iam_admin_resource_server=true` is the **resource server** role: it may be named

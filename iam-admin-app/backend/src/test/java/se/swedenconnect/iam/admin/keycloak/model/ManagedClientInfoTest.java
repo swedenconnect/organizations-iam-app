@@ -79,6 +79,6 @@ class ManagedClientInfoTest {
         "b8f1c0e2-0000-0000-0000-000000000001", "https://demo-app.example.se", "Demo Application",
         true, false, functions,
         List.of("https://demo-app.example.se/login/oauth2/code/orgiam"),
-        "https://demo-app.example.se/jwks", null, false, true);
+        "https://demo-app.example.se/jwks", null, false, true, true, true);
   }
 }

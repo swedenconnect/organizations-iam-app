@@ -347,7 +347,7 @@ validates at token issuance time that the function extracted from the requested 
 matches one of the listed functions. Setting the attribute to an empty string effectively
 removes the restriction and makes the resource server function-universal.
 > **Note:** The IAM admin application can set `client_functions` directly — the **Functions**
-> field on a managed client in the **Clients** tab — and reconciles the client afterwards, so
+> field on a managed client in the **Services** tab — and reconciles the client afterwards, so
 > the artifacts for the newly declared functions are created without running this script. The
 > script remains the route for bootstrap and non-interactive provisioning, and for resource
 > servers, which the admin application does not manage.

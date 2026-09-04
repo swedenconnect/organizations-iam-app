@@ -144,7 +144,7 @@ never receive the org-scoped scopes it needs to call downstream APIs.
 
 **Registering from the IAM admin application instead:**
 
-A superuser can register the same client from the IAM admin application's **Clients** tab,
+A superuser can register the same client from the IAM admin application's **Services** tab,
 without shell access to the Keycloak host. The application creates the client with the same
 settings the script applies, sets `iam_admin_managed=true`, and reconciles the client
 immediately.
@@ -155,7 +155,7 @@ client scoped to `demo` receives scopes only for organizations that have `demo` 
 
 **If the realm already has functions attached to organizations**, a newly registered client
 starts out without the corresponding scopes, policies and permissions. Reconcile it to
-create them — from the **Clients** tab, or with:
+create them — from the **Services** tab, or with:
 
 ```bash
 curl -X POST https://iam-admin.example.com/api/clients/reconcile

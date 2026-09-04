@@ -109,7 +109,7 @@ class ClientReconciliationPlanTest {
     return new ManagedClientInfo("uuid-" + name, "https://" + name + ".example.se", name,
         true, false, functions,
         List.of("https://" + name + ".example.se/login/oauth2/code/orgiam"),
-        "https://" + name + ".example.se/jwks", null, false, true);
+        "https://" + name + ".example.se/jwks", null, false, true, true, true);
   }
 
   private static ReconciliationTarget target(

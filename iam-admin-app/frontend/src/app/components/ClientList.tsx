@@ -83,12 +83,32 @@ export function ClientList({
                       {t('clients.badgeResourceServer')}
                     </span>
                   )}
+                  {client.serviceAccount && (
+                    <span
+                      className="px-2 py-0.5 rounded-full text-xs shrink-0 border border-amber-300 bg-amber-50 text-amber-800"
+                      title={t('clients.badgeServiceAccountHint')}
+                    >
+                      {t('clients.badgeServiceAccount')}
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-gray-500 mt-1 break-all">{client.clientId}</p>
               </div>
-              <div className="flex gap-2 shrink-0">
-                <Button variant="outline" size="icon" onClick={() => onEdit(client)}
-                  aria-label={t('clients.edit')}>
+              {/* A client holding a service account is registered by script and carries the
+                  Keycloak Admin API access — this application neither edits nor deletes it, and a
+                  delete is refused server-side too. The title sits on the wrapper because a
+                  disabled button takes no pointer events and would never show it */}
+              <div
+                className="flex gap-2 shrink-0"
+                title={client.serviceAccount ? t('clients.serviceAccountUnmanaged') : undefined}
+              >
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => onEdit(client)}
+                  aria-label={t('clients.edit')}
+                  disabled={client.serviceAccount}
+                >
                   <Pencil className="w-4 h-4" />
                 </Button>
                 <Button
@@ -97,6 +117,7 @@ export function ClientList({
                   className="text-red-600 hover:text-red-700"
                   onClick={() => setConfirmDeleteClient(client)}
                   aria-label={t('common.delete')}
+                  disabled={client.serviceAccount}
                 >
                   <Trash2 className="w-4 h-4" />
                 </Button>

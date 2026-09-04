@@ -23,6 +23,9 @@ import java.util.Set;
 /**
  * Request body for updating a managed Keycloak client. The client_id is immutable.
  *
+ * <p>Service accounts are deliberately absent: an update leaves the client's service account as
+ * it is, whether it has one or not. Only the Keycloak scripts create one.</p>
+ *
  * @param name the display name or description, or {@code null}
  * @param oidcClient whether the client obtains org-scoped tokens; requires redirect URIs and JWKS
  * @param resourceServer whether other clients may name it as an OAuth2 {@code resource} target
@@ -31,6 +34,10 @@ import java.util.Set;
  * @param jwksUri the JWKS URI; exactly one of {@code jwksUri} and {@code jwksString} must be given
  * @param jwksString the inline JWK Set; exactly one of {@code jwksUri} and {@code jwksString} must
  *     be given
+ * @param orgRightsIdToken whether {@code org_rights} is emitted in the ID token; {@code null}
+ *     keeps the client's current setting
+ * @param orgRightsAccessToken whether {@code org_rights} is emitted in the access token;
+ *     {@code null} keeps the client's current setting
  *
  * @author Felix Hellman
  */
@@ -41,5 +48,7 @@ public record UpdateManagedClientRequest(
     @Nullable List<String> redirectUris,
     @Nullable Set<String> functions,
     @Nullable String jwksUri,
-    @Nullable String jwksString) {
+    @Nullable String jwksString,
+    @Nullable Boolean orgRightsIdToken,
+    @Nullable Boolean orgRightsAccessToken) {
 }

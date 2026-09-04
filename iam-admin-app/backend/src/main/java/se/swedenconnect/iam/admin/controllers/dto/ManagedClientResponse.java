@@ -35,6 +35,8 @@ import java.util.Set;
  * @param jwksUri the JWKS URI, or {@code null} if the client uses an inline JWK Set
  * @param jwksString the inline JWK Set, or {@code null} if the client uses a JWKS URI
  * @param serviceAccount whether the client has a service account user
+ * @param orgRightsIdToken whether {@code org_rights} is emitted in the ID token
+ * @param orgRightsAccessToken whether {@code org_rights} is emitted in the access token
  * @param enabled whether the client is enabled in Keycloak
  *
  * @author Felix Hellman
@@ -50,5 +52,7 @@ public record ManagedClientResponse(
     @Nullable String jwksUri,
     @Nullable String jwksString,
     boolean serviceAccount,
+    boolean orgRightsIdToken,
+    boolean orgRightsAccessToken,
     boolean enabled) {
 }

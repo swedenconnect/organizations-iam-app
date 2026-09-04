@@ -73,6 +73,10 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ClientController {
 
+  /** The reason returned when a client holding a service account is put up for deletion. */
+  private static final String SERVICE_ACCOUNT_CLIENT_PROTECTED =
+      "A client holding a service account cannot be deleted from the application";
+
   private final KeycloakAdminClient keycloakAdminClient;
   private final ClientReconciliationService reconciliationService;
 
@@ -177,7 +181,8 @@ public class ClientController {
           req.redirectUris() == null ? List.of() : req.redirectUris(),
           req.functions() == null ? Set.of() : req.functions(),
           req.jwksUri(), req.jwksString(),
-          Boolean.TRUE.equals(req.serviceAccount()),
+          // A client registered here never keeps a service account — only the scripts create one
+          false,
           !Boolean.FALSE.equals(req.orgRightsIdToken()),
           !Boolean.FALSE.equals(req.orgRightsAccessToken()));
 
@@ -237,7 +242,14 @@ public class ClientController {
           existing.clientId(), req.name(), oidcClient, resourceServer,
           req.redirectUris() == null ? List.of() : req.redirectUris(),
           req.functions() == null ? Set.of() : req.functions(),
-          req.jwksUri(), req.jwksString());
+          req.jwksUri(), req.jwksString(),
+          // The service account is left exactly as it is — the application never creates or
+          // removes one. An omitted org_rights switch keeps what the client has, so a caller that
+          // sends only the fields it cares about does not silently reset the others
+          existing.serviceAccount(),
+          req.orgRightsIdToken() == null ? existing.orgRightsIdToken() : req.orgRightsIdToken(),
+          req.orgRightsAccessToken() == null
+              ? existing.orgRightsAccessToken() : req.orgRightsAccessToken());
 
       if (oidcClient) {
         this.reconciliationService.reconcileClient(existing.clientId());
@@ -257,10 +269,14 @@ public class ClientController {
    *
    * <p>The realm-level client scopes are shared between clients and are not deleted.</p>
    *
+   * <p>A client holding a service account is refused: it was registered by script, it is what
+   * gives the application — or another operator tool — its Keycloak Admin API access, and
+   * deleting it from here would take that access away with no way to restore it in the GUI.</p>
+   *
    * @param id the Keycloak UUID of the client
    * @param request the HTTP servlet request
-   * @return 204 on success; 403 if not superuser; 404 if not a managed client; 500 on Keycloak
-   *     error
+   * @return 204 on success; 403 if not superuser; 404 if not a managed client; 409 if the client
+   *     holds a service account; 500 on Keycloak error
    */
   @DeleteMapping(value = "/clients/{id}")
   public ResponseEntity<?> deleteClient(
@@ -278,6 +294,11 @@ public class ClientController {
       if (existing == null) {
         log.info("DELETE /api/clients/{} — not found", id);
         return ResponseEntity.notFound().build();
+      }
+      if (existing.serviceAccount()) {
+        log.info("DELETE /api/clients/{} — rejected: client '{}' holds a service account",
+            id, existing.clientId());
+        return ResponseEntity.status(409).body(SERVICE_ACCOUNT_CLIENT_PROTECTED);
       }
       clientId = existing.clientId();
       this.keycloakAdminClient.deleteManagedClient(clientId);
@@ -491,7 +512,8 @@ public class ClientController {
     return new ManagedClientResponse(
         client.uuid(), client.oidcClient(), client.resourceServer(), client.clientId(),
         client.name(), client.functions(), client.redirectUris(),
-        client.jwksUri(), client.jwksString(), client.serviceAccount(), client.enabled());
+        client.jwksUri(), client.jwksString(), client.serviceAccount(),
+        client.orgRightsIdToken(), client.orgRightsAccessToken(), client.enabled());
   }
 
   /**

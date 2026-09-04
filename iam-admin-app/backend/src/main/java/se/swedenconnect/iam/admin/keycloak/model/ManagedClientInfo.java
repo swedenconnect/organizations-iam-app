@@ -65,6 +65,8 @@ public record ManagedClientInfo(
     @Nullable String jwksUri,
     @Nullable String jwksString,
     boolean serviceAccount,
+    boolean orgRightsIdToken,
+    boolean orgRightsAccessToken,
     boolean enabled) {
 
   /**

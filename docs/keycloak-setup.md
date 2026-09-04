@@ -521,8 +521,9 @@ attribute is set on them — re-running `add-resource-server.sh` against an exis
 sets it.
 
 Managed clients can be registered from the IAM admin application itself (superusers only,
-under the **Clients** tab), or with `add-oidc-client.sh` followed by
-`set-iam-admin-managed.sh`. Both routes produce the same client.
+under the **Services** tab), or with `add-oidc-client.sh` followed by
+`set-iam-admin-managed.sh`. Both routes produce the same client. See
+[Registering a Client](registering-a-client.md) for a step-by-step walkthrough of each.
 
 **The `client_functions` attribute:**
 
@@ -538,8 +539,11 @@ token from it.
 
 A client may be registered without any functions — it is then simply inert until functions
 are assigned to it. The admin application shows such clients as *unscoped* and logs a
-warning naming them on every reconciliation run. Artifacts a client was given earlier are
-left in place until a run with pruning enabled removes them.
+warning naming them on every reconciliation run.
+
+Reconciliation removes the scopes a client holds that are not defined by a function group
+for that client, so attach the function groups before reconciling. Reconciliation does not
+run in the background unless `iam.admin.client-reconciliation.enabled` is set.
 
 The same attribute is read by the `resource-aud-plugin` when the client is named in the
 OAuth2 `resource` parameter (see [2.8b](#the-resource-audience-mapper-and-client-policy)).
@@ -551,7 +555,7 @@ hold, and creates whatever is missing. It runs:
 
 - when a client is created or updated in the admin application;
 - when a function is attached to or detached from an organization;
-- on demand, from the **Clients** tab or via `POST /api/clients/reconcile`;
+- on demand, from the **Services** tab or via `POST /api/clients/reconcile`;
 - on a schedule, when `iam.admin.client-reconciliation.enabled` is set.
 
 It is what repairs a client registered *after* functions were already attached to

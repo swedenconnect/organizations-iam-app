@@ -29,6 +29,8 @@ export function ClientForm({ client, functions, isOpen, onClose, onSave }: Clien
   const [jwksMode, setJwksMode] = useState<JwksMode>('uri');
   const [jwksUri, setJwksUri] = useState('');
   const [jwksString, setJwksString] = useState('');
+  const [orgRightsIdToken, setOrgRightsIdToken] = useState(true);
+  const [orgRightsAccessToken, setOrgRightsAccessToken] = useState(true);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -42,6 +44,8 @@ export function ClientForm({ client, functions, isOpen, onClose, onSave }: Clien
       setJwksMode(client.jwksString ? 'inline' : 'uri');
       setJwksUri(client.jwksUri ?? '');
       setJwksString(client.jwksString ?? '');
+      setOrgRightsIdToken(client.orgRightsIdToken);
+      setOrgRightsAccessToken(client.orgRightsAccessToken);
     } else {
       setClientId('');
       setName('');
@@ -52,6 +56,8 @@ export function ClientForm({ client, functions, isOpen, onClose, onSave }: Clien
       setJwksMode('uri');
       setJwksUri('');
       setJwksString('');
+      setOrgRightsIdToken(true);
+      setOrgRightsAccessToken(true);
     }
     setFieldErrors({});
   }, [client, isOpen]);
@@ -138,6 +144,8 @@ export function ClientForm({ client, functions, isOpen, onClose, onSave }: Clien
       redirectUris: oidcClient ? uris : [],
       jwksUri: oidcClient && jwksMode === 'uri' ? jwksUri.trim() : null,
       jwksString: oidcClient && jwksMode === 'inline' ? jwksString.trim() : null,
+      orgRightsIdToken: !oidcClient || orgRightsIdToken,
+      orgRightsAccessToken: !oidcClient || orgRightsAccessToken,
     });
   };
 
@@ -321,6 +329,46 @@ export function ClientForm({ client, functions, isOpen, onClose, onSave }: Clien
             )}
             <p className="text-xs text-gray-500">{t('clients.jwksHint')}</p>
             {fieldErrors.jwks && <p className="text-xs text-red-500">{fieldErrors.jwks}</p>}
+          </div>
+          )}
+
+          {/* Token settings — OIDC client only */}
+          {oidcClient && (
+          <div className="space-y-2">
+            <Label>{t('clients.tokenSettings')}</Label>
+            <div className="border rounded-md divide-y">
+              <label className="flex items-start gap-3 p-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={orgRightsIdToken}
+                  onChange={(e) => setOrgRightsIdToken(e.target.checked)}
+                />
+                <span>
+                  <span className="text-sm font-medium">{t('clients.orgRightsIdToken')}</span>
+                  <span className="block text-xs text-gray-500 mt-0.5">
+                    {t('clients.orgRightsIdTokenHint')}
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-3 p-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={orgRightsAccessToken}
+                  onChange={(e) => setOrgRightsAccessToken(e.target.checked)}
+                />
+                <span>
+                  <span className="text-sm font-medium">{t('clients.orgRightsAccessToken')}</span>
+                  <span className="block text-xs text-gray-500 mt-0.5">
+                    {t('clients.orgRightsAccessTokenHint')}
+                  </span>
+                </span>
+              </label>
+            </div>
+            {client?.serviceAccount && (
+              <p className="text-xs text-gray-500">{t('clients.serviceAccountHint')}</p>
+            )}
           </div>
           )}
 

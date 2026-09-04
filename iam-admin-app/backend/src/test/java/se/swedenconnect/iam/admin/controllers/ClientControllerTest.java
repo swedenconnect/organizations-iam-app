@@ -154,7 +154,7 @@ class ClientControllerTest {
 
     final ResponseEntity<?> response = this.controller.createClient(
         new CreateManagedClientRequest(SERVICE_ID, "Registry", false, true, null, Set.of("demo"),
-            null, null, null, null, null),
+            null, null, null, null),
         this.request);
 
     assertThat(response.getStatusCode().value()).isEqualTo(201);
@@ -252,7 +252,7 @@ class ClientControllerTest {
 
     final ResponseEntity<?> response = this.controller.createClient(
         new CreateManagedClientRequest(SERVICE_ID, "Registry", false, true, null, null,
-            null, null, null, null, null),
+            null, null, null, null),
         this.request);
 
     assertThat(response.getStatusCode().value()).isEqualTo(201);
@@ -352,6 +352,77 @@ class ClientControllerTest {
     verify(this.reconciliationService).reconcileClient(CLIENT_ID);
   }
 
+  @Test
+  @DisplayName("An update carries the org_rights switches, keeping the client's own when omitted")
+  void updateCarriesTokenSettings() {
+    setupSession(true);
+    when(this.keycloakAdminClient.findManagedClientByUuid(CLIENT_UUID))
+        .thenReturn(Optional.of(managedClient()));
+    when(this.keycloakAdminClient.updateManagedClient(
+        anyString(), any(), anyBoolean(), anyBoolean(), anyList(), anySet(), any(), any(),
+        anyBoolean(), anyBoolean(), anyBoolean()))
+        .thenReturn(managedClient());
+
+    assertThat(this.controller.updateClient(CLIENT_UUID, validUpdateRequest(), this.request)
+        .getStatusCode().value()).isEqualTo(200);
+    verify(this.keycloakAdminClient).updateManagedClient(
+        CLIENT_ID, "Demo", true, false, List.of(REDIRECT_URI), Set.of("demo"), JWKS_URI, null,
+        false, true, true);
+
+    this.controller.updateClient(CLIENT_UUID,
+        new UpdateManagedClientRequest("Demo", true, false, List.of(REDIRECT_URI),
+            Set.of("demo"), JWKS_URI, null, false, false),
+        this.request);
+    verify(this.keycloakAdminClient).updateManagedClient(
+        CLIENT_ID, "Demo", true, false, List.of(REDIRECT_URI), Set.of("demo"), JWKS_URI, null,
+        false, false, false);
+  }
+
+  @Test
+  @DisplayName("An update never touches the client's service account")
+  void updateLeavesTheServiceAccountAlone() {
+    setupSession(true);
+    when(this.keycloakAdminClient.findManagedClientByUuid(CLIENT_UUID))
+        .thenReturn(Optional.of(serviceAccountClient()));
+    when(this.keycloakAdminClient.updateManagedClient(
+        anyString(), any(), anyBoolean(), anyBoolean(), anyList(), anySet(), any(), any(),
+        anyBoolean(), anyBoolean(), anyBoolean()))
+        .thenReturn(serviceAccountClient());
+
+    this.controller.updateClient(CLIENT_UUID, validUpdateRequest(), this.request);
+
+    verify(this.keycloakAdminClient).updateManagedClient(
+        CLIENT_ID, "Demo", true, false, List.of(REDIRECT_URI), Set.of("demo"), JWKS_URI, null,
+        true, true, true);
+  }
+
+  @Test
+  @DisplayName("A client registered here never keeps a service account")
+  void createNeverKeepsAServiceAccount() {
+    setupSession(true);
+    when(this.keycloakAdminClient.clientExists(CLIENT_ID)).thenReturn(false);
+    whenCreateReturns(managedClient());
+
+    this.controller.createClient(validCreateRequest(), this.request);
+
+    verify(this.keycloakAdminClient).createManagedClient(
+        CLIENT_ID, "Demo", true, false, List.of(REDIRECT_URI), Set.of("demo"), JWKS_URI, null,
+        false, true, true);
+  }
+
+  @Test
+  @DisplayName("A client holding a service account cannot be deleted")
+  void serviceAccountClientCannotBeDeleted() {
+    setupSession(true);
+    when(this.keycloakAdminClient.findManagedClientByUuid(CLIENT_UUID))
+        .thenReturn(Optional.of(serviceAccountClient()));
+
+    final ResponseEntity<?> response = this.controller.deleteClient(CLIENT_UUID, this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(409);
+    verify(this.keycloakAdminClient, never()).deleteManagedClient(anyString());
+  }
+
   // ---------------------------------------------------------------------------
   // Addressing
   // ---------------------------------------------------------------------------
@@ -408,17 +479,22 @@ class ClientControllerTest {
 
   private static ManagedClientInfo managedClient() {
     return new ManagedClientInfo(CLIENT_UUID, CLIENT_ID, "Demo", true, false,
-        Set.of("demo"), List.of(REDIRECT_URI), JWKS_URI, null, false, true);
+        Set.of("demo"), List.of(REDIRECT_URI), JWKS_URI, null, false, true, true, true);
+  }
+
+  private static ManagedClientInfo serviceAccountClient() {
+    return new ManagedClientInfo(CLIENT_UUID, CLIENT_ID, "Demo", true, false,
+        Set.of("demo"), List.of(REDIRECT_URI), JWKS_URI, null, true, true, true, true);
   }
 
   private static ManagedClientInfo dualRoleClient() {
     return new ManagedClientInfo(CLIENT_UUID, CLIENT_ID, "Demo", true, true,
-        Set.of("demo"), List.of(REDIRECT_URI), JWKS_URI, null, false, true);
+        Set.of("demo"), List.of(REDIRECT_URI), JWKS_URI, null, false, true, true, true);
   }
 
   private static ManagedClientInfo resourceServer() {
     return new ManagedClientInfo(SERVICE_UUID, SERVICE_ID, "Registry", false, true,
-        Set.of("demo"), List.of(), null, null, false, true);
+        Set.of("demo"), List.of(), null, null, false, true, true, true);
   }
 
   private static CreateManagedClientRequest validCreateRequest() {
@@ -427,7 +503,7 @@ class ClientControllerTest {
 
   private static UpdateManagedClientRequest validUpdateRequest() {
     return new UpdateManagedClientRequest("Demo", true, false, List.of(REDIRECT_URI),
-        Set.of("demo"), JWKS_URI, null);
+        Set.of("demo"), JWKS_URI, null, null, null);
   }
 
   private static CreateManagedClientRequest createRequest(
@@ -437,7 +513,7 @@ class ClientControllerTest {
 
     return new CreateManagedClientRequest(
         CLIENT_ID, "Demo", oidcClient, resourceServer, redirectUris, functions,
-        jwksUri, jwksString, null, null, null);
+        jwksUri, jwksString, null, null);
   }
 
   private void setupSession(final boolean superuser) {

@@ -24,6 +24,9 @@ import java.util.Set;
 /**
  * Request body for registering a managed Keycloak client.
  *
+ * <p>Service accounts are deliberately absent: a client registered here never keeps one. The
+ * application reports a service account it finds, but only the Keycloak scripts create one.</p>
+ *
  * @param clientId the OAuth2 client_id; also used as the client root URL
  * @param name the display name or description, or {@code null}
  * @param oidcClient whether the client obtains org-scoped tokens; requires redirect URIs and JWKS
@@ -33,7 +36,6 @@ import java.util.Set;
  * @param jwksUri the JWKS URI; exactly one of {@code jwksUri} and {@code jwksString} must be given
  * @param jwksString the inline JWK Set; exactly one of {@code jwksUri} and {@code jwksString} must
  *     be given
- * @param serviceAccount whether to keep the service account user; defaults to {@code false}
  * @param orgRightsIdToken whether {@code org_rights} is emitted in the ID token; defaults to
  *     {@code true}
  * @param orgRightsAccessToken whether {@code org_rights} is emitted in the access token; defaults
@@ -50,7 +52,6 @@ public record CreateManagedClientRequest(
     @Nullable Set<String> functions,
     @Nullable String jwksUri,
     @Nullable String jwksString,
-    @Nullable Boolean serviceAccount,
     @Nullable Boolean orgRightsIdToken,
     @Nullable Boolean orgRightsAccessToken) {
 }

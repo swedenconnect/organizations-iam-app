@@ -120,6 +120,8 @@ export interface ManagedClient {
   jwksUri: string | null;
   jwksString: string | null;
   serviceAccount: boolean;
+  orgRightsIdToken: boolean;
+  orgRightsAccessToken: boolean;
   enabled: boolean;
 }
 
@@ -132,6 +134,8 @@ export interface ManagedClientInput {
   redirectUris: string[];
   jwksUri: string | null;
   jwksString: string | null;
+  orgRightsIdToken: boolean;
+  orgRightsAccessToken: boolean;
 }
 
 export interface ReconciliationReport {
