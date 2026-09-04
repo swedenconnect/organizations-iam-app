@@ -17,6 +17,7 @@ package se.swedenconnect.iam.keycloak.resourceaud;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -103,6 +104,90 @@ class ScopeUtilsTest {
     final var result = ScopeUtils.extractAllFunctions(
         "openid 5590026042:demo:read profile 5591617864:walletreg:write");
     assertEquals(Set.of("demo", "walletreg"), result);
+  }
+
+  // ---------------------------------------------------------------------------
+  // parseOrgScopes
+  // ---------------------------------------------------------------------------
+
+  @Test
+  void parseOrgScopes_null_isEmpty() {
+    assertTrue(ScopeUtils.parseOrgScopes(null).isEmpty());
+  }
+
+  @Test
+  void parseOrgScopes_blank_isEmpty() {
+    assertTrue(ScopeUtils.parseOrgScopes("   ").isEmpty());
+  }
+
+  @Test
+  void parseOrgScopes_splitsIntoParts() {
+    final List<ScopeUtils.OrgScope> scopes = ScopeUtils.parseOrgScopes("5590026042:demo:write");
+    assertEquals(1, scopes.size());
+    final ScopeUtils.OrgScope scope = scopes.get(0);
+    assertEquals("5590026042:demo:write", scope.raw());
+    assertEquals("5590026042", scope.organizationIdentifier());
+    assertEquals("demo", scope.function());
+    assertEquals("write", scope.right());
+  }
+
+  @Test
+  void parseOrgScopes_ignoresPlainOidcScopes() {
+    final List<ScopeUtils.OrgScope> scopes = ScopeUtils.parseOrgScopes(
+        "openid profile 5590026042:demo:read https://id.oidc.se/scope/naturalPersonNumber");
+    assertEquals(List.of("5590026042:demo:read"), scopes.stream().map(ScopeUtils.OrgScope::raw).toList());
+  }
+
+  @Test
+  void parseOrgScopes_ignoresUnknownRightLevel() {
+    assertTrue(ScopeUtils.parseOrgScopes("5590026042:demo:delete").isEmpty());
+  }
+
+  @Test
+  void parseOrgScopes_ignoresBlankSegments() {
+    assertTrue(ScopeUtils.parseOrgScopes(":demo:read").isEmpty());
+    assertTrue(ScopeUtils.parseOrgScopes("5590026042::read").isEmpty());
+  }
+
+  @Test
+  void parseOrgScopes_keepsRequestOrder() {
+    final List<ScopeUtils.OrgScope> scopes = ScopeUtils.parseOrgScopes(
+        "5591617864:walletreg:admin 5590026042:demo:read");
+    assertEquals(List.of("5591617864:walletreg:admin", "5590026042:demo:read"),
+        scopes.stream().map(ScopeUtils.OrgScope::raw).toList());
+  }
+
+  // ---------------------------------------------------------------------------
+  // qualifyingGroupPaths
+  // ---------------------------------------------------------------------------
+
+  @Test
+  void qualifyingGroupPaths_read_acceptsEveryLevel() {
+    assertEquals(
+        Set.of("/orgs/5590026042/_read", "/orgs/5590026042/_write", "/orgs/5590026042/_admin",
+            "/orgs/5590026042/demo/_read", "/orgs/5590026042/demo/_write",
+            "/orgs/5590026042/demo/_admin"),
+        ScopeUtils.qualifyingGroupPaths("5590026042", "demo", "read"));
+  }
+
+  @Test
+  void qualifyingGroupPaths_write_excludesRead() {
+    assertEquals(
+        Set.of("/orgs/5590026042/_write", "/orgs/5590026042/_admin",
+            "/orgs/5590026042/demo/_write", "/orgs/5590026042/demo/_admin"),
+        ScopeUtils.qualifyingGroupPaths("5590026042", "demo", "write"));
+  }
+
+  @Test
+  void qualifyingGroupPaths_admin_acceptsAdminOnly() {
+    assertEquals(
+        Set.of("/orgs/5590026042/_admin", "/orgs/5590026042/demo/_admin"),
+        ScopeUtils.qualifyingGroupPaths("5590026042", "demo", "admin"));
+  }
+
+  @Test
+  void qualifyingGroupPaths_unknownRight_isEmpty() {
+    assertTrue(ScopeUtils.qualifyingGroupPaths("5590026042", "demo", "delete").isEmpty());
   }
 
 }

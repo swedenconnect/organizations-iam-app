@@ -363,6 +363,30 @@ an organization. The admin application is responsible for creating the three sco
 (`:<function>:read`, `:<function>:write`, `:<function>:admin`) and the corresponding
 Authorization Services policies at that time.
 
+**Where entitlement is enforced.** Keycloak grants an optional client scope to any user who
+asks for it, and it does *not* consult the Authorization Services scope permissions during
+standard token issuance — those are only evaluated by the `uma-ticket` grant and the policy
+evaluation API. Entitlement is therefore enforced by the `resource-function-executor` Client
+Policy executor shipped in the resource-aud plugin. On every token request the executor reads
+the requested scopes, resolves the user from the authorization code's session, and rejects the
+request with
+
+```
+error=invalid_scope
+```
+
+if the user holds none of the qualifying groups listed above for one of the requested scopes.
+The `superuser` realm role bypasses the check.
+
+The check reads the user's **live group memberships**, not a claim, so a right revoked after
+login takes effect on the next token request. It applies to the authorization code grant only:
+a service account token (`client_credentials`) is issued to the client rather than to a user
+and carries no organizational entitlement to check, and a refresh token continues to carry the
+scopes granted when it was issued until it expires.
+
+The group policies and scope permissions that reconciliation creates alongside the scopes are
+not consulted at token issuance. They exist for admin-side policy evaluation.
+
 The OAuth 2.0 `resource` parameter (RFC 8707) is used by clients to bind access tokens to a
 specific API (resource server). When the resource-aud plugin is deployed, the `aud` claim
 in the access token is set to a multi-valued array:
