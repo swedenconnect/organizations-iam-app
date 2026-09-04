@@ -142,6 +142,27 @@ uses this attribute to discover which clients require Authorization Services pol
 a function is attached to or detached from an organization. Without it, the client will
 never receive the org-scoped scopes it needs to call downstream APIs.
 
+**Registering from the IAM admin application instead:**
+
+A superuser can register the same client from the IAM admin application's **Services** tab,
+without shell access to the Keycloak host. The application creates the client with the same
+settings the script applies, sets `iam_admin_managed=true`, and reconciles the client
+immediately.
+
+Either way, declare which functions the client handles by setting `client_functions` — via
+the **Functions** field in the admin application, or with `set-client-functions.sh`. A
+client scoped to `demo` receives scopes only for organizations that have `demo` attached.
+
+**If the realm already has functions attached to organizations**, a newly registered client
+starts out without the corresponding scopes, policies and permissions. Reconcile it to
+create them — from the **Services** tab, or with:
+
+```bash
+curl -X POST https://iam-admin.example.com/api/clients/reconcile
+```
+
+Reconciliation is idempotent and safe to repeat.
+
 <a name="spring-boot-configuration"></a>
 ### 2.2. Spring Boot Configuration
 

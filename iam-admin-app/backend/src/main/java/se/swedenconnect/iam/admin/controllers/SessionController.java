@@ -47,6 +47,7 @@ import java.util.List;
  * rule already protects this endpoint.</p>
  *
  * @author Martin Lindström
+ * @author Felix Hellman
  */
 @RestController
 @RequestMapping("/api")

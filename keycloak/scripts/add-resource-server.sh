@@ -224,9 +224,11 @@ client['authorizationServicesEnabled'] = False
 if name:
     client['name'] = name
 
+if not client.get('attributes'):
+    client['attributes'] = {}
+client['attributes']['iam_admin_resource_server'] = 'true'
+
 if functions:
-    if not client.get('attributes'):
-        client['attributes'] = {}
     client['attributes']['client_functions'] = functions
 
 print(json.dumps(client))

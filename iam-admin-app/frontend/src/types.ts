@@ -109,6 +109,42 @@ export interface UserPage {
   totalPages: number;
 }
 
+export interface ManagedClient {
+  id: string;
+  oidcClient: boolean;
+  resourceServer: boolean;
+  clientId: string;
+  name: string | null;
+  functions: string[];
+  redirectUris: string[];
+  jwksUri: string | null;
+  jwksString: string | null;
+  serviceAccount: boolean;
+  orgRightsIdToken: boolean;
+  orgRightsAccessToken: boolean;
+  enabled: boolean;
+}
+
+export interface ManagedClientInput {
+  clientId: string;
+  name: string;
+  oidcClient: boolean;
+  resourceServer: boolean;
+  functions: string[];
+  redirectUris: string[];
+  jwksUri: string | null;
+  jwksString: string | null;
+  orgRightsIdToken: boolean;
+  orgRightsAccessToken: boolean;
+}
+
+export interface ReconciliationReport {
+  clients: number;
+  created: number;
+  removed: number;
+  errors: string[];
+}
+
 export interface AdminSessionData {
   superuser: boolean;
   functionConstraint: string | null;

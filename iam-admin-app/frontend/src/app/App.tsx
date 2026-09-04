@@ -6,13 +6,15 @@ import { UserList } from '@/app/components/UserList';
 import { UserForm } from '@/app/components/UserForm';
 import { FunctionList } from '@/app/components/FunctionList';
 import { FunctionForm } from '@/app/components/FunctionForm';
+import { ClientList } from '@/app/components/ClientList';
+import { ClientForm } from '@/app/components/ClientForm';
 import { Header } from '@/app/components/Header';
 import { Footer } from '@/app/components/Footer';
-import { Organization, User, UserOrganizationRole, FunctionType, OrganizationFunction, AdminSessionData, OrganizationData } from '@/types';
+import { Organization, User, UserOrganizationRole, FunctionType, OrganizationFunction, AdminSessionData, OrganizationData, ManagedClient, ManagedClientInput } from '@/types';
 import { LastAdminError } from '@/services/userService';
 import { Button } from '@/app/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
-import { Building2, Users as UsersIcon, Plus, Boxes, HelpCircle } from 'lucide-react';
+import { Building2, Users as UsersIcon, Plus, Boxes, HelpCircle, KeyRound, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Toaster } from '@/app/components/ui/sonner';
 import { LanguageProvider, useLanguage } from '@/app/contexts/LanguageContext';
@@ -38,6 +40,11 @@ import {
   addUserToFunction,
   removeUserFromFunction,
   removeAllUserRoles,
+  getClients,
+  createClient,
+  updateClient,
+  deleteClient,
+  reconcileAllClients,
   removeAllOrganizationRoles,
   getFunctions,
   createFunction,
@@ -90,6 +97,9 @@ function AppContent() {
   const [functions, setFunctions] = useState<FunctionType[]>([]);
   const [organizationFunctions, setOrganizationFunctions] = useState<OrganizationFunction[]>([]);
 
+  const [clients, setClients] = useState<ManagedClient[]>([]);
+  const [selectedClient, setSelectedClient] = useState<ManagedClient | null>(null);
+  const [isClientFormOpen, setIsClientFormOpen] = useState(false);
   const [allowFunctionRemoval, setAllowFunctionRemoval] = useState(false);
   const [allowOrgRights, setAllowOrgRights] = useState(true);
   const [functionConstraint, setFunctionConstraint] = useState<string | null>(null);
@@ -656,6 +666,96 @@ function AppContent() {
     }
   };
 
+  const loadClients = async () => {
+    try {
+      setClients(await getClients());
+    } catch (error) {
+      console.error('Error loading clients:', error);
+      showError(t('error.title.operationFailed'), t('clients.error.load'));
+    }
+  };
+
+  const handleOpenClients = async () => {
+    setActiveTab('clients');
+    await loadClients();
+  };
+
+  const handleCreateClient = () => {
+    setSelectedClient(null);
+    setIsClientFormOpen(true);
+  };
+
+  const handleEditClient = (client: ManagedClient) => {
+    setSelectedClient(client);
+    setIsClientFormOpen(true);
+  };
+
+  const handleSaveClient = async (input: ManagedClientInput) => {
+    try {
+      if (selectedClient) {
+        const updated = await updateClient(selectedClient.id, input);
+        setClients((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+        toast.success(t('toast.clientUpdated'));
+      } else {
+        const created = await createClient(input);
+        setClients((prev) => [...prev, created]);
+        toast.success(t('toast.clientCreated'));
+      }
+      setIsClientFormOpen(false);
+      setSelectedClient(null);
+    } catch (error) {
+      console.error('Error saving client:', error);
+      if (error instanceof Error && error.message === 'DUPLICATE_CLIENT_ID') {
+        showError(t('error.title.saveFailed'), t('clients.error.duplicate'));
+      } else if (error instanceof Error && error.message === 'FORBIDDEN') {
+        showError(t('error.title.notAllowed'), t('error.body.forbidden'));
+      } else {
+        showError(t('error.title.saveFailed'),
+          error instanceof Error && error.message ? error.message : t('clients.error.save'));
+      }
+    }
+  };
+
+  const handleDeleteClient = async (id: string) => {
+    try {
+      await deleteClient(id);
+      setClients((prev) => prev.filter((c) => c.id !== id));
+      toast.success(t('toast.clientDeleted'));
+    } catch (error) {
+      console.error('Error deleting client:', error);
+      if (error instanceof Error && error.message === 'FORBIDDEN') {
+        showError(t('error.title.notAllowed'), t('error.body.forbidden'));
+      } else if (error instanceof Error && error.message === 'SERVICE_ACCOUNT_PROTECTED') {
+        showError(t('error.title.notAllowed'), t('clients.error.serviceAccountProtected'));
+      } else {
+        showError(t('error.title.deleteFailed'), t('clients.error.delete'));
+      }
+    }
+  };
+
+  const reportReconciliation = (report: { created: number; removed: number; errors: string[] }) => {
+    if (report.errors.length > 0) {
+      toast.warning(
+        t('clients.reconciledWithErrors').replace('{errors}', String(report.errors.length))
+      );
+      return;
+    }
+    toast.success(
+      t('clients.reconciled')
+        .replace('{created}', String(report.created))
+        .replace('{removed}', String(report.removed))
+    );
+  };
+
+  const handleReconcileAllClients = async () => {
+    try {
+      reportReconciliation(await reconcileAllClients());
+    } catch (error) {
+      console.error('Error reconciling clients:', error);
+      showError(t('error.title.operationFailed'), t('clients.error.reconcile'));
+    }
+  };
+
   if (!authChecked) {
     return null;
   }
@@ -692,6 +792,16 @@ function AppContent() {
                     <Boxes className="w-4 h-4" />
                     {t('functions.title')}
                   </TabsTrigger>
+                  {(sessionData?.superuser ?? false) && (
+                    <TabsTrigger
+                      value="clients"
+                      className="flex items-center gap-2"
+                      onClick={handleOpenClients}
+                    >
+                      <KeyRound className="w-4 h-4" />
+                      {t('services.tabTitle')}
+                    </TabsTrigger>
+                  )}
                 </TabsList>
               )}
             </div>
@@ -808,6 +918,34 @@ function AppContent() {
                 onNavigateToOrg={handleNavigateToOrg}
               />
             </TabsContent>
+
+            <TabsContent value="clients" className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold">{t('services.title')}</h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {clients.length} {clients.length !== 1 ? t('services.count_plural') : t('services.count')}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={handleReconcileAllClients}>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    {t('clients.reconcileAll')}
+                  </Button>
+                  <Button onClick={handleCreateClient} className="bg-primary hover:bg-primary/90">
+                    <Plus className="w-4 h-4 mr-2" />
+                    {t('clients.create')}
+                  </Button>
+                </div>
+              </div>
+
+              <ClientList
+                clients={clients}
+                functions={functions}
+                onEdit={handleEditClient}
+                onDelete={handleDeleteClient}
+              />
+            </TabsContent>
           </Tabs>
         </div>
       </main>
@@ -840,6 +978,17 @@ function AppContent() {
           setSelectedUser(null);
         }}
         onSave={handleSaveUser}
+      />
+
+      <ClientForm
+        client={selectedClient}
+        functions={functions}
+        isOpen={isClientFormOpen}
+        onClose={() => {
+          setIsClientFormOpen(false);
+          setSelectedClient(null);
+        }}
+        onSave={handleSaveClient}
       />
 
       <FunctionForm

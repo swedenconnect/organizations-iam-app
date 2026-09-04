@@ -378,6 +378,11 @@ functions via the `client_functions` attribute (see the Keycloak Setup document)
 resource server does not support the requested function, the token request is rejected with an
 `invalid_target` error.
 
+The same attribute governs which functions a **managed client** receives scopes, policies and
+permissions for, and there it is the complete list — a client declaring no functions receives
+nothing, rather than everything. See
+[Managed Clients and Reconciliation](keycloak-setup.md#managed-clients-and-reconciliation).
+
 **The `organization_identifier` claim in access tokens:**
 
 Resource servers need to know which organization the access token was issued for, without

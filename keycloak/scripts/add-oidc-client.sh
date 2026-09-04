@@ -307,6 +307,7 @@ UPDATED_CLIENT=$(
   _JWKS_URL="${JWKS_URL}" \
   _ROOT_URL="${CLIENT_ID}" \
   _REDIRECT_URIS="${REDIRECT_URIS_JSON}" \
+  _SERVICE_ACCOUNT="${SERVICE_ACCOUNT}" \
   python3 -c "
 import os, json
 client = json.loads(os.environ['CURRENT_JSON'])
@@ -324,6 +325,9 @@ client['serviceAccountsEnabled'] = True
 if not client.get('attributes'):
     client['attributes'] = {}
 client['attributes']['iam_admin_managed'] = 'true'
+# The IAM Admin application reads this rather than serviceAccountsEnabled, which Keycloak
+# turns back on by itself whenever Authorization Services are enabled
+client['attributes']['iam_admin_service_account'] = os.environ['_SERVICE_ACCOUNT']
 client['attributes']['use.jwks.url'] = 'true'
 client['attributes']['jwks.url'] = os.environ['_JWKS_URL']
 

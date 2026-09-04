@@ -38,6 +38,8 @@ For an overview of the rights model and key concepts, see
 
     2.9. [Scope Creation and Authorization Policies](#scope-creation-and-authorization-policies)
 
+    2.10. [Managed Clients and Reconciliation](#managed-clients-and-reconciliation)
+
 - [**Appendix A: Step-by-Step Setup with Examples**](#appendix-a-step-by-step-setup-with-examples)
 
 - [**Appendix B: Keycloak Admin REST API Reference**](#appendix-b-keycloak-admin-rest-api-reference)
@@ -405,8 +407,9 @@ at token issuance time that the function extracted from the requested scope matc
 `client_functions` attribute. If the attribute is absent or empty, the resource server is
 treated as function-universal and accepts all functions.
 
-Set the attribute using `add-resource-server.sh` with the `--functions` flag, or via
-`set-client-functions.sh` after registration.
+Set the attribute using `add-resource-server.sh` with the `--functions` flag, via
+`set-client-functions.sh` after registration, or from the IAM admin application's
+**Services** tab (see [2.10](#managed-clients-and-reconciliation)).
 
 No protocol mappers, no client scopes, and no service account roles are needed. The service
 validates incoming Bearer tokens by verifying the signature against Keycloak's JWKS endpoint,
@@ -467,13 +470,104 @@ for the full list per right level). The policy uses `Decision Strategy: AFFIRMAT
 
 A **Permission** must then be created linking each scope to its policy.
 
-These policies and permissions must be created on **all** OIDC/OAuth clients that will
-request these scopes. In the local development setup, this includes
-`https://local.dev.swedenconnect.se:17005` (IAM Admin App) and any other registered client.
-The scopes must also be added as optional client scopes on all such clients.
+These policies and permissions are created on every **managed client** that handles the
+function in question — see [2.10](#managed-clients-and-reconciliation). In the local
+development setup this includes `https://local.dev.swedenconnect.se:17005` (IAM Admin App)
+and any other managed client. The scopes are also added as optional client scopes on those
+clients.
 
-This creation is the responsibility of the admin application and must be done as part of the
-"attach function to organization" operation.
+This creation is the responsibility of the admin application and is done as part of the
+"attach function to organization" operation. The artifacts are named as follows, and the
+names are the contract between creation and removal:
+
+| Artifact | Name |
+|---|---|
+| Client scope and Authorization Services scope | `{org}:{function}:{right}` |
+| Group policy | `policy-{org}-{function}-{right}` |
+| Scope permission | `permission-{org}-{function}-{right}` |
+
+---
+
+<a name="managed-clients-and-reconciliation"></a>
+### 2.10. Managed Clients and Reconciliation
+
+A **managed client** is a client the IAM admin application maintains the scopes, policies
+and permissions for. A client is managed when it carries the attribute
+`iam_admin_managed=true`, or when its client ID is listed in `iam.admin.authz-client-ids`.
+
+A client plays one or both of two **roles**, which are independent and set per client under
+the **Services** tab:
+
+| | OIDC client role | Resource server role |
+|---|---|---|
+| Marker attribute | `iam_admin_managed=true` | `iam_admin_resource_server=true` |
+| What it does | Logs users in and requests org-scoped tokens | May be named in the OAuth2 `resource` parameter, and appears in `aud` |
+| Keycloak shape | confidential, `client-jwt`, standard flow, Authorization Services | none of its own |
+| Needs redirect URIs and client keys | Yes | No |
+| Holds scopes, policies, permissions | Yes | No |
+| Reconciled | Yes | No — there is nothing to reconcile |
+| Role of `client_functions` | Which functions it receives artifacts for | Which functions it accepts as a `resource` target |
+
+A client with **both** roles takes the OIDC client shape and carries both markers — that is
+the shape for a service that answers requests *and* calls another service onwards. Enabling
+the OIDC client role on an existing resource server adds the protocol mappers and base
+optional scopes it did not have; disabling it turns Authorization Services off, which makes
+Keycloak discard that client's policies and permissions.
+
+A resource server registered with `add-resource-server.sh` carries the marker as well, so
+scripted and application-registered resource servers are indistinguishable. Resource
+servers registered before this attribute existed are invisible to the application until the
+attribute is set on them — re-running `add-resource-server.sh` against an existing client
+sets it.
+
+Managed clients can be registered from the IAM admin application itself (superusers only,
+under the **Services** tab), or with `add-oidc-client.sh` followed by
+`set-iam-admin-managed.sh`. Both routes produce the same client. See
+[Registering a Client](registering-a-client.md) for a step-by-step walkthrough of each.
+
+**The `client_functions` attribute:**
+
+`client_functions` is a comma-separated list of function identifiers that restricts which
+functions a client receives artifacts for. A client with `client_functions=demo` is given
+scopes, policies and permissions only for organizations that have `demo` attached — not for
+every function in the realm.
+
+`client_functions` is the complete list of functions a client handles: **an empty or absent
+attribute means no functions, not all of them**. A client that declares none receives no
+scopes, policies or permissions for any organization, and users can obtain no org-scoped
+token from it.
+
+A client may be registered without any functions — it is then simply inert until functions
+are assigned to it. The admin application shows such clients as *unscoped* and logs a
+warning naming them on every reconciliation run.
+
+Reconciliation removes the scopes a client holds that are not defined by a function group
+for that client, so attach the function groups before reconciling. Reconciliation does not
+run in the background unless `iam.admin.client-reconciliation.enabled` is set.
+
+The same attribute is read by the `resource-aud-plugin` when the client is named in the
+OAuth2 `resource` parameter (see [2.8b](#the-resource-audience-mapper-and-client-policy)).
+
+**Reconciliation:**
+
+Reconciliation compares the artifacts a managed client holds against the ones it should
+hold, and creates whatever is missing. It runs:
+
+- when a client is created or updated in the admin application;
+- when a function is attached to or detached from an organization;
+- on demand, from the **Services** tab or via `POST /api/clients/reconcile`;
+- on a schedule, when `iam.admin.client-reconciliation.enabled` is set.
+
+It is what repairs a client registered *after* functions were already attached to
+organizations — such a client would otherwise be missing every scope and policy, and users
+could never obtain a token from it no matter what rights they hold. It also repairs the
+result of a partial failure or a manual edit in the Keycloak admin console.
+
+Reconciliation both creates and removes: it creates the artifacts for the functions a client
+handles, and removes the ones for the functions it no longer handles, so narrowing a client's
+`client_functions` takes effect on the next run. Every operation checks for existence before acting, so a run that finds nothing missing
+makes no changes, and concurrent runs on several application instances converge to the same
+state.
 
 ---
 
