@@ -151,6 +151,7 @@ export interface AdminSessionData {
   orgConstraint: string | null;
   allowFunctionRemoval: boolean;
   allowOrgRights: boolean;
+  allowAdminAssigningAdmin: boolean;
   functions: FunctionData[];
   orgRights: UserOrgRight[];
   adminOrgIdentifiers: string[];

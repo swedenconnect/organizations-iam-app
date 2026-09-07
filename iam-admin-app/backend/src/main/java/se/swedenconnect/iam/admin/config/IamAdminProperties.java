@@ -120,6 +120,17 @@ public class IamAdminProperties {
   private boolean allowOrgRights = true;
 
   /**
+   * When {@code false} (the default), a user who is not a superuser cannot grant, remove or
+   * downgrade the {@code admin} right, whether at the organization level or at the
+   * organization/function level. Only {@code read} and {@code write} are available to such a
+   * caller. When {@code true}, an admin may manage the {@code admin} right within the scope they
+   * administer. Superusers are never affected by this setting.
+   */
+  @Getter
+  @Setter
+  private boolean allowAdminAssigningAdmin = false;
+
+  /**
    * Settings for the scheduled reconciliation of managed clients.
    */
   public static class ClientReconciliation {

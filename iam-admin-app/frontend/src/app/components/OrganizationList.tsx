@@ -45,6 +45,8 @@ interface OrganizationListProps {
   organizationFunctions: OrganizationFunction[];
   isSuperuser: boolean;
   allowOrgRights: boolean;
+  /** When false, the admin right is read-only: it cannot be granted, changed or removed here. */
+  canAssignAdmin: boolean;
   orgRights: UserOrgRight[];
   currentUserId: string;
   onEdit: (org: Organization) => void;
@@ -81,6 +83,7 @@ export function OrganizationList({
   organizationFunctions,
   isSuperuser,
   allowOrgRights,
+  canAssignAdmin,
   orgRights,
   currentUserId,
   onEdit,
@@ -336,8 +339,11 @@ export function OrganizationList({
                       <div className="space-y-2">
                         {orgUsers.map(({ user, role }) => {
                           const isSelf = user!.id === currentUserId;
+                          // An admin right this caller may not manage is displayed but not actionable.
+                          const rightLocked = !canAssignAdmin && role === 'admin';
                           const isEditing =
                             !isSelf &&
+                            !rightLocked &&
                             editingRight?.userId === user!.id &&
                             editingRight?.orgId === org.id &&
                             !editingRight?.functionId;
@@ -378,17 +384,17 @@ export function OrganizationList({
                                   >
                                     <option value="read">{t('role.read')}</option>
                                     <option value="write">{t('role.write')}</option>
-                                    <option value="admin">{t('role.admin')}</option>
+                                    {canAssignAdmin && <option value="admin">{t('role.admin')}</option>}
                                   </select>
                                 ) : (
                                   <span
-                                    className={`px-2 py-1 text-xs rounded-full bg-primary/10 text-primary${!isSelf ? ' cursor-pointer hover:ring-1 hover:ring-primary' : ''}`}
-                                    onClick={!isSelf ? () => setEditingRight({ userId: user!.id, orgId: org.id, currentRight: role as 'read' | 'write' | 'admin' }) : undefined}
+                                    className={`px-2 py-1 text-xs rounded-full bg-primary/10 text-primary${!isSelf && !rightLocked ? ' cursor-pointer hover:ring-1 hover:ring-primary' : ''}`}
+                                    onClick={!isSelf && !rightLocked ? () => setEditingRight({ userId: user!.id, orgId: org.id, currentRight: role as 'read' | 'write' | 'admin' }) : undefined}
                                   >
                                     {t(`role.${role}`)}
                                   </span>
                                 )}
-                                {!isSelf && (
+                                {!isSelf && !rightLocked && (
                                   <Button
                                     variant="ghost"
                                     size="sm"
@@ -496,8 +502,11 @@ export function OrganizationList({
                               <div className="space-y-1.5 mt-2 pt-2 border-t">
                                 {functionUsers.map(({ user, role }) => {
                                   const isSelf = user.id === currentUserId;
+                                  // An admin right this caller may not manage is displayed but not actionable.
+                                  const rightLocked = !canAssignAdmin && role === 'admin';
                                   const isEditing =
                                     !isSelf &&
+                                    !rightLocked &&
                                     editingRight?.userId === user.id &&
                                     editingRight?.orgId === org.id &&
                                     editingRight?.functionId === func.id;
@@ -535,17 +544,17 @@ export function OrganizationList({
                                           >
                                             <option value="read">{t('role.read')}</option>
                                             <option value="write">{t('role.write')}</option>
-                                            <option value="admin">{t('role.admin')}</option>
+                                            {canAssignAdmin && <option value="admin">{t('role.admin')}</option>}
                                           </select>
                                         ) : (
                                           <span
-                                            className={`px-1.5 py-0.5 rounded bg-gray-100${!isSelf ? ' cursor-pointer hover:ring-1 hover:ring-gray-400' : ''}`}
-                                            onClick={!isSelf ? () => setEditingRight({ userId: user.id, orgId: org.id, functionId: func.id, currentRight: role as 'read' | 'write' | 'admin' }) : undefined}
+                                            className={`px-1.5 py-0.5 rounded bg-gray-100${!isSelf && !rightLocked ? ' cursor-pointer hover:ring-1 hover:ring-gray-400' : ''}`}
+                                            onClick={!isSelf && !rightLocked ? () => setEditingRight({ userId: user.id, orgId: org.id, functionId: func.id, currentRight: role as 'read' | 'write' | 'admin' }) : undefined}
                                           >
                                             {t(`role.${role}`)}
                                           </span>
                                         )}
-                                        {!isSelf && (
+                                        {!isSelf && !rightLocked && (
                                           <Button
                                             variant="ghost"
                                             size="sm"
@@ -617,6 +626,7 @@ export function OrganizationList({
         users={users}
         userRoles={userRoles}
         currentUserId={currentUserId}
+        canAssignAdmin={canAssignAdmin}
         onAddUserToOrg={onAddUserToOrg}
         onUserCreated={onUserCreated}
       />
@@ -636,6 +646,7 @@ export function OrganizationList({
         users={users}
         userRoles={userRoles}
         currentUserId={currentUserId}
+        canAssignAdmin={canAssignAdmin}
         onAddUserToFunction={onAddUserToFunction}
         onUserCreated={onUserCreated}
       />

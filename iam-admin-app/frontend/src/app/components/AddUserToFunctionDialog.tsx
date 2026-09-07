@@ -30,6 +30,8 @@ interface AddUserToFunctionDialogProps {
   users: User[];
   userRoles: UserOrganizationRole[];
   currentUserId: string;
+  /** When false, the admin right is not offered as a selectable role. */
+  canAssignAdmin: boolean;
   onAddUserToFunction: (organizationId: string, functionId: string, userId: string, role: string) => void;
   onUserCreated?: (user: User) => void;
 }
@@ -42,6 +44,7 @@ export function AddUserToFunctionDialog({
   users,
   userRoles,
   currentUserId,
+  canAssignAdmin,
   onAddUserToFunction,
   onUserCreated,
 }: AddUserToFunctionDialogProps) {
@@ -242,7 +245,7 @@ export function AddUserToFunctionDialog({
                   <SelectContent>
                     <SelectItem value="read">{t('role.read')}</SelectItem>
                     <SelectItem value="write">{t('role.write')}</SelectItem>
-                    <SelectItem value="admin">{t('role.admin')}</SelectItem>
+                    {canAssignAdmin && <SelectItem value="admin">{t('role.admin')}</SelectItem>}
                   </SelectContent>
                 </Select>
               </div>
@@ -286,7 +289,7 @@ export function AddUserToFunctionDialog({
                     <SelectContent>
                       <SelectItem value="read">{t('role.read')}</SelectItem>
                       <SelectItem value="write">{t('role.write')}</SelectItem>
-                      <SelectItem value="admin">{t('role.admin')}</SelectItem>
+                      {canAssignAdmin && <SelectItem value="admin">{t('role.admin')}</SelectItem>}
                     </SelectContent>
                   </Select>
                 </div>
@@ -314,7 +317,7 @@ export function AddUserToFunctionDialog({
                     <SelectContent>
                       <SelectItem value="read">{t('role.read')}</SelectItem>
                       <SelectItem value="write">{t('role.write')}</SelectItem>
-                      <SelectItem value="admin">{t('role.admin')}</SelectItem>
+                      {canAssignAdmin && <SelectItem value="admin">{t('role.admin')}</SelectItem>}
                     </SelectContent>
                   </Select>
                 </div>
@@ -366,7 +369,7 @@ export function AddUserToFunctionDialog({
                     <SelectContent>
                       <SelectItem value="read">{t('role.read')}</SelectItem>
                       <SelectItem value="write">{t('role.write')}</SelectItem>
-                      <SelectItem value="admin">{t('role.admin')}</SelectItem>
+                      {canAssignAdmin && <SelectItem value="admin">{t('role.admin')}</SelectItem>}
                     </SelectContent>
                   </Select>
                 </div>

@@ -283,6 +283,7 @@ iam:
     pnr-userids: false         # Use personal identity number as Keycloak username
     allow-function-removal: false
     allow-org-rights: true
+    allow-admin-assigning-admin: false   # When false, only a superuser may grant/remove `admin`
     client-reconciliation:
       enabled: false           # Scheduled drift repair for managed clients
       cron: "0 */15 * * * *"

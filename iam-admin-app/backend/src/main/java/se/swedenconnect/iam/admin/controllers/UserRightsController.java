@@ -109,11 +109,25 @@ public class UserRightsController {
       return ResponseEntity.badRequest().body("right must be one of: read, write, admin");
     }
 
-    if (!"admin".equals(right)) {
+    final boolean adminRightRestricted = adminRightRestricted(data);
+
+    if ("admin".equals(right)) {
+      if (adminRightRestricted) {
+        log.info("PUT /api/organizations/{}/users/{}/rights — rejected: allow-admin-assigning-admin is false",
+            orgIdentifier, userId);
+        return ResponseEntity.status(403).build();
+      }
+    }
+    else {
       final boolean currentlyOrgAdmin = this.keycloakAdminClient.fetchUserRights(userId).stream()
           .anyMatch(r -> orgIdentifier.equals(r.orgIdentifier())
               && r.functionId() == null
               && "admin".equals(r.right()));
+      if (currentlyOrgAdmin && adminRightRestricted) {
+        log.info("PUT /api/organizations/{}/users/{}/rights — rejected: allow-admin-assigning-admin is false",
+            orgIdentifier, userId);
+        return ResponseEntity.status(403).build();
+      }
       if (currentlyOrgAdmin && !this.keycloakAdminClient.hasOtherOrgAdmin(orgIdentifier, userId)) {
         log.info("PUT /api/organizations/{}/users/{}/rights — rejected: last admin for org '{}'",
             orgIdentifier, userId, orgIdentifier);
@@ -184,11 +198,27 @@ public class UserRightsController {
       return ResponseEntity.badRequest().body("right must be one of: read, write, admin");
     }
 
-    if (!"admin".equals(right)) {
+    final boolean adminRightRestricted = adminRightRestricted(data);
+
+    if ("admin".equals(right)) {
+      if (adminRightRestricted) {
+        log.info("PUT /api/organizations/{}/functions/{}/users/{}/rights "
+                + "— rejected: allow-admin-assigning-admin is false",
+            orgIdentifier, functionId, userId);
+        return ResponseEntity.status(403).build();
+      }
+    }
+    else {
       final boolean currentlyFunctionAdmin = this.keycloakAdminClient.fetchUserRights(userId).stream()
           .anyMatch(r -> orgIdentifier.equals(r.orgIdentifier())
               && functionId.equals(r.functionId())
               && "admin".equals(r.right()));
+      if (currentlyFunctionAdmin && adminRightRestricted) {
+        log.info("PUT /api/organizations/{}/functions/{}/users/{}/rights "
+                + "— rejected: allow-admin-assigning-admin is false",
+            orgIdentifier, functionId, userId);
+        return ResponseEntity.status(403).build();
+      }
       if (currentlyFunctionAdmin && !this.keycloakAdminClient.hasOtherFunctionAdmin(orgIdentifier, functionId, userId)) {
         log.info("PUT /api/organizations/{}/functions/{}/users/{}/rights — rejected: last admin for function '{}/{}'",
             orgIdentifier, functionId, userId, orgIdentifier, functionId);
@@ -260,6 +290,12 @@ public class UserRightsController {
       return ResponseEntity.badRequest().body("right must be one of: read, write, admin");
     }
 
+    if ("admin".equals(right) && adminRightRestricted(data)) {
+      log.info("DELETE /api/organizations/{}/users/{}/rights — rejected: allow-admin-assigning-admin is false",
+          orgIdentifier, userId);
+      return ResponseEntity.status(403).build();
+    }
+
     if ("admin".equals(right) && !this.keycloakAdminClient.hasOtherOrgAdmin(orgIdentifier, userId)) {
       log.info("DELETE /api/organizations/{}/users/{}/rights — rejected: last admin for org '{}'",
           orgIdentifier, userId, orgIdentifier);
@@ -325,6 +361,13 @@ public class UserRightsController {
       return ResponseEntity.badRequest().body("right must be one of: read, write, admin");
     }
 
+    if ("admin".equals(right) && adminRightRestricted(data)) {
+      log.info("DELETE /api/organizations/{}/functions/{}/users/{}/rights "
+              + "— rejected: allow-admin-assigning-admin is false",
+          orgIdentifier, functionId, userId);
+      return ResponseEntity.status(403).build();
+    }
+
     if ("admin".equals(right) && !this.keycloakAdminClient.hasOtherFunctionAdmin(orgIdentifier, functionId, userId)) {
       log.info("DELETE /api/organizations/{}/functions/{}/users/{}/rights — rejected: last admin for function '{}/{}'",
           orgIdentifier, functionId, userId, orgIdentifier, functionId);
@@ -348,6 +391,16 @@ public class UserRightsController {
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
+
+  /**
+   * True if the caller may not touch the {@code admin} right at all — that is, the caller is not a
+   * superuser and {@code iam.admin.allow-admin-assigning-admin} is {@code false}. Such a caller is
+   * limited to {@code read} and {@code write}: they can neither grant nor remove {@code admin}, nor
+   * downgrade an existing admin to a lower right.
+   */
+  private boolean adminRightRestricted(final AdminSessionData data) {
+    return !data.currentUserIsSuperuser() && !this.properties.isAllowAdminAssigningAdmin();
+  }
 
   private static String getCurrentUserId() {
     final var auth = SecurityContextHolder.getContext().getAuthentication();

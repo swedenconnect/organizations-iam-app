@@ -102,6 +102,7 @@ function AppContent() {
   const [isClientFormOpen, setIsClientFormOpen] = useState(false);
   const [allowFunctionRemoval, setAllowFunctionRemoval] = useState(false);
   const [allowOrgRights, setAllowOrgRights] = useState(true);
+  const [allowAdminAssigningAdmin, setAllowAdminAssigningAdmin] = useState(false);
   const [functionConstraint, setFunctionConstraint] = useState<string | null>(null);
   const [orgConstraint, setOrgConstraint] = useState<string | null>(null);
 
@@ -201,6 +202,7 @@ function AppContent() {
 
             setAllowFunctionRemoval(session.allowFunctionRemoval ?? false);
             setAllowOrgRights(session.allowOrgRights ?? true);
+            setAllowAdminAssigningAdmin(session.allowAdminAssigningAdmin ?? false);
             setFunctionConstraint(session.functionConstraint ?? null);
             setOrgConstraint(session.orgConstraint ?? null);
 
@@ -764,6 +766,10 @@ function AppContent() {
     return <LoginForm />;
   }
 
+  // The admin right is read-only in the UI unless the caller is a superuser or the deployment
+  // permits admins to manage it. Mirrors the backend gate on iam.admin.allow-admin-assigning-admin.
+  const canAssignAdmin = (sessionData?.superuser ?? false) || allowAdminAssigningAdmin;
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Toaster />
@@ -838,6 +844,7 @@ function AppContent() {
                 organizationFunctions={organizationFunctions}
                 isSuperuser={sessionData?.superuser ?? false}
                 allowOrgRights={allowOrgRights}
+                canAssignAdmin={canAssignAdmin}
                 orgRights={sessionData?.orgRights ?? []}
                 currentUserId={currentUser.sub}
                 onEdit={handleEditOrganization}
@@ -875,6 +882,7 @@ function AppContent() {
                 functions={functions}
                 currentUserId={currentUser.sub}
                 isSuperuser={sessionData?.superuser ?? false}
+                canAssignAdmin={canAssignAdmin}
                 onEdit={handleEditUser}
                 onDeleteUser={handleDeleteUser}
                 onRemoveRight={handleUserListRemoveRight}
@@ -971,6 +979,7 @@ function AppContent() {
         functions={functions}
         isOpen={isUserFormOpen}
         currentUserId={currentUser.sub}
+        canAssignAdmin={canAssignAdmin}
         onRemoveRight={handleUserListRemoveRight}
         onChangeRight={handleUserListChangeRight}
         onClose={() => {

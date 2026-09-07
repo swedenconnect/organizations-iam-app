@@ -34,6 +34,7 @@ import se.swedenconnect.iam.admin.controllers.dto.AddUserRightRequest;
 import se.swedenconnect.iam.admin.keycloak.AdminSessionBootstrapHandler;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminClient;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
+import se.swedenconnect.iam.admin.keycloak.model.UserRight;
 import se.swedenconnect.iam.commons.types.LocalizedString;
 import se.swedenconnect.iam.commons.types.OrganizationID;
 import se.swedenconnect.iam.security.claims.OrgRightsClaim;
@@ -73,13 +74,18 @@ class UserRightsControllerAdminGateTest {
   @Mock
   private HttpSession session;
 
+  private IamAdminProperties properties;
+
   private UserRightsController controller;
 
   @BeforeEach
   void setUp() {
-    final IamAdminProperties properties = new IamAdminProperties();
-    properties.setAllowOrgRights(true);
-    this.controller = new UserRightsController(this.keycloakAdminClient, properties);
+    this.properties = new IamAdminProperties();
+    this.properties.setAllowOrgRights(true);
+    // The admin-assigning-admin gate is exercised by its own tests below; the cases covering the
+    // org-level/function-level gates predate it and run with the restriction lifted.
+    this.properties.setAllowAdminAssigningAdmin(true);
+    this.controller = new UserRightsController(this.keycloakAdminClient, this.properties);
 
     when(this.request.getSession(false)).thenReturn(this.session);
 
@@ -167,12 +173,188 @@ class UserRightsControllerAdminGateTest {
   }
 
   // ---------------------------------------------------------------------------
+  // iam.admin.allow-admin-assigning-admin
+  // ---------------------------------------------------------------------------
+
+  /** With the setting false, an org admin who is not a superuser may not grant org-level admin. */
+  @Test
+  void addUserToOrg_grantAdminRestricted_returns403() {
+    this.properties.setAllowAdminAssigningAdmin(false);
+    setupSession(orgEntry(ORG, "admin"));
+
+    final ResponseEntity<?> response = this.controller.addUserToOrg(
+        ORG, TARGET_ID, new AddUserRightRequest("admin"), this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(403);
+    verify(this.keycloakAdminClient, never()).addUserToOrgRight(anyString(), anyString(), anyString());
+  }
+
+  /** The same at the function level. */
+  @Test
+  void addUserToFunction_grantAdminRestricted_returns403() {
+    this.properties.setAllowAdminAssigningAdmin(false);
+    setupSession(orgEntry(ORG, null, new OrgRightsClaim.FunctionEntry(FUNC, "admin")));
+
+    final ResponseEntity<?> response = this.controller.addUserToFunction(
+        ORG, FUNC, TARGET_ID, new AddUserRightRequest("admin"), this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(403);
+    verify(this.keycloakAdminClient, never())
+        .addUserToFunctionRight(anyString(), anyString(), anyString(), anyString());
+  }
+
+  /** Downgrading an existing org-level admin to a lesser right is equally forbidden. */
+  @Test
+  void addUserToOrg_downgradeExistingAdminRestricted_returns403() {
+    this.properties.setAllowAdminAssigningAdmin(false);
+    setupSession(orgEntry(ORG, "admin"));
+    when(this.keycloakAdminClient.fetchUserRights(TARGET_ID))
+        .thenReturn(List.of(new UserRight(ORG, null, "admin")));
+
+    final ResponseEntity<?> response = this.controller.addUserToOrg(
+        ORG, TARGET_ID, new AddUserRightRequest("write"), this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(403);
+    verify(this.keycloakAdminClient, never()).addUserToOrgRight(anyString(), anyString(), anyString());
+  }
+
+  /** Downgrading an existing function-level admin is forbidden too. */
+  @Test
+  void addUserToFunction_downgradeExistingAdminRestricted_returns403() {
+    this.properties.setAllowAdminAssigningAdmin(false);
+    setupSession(orgEntry(ORG, null, new OrgRightsClaim.FunctionEntry(FUNC, "admin")));
+    when(this.keycloakAdminClient.fetchUserRights(TARGET_ID))
+        .thenReturn(List.of(new UserRight(ORG, FUNC, "admin")));
+
+    final ResponseEntity<?> response = this.controller.addUserToFunction(
+        ORG, FUNC, TARGET_ID, new AddUserRightRequest("write"), this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(403);
+    verify(this.keycloakAdminClient, never())
+        .addUserToFunctionRight(anyString(), anyString(), anyString(), anyString());
+  }
+
+  /** Granting write to a user who holds no admin right anywhere is unaffected by the setting. */
+  @Test
+  void addUserToOrg_grantWriteToNonAdminRestricted_returns204() {
+    this.properties.setAllowAdminAssigningAdmin(false);
+    setupSession(orgEntry(ORG, "admin"));
+    when(this.keycloakAdminClient.fetchUserRights(TARGET_ID))
+        .thenReturn(List.of(new UserRight(ORG, null, "read")));
+
+    final ResponseEntity<?> response = this.controller.addUserToOrg(
+        ORG, TARGET_ID, new AddUserRightRequest("write"), this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(204);
+    verify(this.keycloakAdminClient).addUserToOrgRight(ORG, TARGET_ID, "write");
+  }
+
+  /** Removing org-level admin is forbidden, and wins over the last-admin 409. */
+  @Test
+  void removeUserFromOrg_removeAdminRestricted_returns403() {
+    this.properties.setAllowAdminAssigningAdmin(false);
+    setupSession(orgEntry(ORG, "admin"));
+
+    final ResponseEntity<?> response = this.controller.removeUserFromOrg(
+        ORG, TARGET_ID, "admin", this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(403);
+    verify(this.keycloakAdminClient, never()).removeUserFromOrgRight(anyString(), anyString(), anyString());
+  }
+
+  /** The same at the function level. */
+  @Test
+  void removeUserFromFunction_removeAdminRestricted_returns403() {
+    this.properties.setAllowAdminAssigningAdmin(false);
+    setupSession(orgEntry(ORG, null, new OrgRightsClaim.FunctionEntry(FUNC, "admin")));
+
+    final ResponseEntity<?> response = this.controller.removeUserFromFunction(
+        ORG, FUNC, TARGET_ID, "admin", this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(403);
+    verify(this.keycloakAdminClient, never())
+        .removeUserFromFunctionRight(anyString(), anyString(), anyString(), anyString());
+  }
+
+  /** Removing read or write is unaffected by the setting. */
+  @Test
+  void removeUserFromOrg_removeWriteRestricted_returns204() {
+    this.properties.setAllowAdminAssigningAdmin(false);
+    setupSession(orgEntry(ORG, "admin"));
+
+    final ResponseEntity<?> response = this.controller.removeUserFromOrg(
+        ORG, TARGET_ID, "write", this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(204);
+    verify(this.keycloakAdminClient).removeUserFromOrgRight(ORG, TARGET_ID, "write");
+  }
+
+  /** The same at the function level. */
+  @Test
+  void removeUserFromFunction_removeReadRestricted_returns204() {
+    this.properties.setAllowAdminAssigningAdmin(false);
+    setupSession(orgEntry(ORG, null, new OrgRightsClaim.FunctionEntry(FUNC, "admin")));
+
+    final ResponseEntity<?> response = this.controller.removeUserFromFunction(
+        ORG, FUNC, TARGET_ID, "read", this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(204);
+    verify(this.keycloakAdminClient).removeUserFromFunctionRight(ORG, FUNC, TARGET_ID, "read");
+  }
+
+  /** With the setting true, a non-superuser org admin may grant admin again. */
+  @Test
+  void addUserToOrg_grantAdminAllowed_returns204() {
+    this.properties.setAllowAdminAssigningAdmin(true);
+    setupSession(orgEntry(ORG, "admin"));
+
+    final ResponseEntity<?> response = this.controller.addUserToOrg(
+        ORG, TARGET_ID, new AddUserRightRequest("admin"), this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(204);
+    verify(this.keycloakAdminClient).addUserToOrgRight(ORG, TARGET_ID, "admin");
+  }
+
+  /** A superuser is never affected by the setting — granting admin still works. */
+  @Test
+  void addUserToOrg_superuserGrantAdminRestricted_returns204() {
+    this.properties.setAllowAdminAssigningAdmin(false);
+    setupSuperuserSession();
+
+    final ResponseEntity<?> response = this.controller.addUserToOrg(
+        ORG, TARGET_ID, new AddUserRightRequest("admin"), this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(204);
+    verify(this.keycloakAdminClient).addUserToOrgRight(ORG, TARGET_ID, "admin");
+  }
+
+  /** And a superuser may still remove admin, as long as another admin remains. */
+  @Test
+  void removeUserFromOrg_superuserRemoveAdminRestricted_returns204() {
+    this.properties.setAllowAdminAssigningAdmin(false);
+    setupSuperuserSession();
+    when(this.keycloakAdminClient.hasOtherOrgAdmin(ORG, TARGET_ID)).thenReturn(true);
+
+    final ResponseEntity<?> response = this.controller.removeUserFromOrg(
+        ORG, TARGET_ID, "admin", this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(204);
+    verify(this.keycloakAdminClient).removeUserFromOrgRight(ORG, TARGET_ID, "admin");
+  }
+
+  // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
 
   private void setupSession(final OrgRightsClaim.OrgEntry... entries) {
     final AdminSessionData data = new AdminSessionData(false, null, null, List.of(), Set.of(ORG),
         new OrgRightsClaim(false, List.of(entries)));
+    when(this.session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)).thenReturn(data);
+  }
+
+  private void setupSuperuserSession() {
+    final AdminSessionData data = new AdminSessionData(true, null, null, List.of(), Set.of(),
+        new OrgRightsClaim(true, List.of()));
     when(this.session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)).thenReturn(data);
   }
 

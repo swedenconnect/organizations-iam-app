@@ -44,6 +44,20 @@
   present. A realm missing it performs no entitlement check at all. Verify the profile after
   upgrading Keycloak or restoring a realm.
 
+- **An admin can no longer create further admins.** The new
+  `iam.admin.allow-admin-assigning-admin` setting, which defaults to `false`, restricts a caller
+  who is not a superuser to the `read` and `write` rights. Such a caller can neither grant nor
+  remove the `admin` right, nor lower an existing admin to a lesser right, at the organization
+  level or at the organization/function level. The admin application rejects these requests with
+  `403`, and the controls for acting on an admin right are absent from its user interface. Set the
+  property to `true` to restore the previous behaviour, where any admin could appoint another
+  admin within the scope they administer. Superusers are unaffected in either position.
+
+  The intended consequence is that the admin population of an organization or a function does not
+  change without a superuser. Combined with the existing rule that the last admin of a scope
+  cannot be removed, an organization whose only admin is not a superuser keeps exactly that one
+  admin until a superuser intervenes.
+
 - **Managed clients can be administered from the IAM admin application.** A superuser can
   register, edit and delete OIDC clients under a new **Services** tab, instead of running
   `add-oidc-client.sh` and `set-iam-admin-managed.sh` against the Keycloak host. A client is
