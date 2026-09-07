@@ -119,10 +119,11 @@ public class OrganizationServiceImpl implements OrganizationService {
   @Override
   public @NonNull OrganizationInfo create(
       final @NonNull String orgNumber,
-      final @NonNull String nameSv,
-      final @NonNull String nameEn) {
+      final @NonNull String legalName,
+      final @Nullable String nameSv,
+      final @Nullable String nameEn) {
 
-    this.keycloakAdminClient.createOrganization(orgNumber, nameSv, nameEn);
+    this.keycloakAdminClient.createOrganization(orgNumber, legalName, nameSv, nameEn);
 
     final OrganizationInfo created = this.keycloakAdminClient.fetchOrganizationByIdentifier(orgNumber)
         .orElseThrow(() -> new KeycloakAdminException(
@@ -138,12 +139,14 @@ public class OrganizationServiceImpl implements OrganizationService {
   @Override
   public @NonNull OrganizationInfo update(
       final @NonNull String orgNumber,
+      final @Nullable String legalName,
       final @Nullable String nameSv,
       final @Nullable String nameEn,
       final @Nullable String contactEmail,
       final @Nullable String contactPhone) {
 
-    this.keycloakAdminClient.updateOrganization(orgNumber, nameSv, nameEn, contactEmail, contactPhone);
+    this.keycloakAdminClient.updateOrganization(
+        orgNumber, legalName, nameSv, nameEn, contactEmail, contactPhone);
     this.cache.evict(orgNumber);
 
     final OrganizationInfo updated = this.keycloakAdminClient.fetchOrganizationByIdentifier(orgNumber)
@@ -183,15 +186,19 @@ public class OrganizationServiceImpl implements OrganizationService {
     }
   }
 
+  /** Matches the organization number, the legal name and both display names. */
   private static boolean matchesSearch(final OrganizationInfo org, final String searchLower) {
     if (org.orgIdentifier().toLowerCase().contains(searchLower)) {
       return true;
     }
-    final String sv = org.name().get("sv");
+    if (org.legalName().toLowerCase().contains(searchLower)) {
+      return true;
+    }
+    final String sv = org.displayName("sv");
     if (sv != null && sv.toLowerCase().contains(searchLower)) {
       return true;
     }
-    final String en = org.name().get("en");
+    final String en = org.displayName("en");
     return en != null && en.toLowerCase().contains(searchLower);
   }
 
@@ -218,8 +225,9 @@ public class OrganizationServiceImpl implements OrganizationService {
   static @NonNull OrganizationResponse toResponse(final @NonNull OrganizationInfo o) {
     return new OrganizationResponse(
         o.orgIdentifier(),
-        o.name().get("sv"),
-        o.name().get("en"),
+        o.legalName(),
+        o.displayName("sv"),
+        o.displayName("en"),
         o.groupId(),
         o.attachedFunctions(),
         o.contactEmail(),

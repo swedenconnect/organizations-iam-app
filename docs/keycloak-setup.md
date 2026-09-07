@@ -231,8 +231,9 @@ directory, or configured as a Script Mapper if scripting is enabled.
 
 * Group all relevant memberships by organization identifier. For each organization:
 
-  - Load the org group's attributes to obtain `organization_identifier`, `organization_name#sv`,
-      `organization_name#en`.
+  - Load the org group's attributes to obtain `organization_identifier`, the untagged
+      `organization_name` holding the legal name, and the optional display names
+      `organization_name#sv` and `organization_name#en`.
   - For each membership at path `orgs/{identifier}/{function}/_admin`, `/_write`, or
       `/_read`, add a `{ "function": "<function>", "right": "<right>" }` entry to the
       `functions` array for this org.
@@ -916,7 +917,7 @@ user has no `phoneNumber` attribute set, the claim is absent even when the scope
 4. Name: `5590026042`.
 5. Click **Create**.
 6. Go to the **Attributes** tab of this sub-group:
-7. Add the following attributes: `organization_identifier`: `5590026042`, `organization_name#sv`: `Litsec AB` and `organization_name#en`: `Litsec AB`.
+7. Add the following attributes: `organization_identifier`: `5590026042` and `organization_name`: `Litsec Aktiebolag`. `organization_name` holds the legal name as registered at Bolagsverket and is mandatory. The display names `organization_name#sv` and `organization_name#en` are optional; add them only if the organization should be shown under something other than its legal name, for example `organization_name#sv`: `Litsec AB` and `organization_name#en`: `Litsec Ltd`.
 
 8. Click **Save**.
 
@@ -1124,8 +1125,8 @@ produce the following entry in his token:
 ```json
 {
   "organization_identifier": "5590026042",
-  "organization_name#sv": "Litsec AB",
-  "organization_name#en": "Litsec AB",
+  "organization_legal_name": "Litsec Aktiebolag",
+  "organization_name": "Litsec Aktiebolag",
   "functions": [
     { "function": "demo", "right": "write" }
   ]
@@ -1245,8 +1246,9 @@ Content-Type: application/json
   "name": "5590026042",
   "attributes": {
     "organization_identifier": ["5590026042"],
+    "organization_name": ["Litsec Aktiebolag"],
     "organization_name#sv": ["Litsec AB"],
-    "organization_name#en": ["Litsec AB"]
+    "organization_name#en": ["Litsec Ltd"]
   }
 }
 ```
@@ -1292,8 +1294,9 @@ Content-Type: application/json
   "name": "5590026042",
   "attributes": {
     "organization_identifier": ["5590026042"],
-    "organization_name#sv": ["Litsec AB — uppdaterat namn"],
-    "organization_name#en": ["Litsec AB — updated name"]
+    "organization_name": ["Litsec Aktiebolag"],
+    "organization_name#sv": ["Litsec AB, uppdaterat namn"],
+    "organization_name#en": ["Litsec Ltd, updated name"]
   }
 }
 ```
@@ -1638,8 +1641,9 @@ Content-Type: application/json
   "name": "5590026042",
   "attributes": {
     "organization_identifier": ["5590026042"],
+    "organization_name": ["Litsec Aktiebolag"],
     "organization_name#sv": ["Litsec AB"],
-    "organization_name#en": ["Litsec AB"],
+    "organization_name#en": ["Litsec Ltd"],
     "contact_info": ["{\"email\":\"info@litsec.se\",\"phone_number\":\"+46701234567\"}"]
   }
 }
@@ -1647,9 +1651,10 @@ Content-Type: application/json
 
 The `contact_info` attribute is a single-element list containing a compact JSON string with
 the optional members `email` and `phone_number`. Omit the attribute entirely if no contact
-details are set. Always carry forward the existing `organization_identifier` and
-`organization_name#*` attributes when only updating contact info, and vice versa — the PUT
-replaces all attributes.
+details are set. Always carry forward the existing `organization_identifier`,
+`organization_name` and any `organization_name#*` attributes when only updating contact info, and
+vice versa, since the PUT replaces all attributes. `organization_name` holds the legal name and is
+mandatory; the tagged display names are optional and may simply be omitted.
 
 A `204 No Content` response indicates success.
 

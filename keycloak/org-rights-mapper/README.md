@@ -38,6 +38,8 @@ dropped.
 "org_rights": [
   {
     "organization_identifier": "5590026042",
+    "organization_legal_name": "Exempelorganisationen Aktiebolag",
+    "organization_name": "Exempelorganisationen Aktiebolag",
     "organization_name#sv": "Exempelorganisationen",
     "organization_name#en": "Example Organization",
     "org_level_right": "write",
@@ -48,6 +50,13 @@ dropped.
   }
 ]
 ```
+
+**Names.** `organization_legal_name` carries the organization's legal name, as registered at
+Bolagsverket. It is always emitted and is the member to read when the registered name is wanted. The
+untagged `organization_name` repeats the same value; it exists only so that a consumer resolving a
+name across the `organization_name*` members still finds something when no display name is set, and
+must not be relied on. `organization_name#sv` and `organization_name#en` are optional display names
+and are emitted only when the corresponding group attribute is set.
 
 **`org_level_right` confers no access.** It records only that the right was granted org-wide.
 Effective rights come exclusively from `functions`; a consumer that treats `org_level_right` as
@@ -77,7 +86,8 @@ response. Which tokens carry the claim is controlled per mapper instance in the 
 
 ```
 orgs/
-  {org-group}/             ← attributes: organization_identifier, organization_name#sv, organization_name#en
+  {org-group}/             ← attributes: organization_identifier, organization_name,
+                           ←             organization_name#sv, organization_name#en
     _admin                 ← org-level admin right
     _write                 ← org-level write right
     _read                  ← org-level read right
@@ -87,9 +97,16 @@ orgs/
       _read                ← function-level read right
 ```
 
-The organization attributes (`organization_identifier`, `organization_name#sv`,
-`organization_name#en`) are read from the org group and included verbatim in each
-`org_rights` entry.
+The organization attributes are read from the org group and included in each `org_rights` entry.
+`organization_identifier` and the untagged `organization_name`, which holds the legal name, are
+always present. `organization_name#sv` and `organization_name#en` are optional display names and
+appear in the entry only when the group carries them.
+
+An org group created before the legal name existed has no untagged `organization_name`. The mapper
+then derives one from the Swedish display name, falling back to the English one, and logs that the
+organization's legal name has not been entered and needs to be updated. The derived value is not
+written back to the group: a human has to supply the real registered name. A group carrying no name
+at all is malformed, and the organization identifier is used so that nothing downstream breaks.
 
 The function sub-groups are also the attachment set an org-level right is expanded onto. They
 are identified by name (anything that is not `_admin`, `_write` or `_read`) rather than by their

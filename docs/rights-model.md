@@ -83,8 +83,13 @@ display names are stored as group attributes `name#sv` and `name#en`.
 ### 2.2. Organizations
 
 An **organization** is identified uniquely by its `organization_identifier`, which is a
-ten-digit Swedish organizational number (no dash, e.g. `5590026042`). The organization's
-names (Swedish and English) are stored as metadata attributes.
+ten-digit Swedish organizational number (no dash, e.g. `5590026042`).
+
+An organization carries two distinct kinds of name. Its **legal name** is the name it is
+registered under at Bolagsverket. It is a plain string with no language, it is mandatory, and it is
+the authoritative identification of the organization. Its **display names**, in Swedish and English,
+exist for presentation only and are optional, independently of each other. Where no display name is
+set for the wanted language, the legal name is shown instead.
 
 An organization may have one or more functions attached to it, meaning the organization
 participates in that function's domain (for example, has signed an agreement to join a
@@ -186,8 +191,9 @@ functions/
 | Attribute                 | Description                                           | Example                                                    |
 |---------------------------|-------------------------------------------------------|------------------------------------------------------------|
 | `organization_identifier` | Ten-digit org number, no dash                         | `5590026042`                                               |
-| `organization_name#sv`    | Organization name in Swedish                          | `Litsec AB`                                                |
-| `organization_name#en`    | Organization name in English                          | `Litsec AB`                                                |
+| `organization_name`       | Legal name, as registered at Bolagsverket. No language tag. Always present | `Litsec Aktiebolag`                   |
+| `organization_name#sv`    | Optional display name in Swedish. Absent when not set | `Litsec AB`                                                |
+| `organization_name#en`    | Optional display name in English. Absent when not set | `Litsec Ltd`                                               |
 | `contact_info`            | JSON object with optional contact details (see below) | `{"email":"info@litsec.se","phone_number":"+46701234567"}` |
 
 The `contact_info` attribute is a single-element list containing a compact JSON string with
@@ -236,16 +242,18 @@ structured description of all rights held by the authenticated user.
 "org_rights": [
 {
 "organization_identifier": "5590026042",
+"organization_legal_name": "Litsec Aktiebolag",
+"organization_name": "Litsec Aktiebolag",
 "organization_name#sv": "Litsec AB",
-"organization_name#en": "Litsec AB",
+"organization_name#en": "Litsec Ltd",
 "functions": [
 {"function": "demo", "right": "write"}
 ]
 },
 {
 "organization_identifier": "5561234567",
-"organization_name#sv": "Exempel AB",
-"organization_name#en": "Example Corp",
+"organization_legal_name": "Exempel Aktiebolag",
+"organization_name": "Exempel Aktiebolag",
 "org_level_right": "admin",
 "functions": [
 {"function": "walletreg", "right": "admin"},
@@ -262,6 +270,14 @@ attached function, so consumers never have to resolve the attachment set themsel
 example above the user was granted `admin` at the organization level of `5561234567`, and
 `walletreg` and `eidas` are the two functions attached to it.
 
+**Names in the claim.** `organization_legal_name` is always present and is what to read when the
+registered name is wanted. `organization_name`, without a language tag, repeats the same value and
+exists only for backwards compatibility, so that a consumer resolving a name across the
+`organization_name*` members still finds something when no display name is set; it must not be
+relied on. `organization_name#sv` and `organization_name#en` are the optional display names and are
+emitted only when set. To show a name for a given language, take the display name for that language,
+then the display name in the other language, then `organization_legal_name`.
+
 **`org_level_right` is provenance only — it confers no access.** It records *how* a right was
 granted (`admin`, `write` or `read` at the organization level) and is absent when the user
 holds no org-level right. Effective rights come exclusively from the `functions` array.
@@ -277,8 +293,10 @@ yields, for an organization with `demo` and `walletreg` attached:
 ```json
 {
   "organization_identifier": "5590026042",
+  "organization_legal_name": "Litsec Aktiebolag",
+  "organization_name": "Litsec Aktiebolag",
   "organization_name#sv": "Litsec AB",
-  "organization_name#en": "Litsec AB",
+  "organization_name#en": "Litsec Ltd",
   "org_level_right": "read",
   "functions": [
     {
@@ -300,7 +318,7 @@ emitted; a consumer that nevertheless sees duplicates should take the highest.
 
 An organization with **no attached functions** produces an entry with `org_level_right` set
 and an empty `functions` array. The entry is deliberately kept so the organization remains
-enumerable (relying parties read `organization_name#*` off the claim to know which
+enumerable (relying parties read the organization's name off the claim to know which
 organizations to display), and the empty array correctly conveys that no function-level access
 follows. Consumers must handle an empty `functions` array without error.
 

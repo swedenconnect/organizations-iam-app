@@ -1,4 +1,15 @@
-import { UserOrgRight } from '@/types';
+import { Organization, UserOrgRight } from '@/types';
+
+/**
+ * Resolves the name to show for an organization: the display name for the given language, the
+ * display name in the other language if that one is not set, and the legal name if no display name
+ * has been given at all. Never returns an empty string.
+ */
+export function resolveOrgName(org: Organization, language: string): string {
+  const preferred = language === 'sv' ? org.nameSv : org.nameEn;
+  const other = language === 'sv' ? org.nameEn : org.nameSv;
+  return preferred?.trim() || other?.trim() || org.legalName;
+}
 
 /**
  * Formats an organization number as NNNNNN-NNNN (dash before the last four digits).

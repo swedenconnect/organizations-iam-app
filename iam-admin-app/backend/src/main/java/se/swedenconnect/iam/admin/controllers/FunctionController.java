@@ -136,8 +136,9 @@ public class FunctionController {
   private static OrganizationResponse toOrgResponse(final OrganizationInfo o) {
     return new OrganizationResponse(
         o.orgIdentifier(),
-        o.name().get("sv"),
-        o.name().get("en"),
+        o.legalName(),
+        o.displayName("sv"),
+        o.displayName("en"),
         o.groupId(),
         o.attachedFunctions(),
         o.contactEmail(),

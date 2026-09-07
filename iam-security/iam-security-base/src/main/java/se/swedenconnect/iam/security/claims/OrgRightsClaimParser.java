@@ -115,10 +115,39 @@ public class OrgRightsClaimParser {
 
       final String orgLevelRight = map.get("org_level_right") instanceof final String r ? r : null;
 
-      entries.add(new OrgRightsClaim.OrgEntry(orgId, name, orgLevelRight, List.copyOf(functions)));
+      entries.add(new OrgRightsClaim.OrgEntry(
+          orgId, resolveLegalName(map, name, orgIdStr), name, orgLevelRight, List.copyOf(functions)));
     }
 
     return new OrgRightsClaim(false, List.copyOf(entries));
+  }
+
+  /**
+   * Resolves the organization's legal name for a claim entry.
+   *
+   * <p>The {@code organization_legal_name} member is the authoritative source. A claim produced by
+   * an older protocol mapper does not carry it, so the collected names are used instead — the
+   * untagged {@code organization_name} first, then whichever display name is available — and the
+   * organization identifier is the last resort so the value is never absent.</p>
+   *
+   * @param map the raw claim entry
+   * @param name the names already collected from the {@code organization_name*} members
+   * @param orgIdStr the organization identifier, used when nothing else yields a name
+   * @return the legal name; never {@code null}
+   */
+  private static @NonNull String resolveLegalName(
+      final @NonNull Map<?, ?> map,
+      final @NonNull LocalizedString name,
+      final @NonNull String orgIdStr) {
+
+    if (map.get("organization_legal_name") instanceof final String legal && !legal.isBlank()) {
+      return legal;
+    }
+    log.debug("org_rights entry for '{}' carries no organization_legal_name — deriving it from the "
+        + "organization_name members", orgIdStr);
+    // get(null) resolves the untagged value first, then the default language, then any value.
+    final String derived = name.get((String) null);
+    return derived != null && !derived.isBlank() ? derived : orgIdStr;
   }
 
   /**

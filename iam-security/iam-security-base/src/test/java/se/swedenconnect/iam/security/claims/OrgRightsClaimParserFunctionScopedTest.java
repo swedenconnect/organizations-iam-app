@@ -35,14 +35,15 @@ class OrgRightsClaimParserFunctionScopedTest {
   private final OrgRightsClaimParser parser = new OrgRightsClaimParser();
 
   private static OrgRightsClaim.OrgEntry orgEntry(final String orgId, final OrgRightsClaim.FunctionEntry... functions) {
-    return new OrgRightsClaim.OrgEntry(OrganizationID.of(orgId), new LocalizedString(), null, List.of(functions));
+    return new OrgRightsClaim.OrgEntry(
+        OrganizationID.of(orgId), "Litsec AB", new LocalizedString(), null, List.of(functions));
   }
 
   /** As {@link #orgEntry(String, OrgRightsClaim.FunctionEntry...)}, but with an org-level right set. */
   private static OrgRightsClaim.OrgEntry orgEntry(final String orgId, final String orgLevelRight,
       final OrgRightsClaim.FunctionEntry... functions) {
     return new OrgRightsClaim.OrgEntry(
-        OrganizationID.of(orgId), new LocalizedString(), orgLevelRight, List.of(functions));
+        OrganizationID.of(orgId), "Litsec AB", new LocalizedString(), orgLevelRight, List.of(functions));
   }
 
   /** Superuser always receives ROLE_SUPERUSER regardless of function. */

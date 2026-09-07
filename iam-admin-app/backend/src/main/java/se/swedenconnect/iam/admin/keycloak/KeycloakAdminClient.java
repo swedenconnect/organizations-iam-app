@@ -81,6 +81,18 @@ public class KeycloakAdminClient {
    */
   private static final String SERVICE_ACCOUNT_ATTRIBUTE = "iam_admin_service_account";
 
+  /**
+   * Organization group attribute holding the legal name, as registered at Bolagsverket. Untagged,
+   * because a legal name is not a localized value. Always written on create.
+   */
+  private static final String ORG_ATTR_NAME = "organization_name";
+
+  /** Organization group attribute holding the optional Swedish display name. */
+  private static final String ORG_ATTR_NAME_SV = "organization_name#sv";
+
+  /** Organization group attribute holding the optional English display name. */
+  private static final String ORG_ATTR_NAME_EN = "organization_name#en";
+
   private final RestClient restClient;
   private final OAuth2AuthorizedClientManager authorizedClientManager;
   private final String adminApiBase;
@@ -638,6 +650,45 @@ public class KeycloakAdminClient {
         .toList();
   }
 
+  /**
+   * Resolves an organization's legal name from its group attributes.
+   *
+   * <p>Groups created before the legal name existed carry no untagged {@code organization_name}
+   * attribute. The Swedish display name is used then, falling back to the English one, and the fact
+   * is logged: a human has to enter the real registered name, and the derived value is deliberately
+   * not written back. A group carrying no name at all is malformed, and the organization identifier
+   * is used so that nothing downstream breaks.</p>
+   *
+   * @param legalNameAttr the value of the untagged {@code organization_name} attribute, or
+   *     {@code null} if absent
+   * @param displayName the display names read from the group, or {@code null} if none were set
+   * @param orgIdentifier the organization identifier, used in log messages and as last resort
+   * @return the legal name; never {@code null}
+   */
+  static @NonNull String resolveLegalName(
+      final @Nullable String legalNameAttr,
+      final @Nullable LocalizedString displayName,
+      final @NonNull String orgIdentifier) {
+
+    if (legalNameAttr != null && !legalNameAttr.isBlank()) {
+      return legalNameAttr;
+    }
+    if (displayName != null) {
+      final String sv = displayName.asMap().get("sv");
+      final String en = displayName.asMap().get("en");
+      final String derived = sv != null && !sv.isBlank() ? sv : en;
+      if (derived != null && !derived.isBlank()) {
+        log.warn("Organization '{}' has no '{}' attribute — its legal name has not been entered and "
+                + "needs to be updated; showing a display name in the meantime",
+            orgIdentifier, ORG_ATTR_NAME);
+        return derived;
+      }
+    }
+    log.error("Organization group '{}' carries no name at all — neither '{}' nor a display name; "
+        + "using the organization identifier as its name", orgIdentifier, ORG_ATTR_NAME);
+    return orgIdentifier;
+  }
+
   private @NonNull List<OrganizationInfo> mapOrgGroups(final @NonNull List<Map<String, Object>> orgGroups) {
     final List<OrganizationInfo> result = new ArrayList<>();
     for (final Map<String, Object> org : orgGroups) {
@@ -654,19 +705,26 @@ public class KeycloakAdminClient {
           .filter(name -> name != null && !name.startsWith("_"))
           .toList();
 
-      final LocalizedString orgName = new LocalizedString();
       @SuppressWarnings("unchecked")
       final Map<String, Object> orgAttrs =
           org.getOrDefault("attributes", Map.of()) instanceof final Map<?, ?> m
               ? (Map<String, Object>) m : Map.of();
+
+      // The untagged attribute is the legal name; the tagged ones are optional display names.
+      LocalizedString displayName = null;
       for (final Map.Entry<String, Object> attr : orgAttrs.entrySet()) {
-        if (attr.getKey().startsWith("organization_name")) {
+        if (attr.getKey().startsWith("organization_name#")) {
           final String val = getFirstListValue(attr.getValue());
-          if (val != null) {
-            orgName.addFromClaim(attr.getKey(), val);
+          if (val != null && !val.isBlank()) {
+            if (displayName == null) {
+              displayName = new LocalizedString();
+            }
+            displayName.addFromClaim(attr.getKey(), val);
           }
         }
       }
+      final String legalName = resolveLegalName(
+          getFirstListValue(orgAttrs.get(ORG_ATTR_NAME)), displayName, orgIdentifier);
 
       final String contactInfoJson = getFirstListValue(orgAttrs.get("contact_info"));
       final Map<String, String> contactInfo = parseContactInfo(contactInfoJson);
@@ -675,7 +733,8 @@ public class KeycloakAdminClient {
 
       result.add(new OrganizationInfo(
           orgIdentifier,
-          orgName,
+          legalName,
+          displayName,
           groupId,
           attachedFunctions,
           contactEmail,
@@ -704,26 +763,36 @@ public class KeycloakAdminClient {
    * {@link KeycloakAdminException} as a partial-failure signal and investigate manually.</p>
    *
    * @param orgIdentifier the organization number (10 digits), used as the group name
-   * @param nameSv Swedish organization name
-   * @param nameEn English organization name
+   * @param legalName the legal name as registered at Bolagsverket; mandatory
+   * @param nameSv Swedish display name, or {@code null} for none
+   * @param nameEn English display name, or {@code null} for none
    * @throws KeycloakAdminException on any Keycloak API error
    */
   public void createOrganization(
       final @NonNull String orgIdentifier,
-      final @NonNull String nameSv,
-      final @NonNull String nameEn) {
+      final @NonNull String legalName,
+      final @Nullable String nameSv,
+      final @Nullable String nameEn) {
 
     log.debug("Creating organization group '{}' under /orgs", orgIdentifier);
 
     final String orgsGroupId = this.findTopLevelGroupId("orgs");
     log.debug("Resolved 'orgs' group id: {}", orgsGroupId);
 
+    // Display names are optional — no attribute is written for one that has not been given.
+    final Map<String, Object> attributes = new LinkedHashMap<>();
+    attributes.put("organization_identifier", List.of(orgIdentifier));
+    attributes.put(ORG_ATTR_NAME, List.of(legalName));
+    if (nameSv != null && !nameSv.isBlank()) {
+      attributes.put(ORG_ATTR_NAME_SV, List.of(nameSv));
+    }
+    if (nameEn != null && !nameEn.isBlank()) {
+      attributes.put(ORG_ATTR_NAME_EN, List.of(nameEn));
+    }
+
     final Map<String, Object> orgGroupBody = Map.of(
         "name", orgIdentifier,
-        "attributes", Map.of(
-            "organization_identifier", List.of(orgIdentifier),
-            "organization_name#sv", List.of(nameSv),
-            "organization_name#en", List.of(nameEn)));
+        "attributes", attributes);
 
     final String location = this.adminPost("/groups/" + orgsGroupId + "/children", orgGroupBody);
     if (location == null) {
@@ -2838,19 +2907,22 @@ public class KeycloakAdminClient {
   /**
    * Updates the mutable attributes of an organization group in Keycloak.
    *
-   * <p>Only non-null parameters are applied. {@code null} for {@code nameSv}/{@code nameEn}
-   * means "do not change". An empty string for {@code contactEmail} or {@code contactPhone} means "clear the
-   * attribute".</p>
+   * <p>Only non-null parameters are applied. {@code null} means "do not change" throughout. An
+   * empty string for a display name, {@code contactEmail} or {@code contactPhone} means "clear the
+   * attribute"; the legal name is mandatory and cannot be cleared, so a blank value is rejected by
+   * the caller before it reaches here.</p>
    *
    * @param orgIdentifier the organization identifier
-   * @param nameSv new Swedish name, or {@code null} to leave unchanged
-   * @param nameEn new English name, or {@code null} to leave unchanged
+   * @param legalName new legal name, or {@code null} to leave unchanged
+   * @param nameSv new Swedish display name, {@code null} to leave unchanged, or {@code ""} to remove
+   * @param nameEn new English display name, {@code null} to leave unchanged, or {@code ""} to remove
    * @param contactEmail new contact email, or {@code null} to leave unchanged, or {@code ""} to clear
    * @param contactPhone new contact phone, or {@code null} to leave unchanged, or {@code ""} to clear
    * @throws KeycloakAdminException if the org group is not found or on API error
    */
   public void updateOrganization(
       final @NonNull String orgIdentifier,
+      final @Nullable String legalName,
       final @Nullable String nameSv,
       final @Nullable String nameEn,
       final @Nullable String contactEmail,
@@ -2872,11 +2944,25 @@ public class KeycloakAdminClient {
         existing.getOrDefault("attributes", Map.of()) instanceof final Map<?, ?> m
             ? new LinkedHashMap<>((Map<String, Object>) m) : new LinkedHashMap<>();
 
+    if (legalName != null) {
+      attrs.put(ORG_ATTR_NAME, List.of(legalName));
+    }
+    // A display name sent empty is removed rather than stored as an empty string.
     if (nameSv != null) {
-      attrs.put("organization_name#sv", List.of(nameSv));
+      if (nameSv.isBlank()) {
+        attrs.remove(ORG_ATTR_NAME_SV);
+      }
+      else {
+        attrs.put(ORG_ATTR_NAME_SV, List.of(nameSv));
+      }
     }
     if (nameEn != null) {
-      attrs.put("organization_name#en", List.of(nameEn));
+      if (nameEn.isBlank()) {
+        attrs.remove(ORG_ATTR_NAME_EN);
+      }
+      else {
+        attrs.put(ORG_ATTR_NAME_EN, List.of(nameEn));
+      }
     }
     if (contactEmail != null) {
       if (contactEmail.isBlank()) {

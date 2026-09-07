@@ -592,8 +592,10 @@ For a regular user:
 "org_rights": [
   {
     "organization_identifier": "5590026042",
+    "organization_legal_name": "Litsec Aktiebolag",
+    "organization_name": "Litsec Aktiebolag",
     "organization_name#sv": "Litsec AB",
-    "organization_name#en": "Litsec AB",
+    "organization_name#en": "Litsec Ltd",
     "org_level_right": "read",
     "functions": [
       { "function": "demo",      "right": "read"  },
@@ -606,6 +608,15 @@ For a regular user:
 Every `functions` entry names a function attached to the organization — there is no wildcard.
 A right granted at the organization level is expanded onto each attached function and recorded
 in the optional `org_level_right` field.
+
+**Names.** `organization_legal_name` is the organization's registered name, is always present, and
+is what to read when the registered name is wanted. The untagged `organization_name` repeats the
+same value and is kept for backwards compatibility only, so that a language lookup across the
+`organization_name*` members resolves to something; do not rely on it. `organization_name#sv` and
+`organization_name#en` are optional display names, emitted only when set. In the parsed
+`OrgRightsClaim.OrgEntry` these become `legalName` and `name` respectively: read `legalName` for the
+registered name, and `name` when showing a name for a language, since it falls back to the legal
+name on its own.
 
 **`org_level_right` is provenance only and confers no access.** Derive authorities exclusively
 from `functions`; use `org_level_right` only to decide whether the user may administer the

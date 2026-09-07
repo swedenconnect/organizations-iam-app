@@ -117,6 +117,6 @@ class OrgRightsClaimOrganizationsTest {
     name.add("sv", "Litsec AB");
     name.add("en", "Litsec AB");
     return new OrgRightsClaim.OrgEntry(
-        OrganizationID.of(orgId), name, orgLevelRight, List.of(functions));
+        OrganizationID.of(orgId), "Litsec AB", name, orgLevelRight, List.of(functions));
   }
 }
