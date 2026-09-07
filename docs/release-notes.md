@@ -15,7 +15,7 @@
 
   This closes a gap in how Keycloak treats optional client scopes: it grants one to whoever asks
   for it, and it never evaluates the Authorization Services scope permissions during standard
-  token issuance — those are only consulted by the `uma-ticket` grant and the policy evaluation
+  token issuance. Those are only consulted by the `uma-ticket` grant and the policy evaluation
   API. The group policies created alongside each scope were therefore not enforcing anything at
   token time, and any authenticated user of a managed client could obtain any organisation's
   scope.
@@ -35,13 +35,13 @@
 
   Entitlement is read from live group memberships rather than from a claim, so a right revoked
   after login takes effect on the next token request. Scopes that are not org-scoped are
-  untouched. Service account tokens (`client_credentials`) are exempt — they are issued to the
+  untouched. Service account tokens (`client_credentials`) are exempt, since they are issued to the
   client, not to a user. A refresh token keeps the scopes it was issued with until it expires.
 
   **Deployment:** deploy the new `resource-aud-plugin` JAR as usual; a `start --optimized`
   installation needs an explicit `kc.sh build`. No realm configuration changes are required, but
   the check only runs where the Client Policy profile containing `resource-function-executor` is
-  present — a realm missing it performs no entitlement check at all. Verify the profile after
+  present. A realm missing it performs no entitlement check at all. Verify the profile after
   upgrading Keycloak or restoring a realm.
 
 - **Managed clients can be administered from the IAM admin application.** A superuser can
@@ -49,7 +49,7 @@
   `add-oidc-client.sh` and `set-iam-admin-managed.sh` against the Keycloak host. A client is
   registered with the same settings the script applies: `private_key_jwt` authentication,
   Authorization Services, the three protocol mappers, and the `naturalPersonNumber` and
-  `phone` optional scopes. Redirect URIs must be exact — wildcards are rejected. Deletion is
+  `phone` optional scopes. Redirect URIs must be exact, wildcards are rejected. Deletion is
   permanent, and is open to any superuser.
 
 - **Clients and resource servers are administered in one place, and a client can be both.**
@@ -66,7 +66,7 @@
 - **Client artifacts are reconciled instead of only created on attach.** A managed client is
   now brought in line with the org/function topology whenever it is created or updated, when
   a function is attached to or detached from an organization, on demand from the Clients tab,
-  and — when `iam.admin.client-reconciliation.enabled` is set — on a schedule. This repairs
+  and, when `iam.admin.client-reconciliation.enabled` is set, on a schedule. This repairs
   the case a client registered *after* functions were already attached to organizations,
   which previously left the client without any of the scopes and policies its users need, as
   well as drift from partial failures and manual edits in the Keycloak admin console.
@@ -80,8 +80,8 @@
   **no functions, not all of them**. Functions are optional when registering a client; one
   registered without them is inert until functions are assigned.
 
-  **Upgrade action required.** A managed client that carries no `client_functions` attribute —
-  which includes every client registered with `add-oidc-client.sh` before this release — stops
+  **Upgrade action required.** A managed client that carries no `client_functions` attribute,
+  which includes every client registered with `add-oidc-client.sh` before this release, stops
   receiving artifacts for newly attached functions. Its existing scopes, policies and
   permissions are left in place, so nothing breaks immediately, but the client will not pick up
   functions attached from now on. Assign functions to such clients from the admin application,
@@ -109,7 +109,7 @@
   Keycloak plugin now emits one entry per attached function instead, and records the
   organisation-level grant in a new `org_level_right` field. The wildcard is gone.
 
-  `org_level_right` is **provenance only** — it says *how* a right was granted, never *what* the
+  `org_level_right` is **provenance only**: it says *how* a right was granted, never *what* the
   user may do. Effective rights come exclusively from the `functions` array. Its one legitimate
   use is deciding whether someone may administer the organisation itself, such as granting or
   revoking organisation-level rights or editing the organisation record.
@@ -117,13 +117,13 @@
   **Behaviour change:** organisation-level `admin` on an organisation with no attached functions
   previously granted access to every function; it now grants none. More generally, a
   function-scoped relying party no longer accepts an organisation-level right for a function that
-  was never attached to that organisation. Rights that were correct before remain unchanged — an
+  was never attached to that organisation. Rights that were correct before remain unchanged. An
   organisation-level right still covers every function actually attached.
 
   The OAuth scope path is unaffected: Keycloak already enforced attachment there, since the
   `{org}:{function}:{right}` client scopes are created on attach and deleted on detach.
 
-  No Keycloak configuration changes are required — the realm, group attributes, client scopes and
+  No Keycloak configuration changes are required. The realm, group attributes, client scopes and
   protocol-mapper instances are all unchanged. Deploy the new `org-rights-mapper` JAR as usual;
   a `start --optimized` installation needs an explicit `kc.sh build`.
 
@@ -131,7 +131,7 @@
   organisations a user is associated with is a different question from deciding what the user may
   do, and it needs a different source. Granted authorities are derived per function, so an
   organisation with no attached functions produces no authority and is invisible to a consumer
-  that enumerates authorities — even when the user administers it. `organizations()` enumerates
+  that enumerates authorities, even when the user administers it. `organizations()` enumerates
   the claim entries instead, returning the organisation identifier, localised name and the
   nullable organisation-level right. Authority construction is unchanged. For a superuser the
   claim carries no organisation entries, so the method returns an empty list and the full list
