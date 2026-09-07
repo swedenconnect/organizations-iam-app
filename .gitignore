@@ -48,3 +48,6 @@ build/
 **/frontend/dist/
 **/frontend/node/
 **/frontend/node_modules/
+
+### Local build helper ###
+build-snapshot.sh
