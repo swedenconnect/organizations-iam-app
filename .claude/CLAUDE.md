@@ -287,3 +287,7 @@ iam:
       enabled: false           # Scheduled drift repair for managed clients
       cron: "0 */15 * * * *"
 ```
+
+## General
+
+Never use em-dashes in written documentation!
