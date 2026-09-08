@@ -41,7 +41,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class OrganizationSearchTest {
 
-  private static final String WITH_DISPLAY_NAMES = "5590026042";
+  private static final String WITH_DISPLAY_NAMES = "2021006883";
   private static final String LEGAL_NAME_ONLY = "5561234567";
 
   @Mock
@@ -54,23 +54,27 @@ class OrganizationSearchTest {
     this.service = new OrganizationServiceImpl(
         this.keycloakAdminClient, new InMemoryOrganizationCache());
     when(this.keycloakAdminClient.fetchAllOrganizationGroups()).thenReturn(List.of(
-        orgInfo(WITH_DISPLAY_NAMES, "Litsec Aktiebolag", "Litsec AB", "Litsec Ltd"),
+        orgInfo(WITH_DISPLAY_NAMES, "Myndigheten för Digital förvaltning", "Digg - Myndigheten för Digital förvaltning",
+            "Digg - Authority for Digital Government"),
         orgInfo(LEGAL_NAME_ONLY, "Exempel Aktiebolag", null, null)));
   }
 
   /** The legal name is searchable, including for an organization that has no display names. */
   @Test
   void search_matchesLegalName() {
-    assertThat(identifiersMatching("aktiebolag"))
-        .containsExactlyInAnyOrder(WITH_DISPLAY_NAMES, LEGAL_NAME_ONLY);
+    assertThat(identifiersMatching("förvaltning")).containsExactly(WITH_DISPLAY_NAMES);
+    assertThat(identifiersMatching("aktiebolag")).containsExactly(LEGAL_NAME_ONLY);
     assertThat(identifiersMatching("exempel")).containsExactly(LEGAL_NAME_ONLY);
   }
 
-  /** Both display names remain searchable. */
+  /**
+   * Both display names remain searchable, each on its own: the Swedish term appears in no other
+   * name field, and neither does the English one.
+   */
   @Test
   void search_matchesDisplayNames() {
-    assertThat(identifiersMatching("Litsec AB")).containsExactly(WITH_DISPLAY_NAMES);
-    assertThat(identifiersMatching("Ltd")).containsExactly(WITH_DISPLAY_NAMES);
+    assertThat(identifiersMatching("Digg - Myndigheten")).containsExactly(WITH_DISPLAY_NAMES);
+    assertThat(identifiersMatching("Authority")).containsExactly(WITH_DISPLAY_NAMES);
   }
 
   /** The organization number still matches, as it did before. */
@@ -96,9 +100,9 @@ class OrganizationSearchTest {
         .filter(o -> WITH_DISPLAY_NAMES.equals(o.orgIdentifier()))
         .findFirst()
         .orElseThrow();
-    assertThat(withDisplay.legalName()).isEqualTo("Litsec Aktiebolag");
-    assertThat(withDisplay.nameSv()).isEqualTo("Litsec AB");
-    assertThat(withDisplay.nameEn()).isEqualTo("Litsec Ltd");
+    assertThat(withDisplay.legalName()).isEqualTo("Myndigheten för Digital förvaltning");
+    assertThat(withDisplay.nameSv()).isEqualTo("Digg - Myndigheten för Digital förvaltning");
+    assertThat(withDisplay.nameEn()).isEqualTo("Digg - Authority for Digital Government");
   }
 
   // ---------------------------------------------------------------------------

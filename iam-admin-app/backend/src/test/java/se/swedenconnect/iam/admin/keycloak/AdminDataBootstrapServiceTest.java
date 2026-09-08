@@ -64,14 +64,16 @@ class AdminDataBootstrapServiceTest {
   private static OrgRightsClaim.OrgEntry orgEntry(final String orgId,
       final OrgRightsClaim.FunctionEntry... functions) {
     return new OrgRightsClaim.OrgEntry(
-        OrganizationID.of(orgId), "Litsec AB", new LocalizedString(), null, List.of(functions));
+        OrganizationID.of(orgId), "Digg - Myndigheten för Digital förvaltning", new LocalizedString(), null,
+        List.of(functions));
   }
 
   /** As {@link #orgEntry(String, OrgRightsClaim.FunctionEntry...)}, but with an org-level right set. */
   private static OrgRightsClaim.OrgEntry orgEntry(final String orgId, final String orgLevelRight,
       final OrgRightsClaim.FunctionEntry... functions) {
     return new OrgRightsClaim.OrgEntry(
-        OrganizationID.of(orgId), "Litsec AB", new LocalizedString(), orgLevelRight, List.of(functions));
+        OrganizationID.of(orgId), "Digg - Myndigheten för Digital förvaltning", new LocalizedString(), orgLevelRight,
+        List.of(functions));
   }
 
   @BeforeEach
@@ -193,14 +195,14 @@ class AdminDataBootstrapServiceTest {
 
     // Org-level admin, already expanded by the mapper onto the attached function 'demo'
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
-        orgEntry("5590026042", "admin", new OrgRightsClaim.FunctionEntry("demo", "admin"))));
+        orgEntry("2021006883", "admin", new OrgRightsClaim.FunctionEntry("demo", "admin"))));
 
     when(keycloakAdminClient.fetchAllFunctions()).thenReturn(List.of(demo));
 
     final AdminSessionData result =
         service.bootstrap(claim, SUBJECT, null, null);
 
-    assertThat(result.adminOrgIdentifiers()).containsExactly("5590026042");
+    assertThat(result.adminOrgIdentifiers()).containsExactly("2021006883");
     assertThat(result.currentUserIsSuperuser()).isFalse();
     assertThat(result.functions()).containsExactly(demo);
   }
@@ -217,7 +219,7 @@ class AdminDataBootstrapServiceTest {
 
     // Org-level admin on an org where only 'demo' is attached
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
-        orgEntry("5590026042", "admin", new OrgRightsClaim.FunctionEntry("demo", "admin"))));
+        orgEntry("2021006883", "admin", new OrgRightsClaim.FunctionEntry("demo", "admin"))));
 
     when(keycloakAdminClient.fetchAllFunctions()).thenReturn(List.of(demo, walletreg));
 
@@ -237,14 +239,14 @@ class AdminDataBootstrapServiceTest {
     final FunctionInfo demo = functionInfo("demo");
 
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
-        orgEntry("5590026042", "admin")));
+        orgEntry("2021006883", "admin")));
 
     when(keycloakAdminClient.fetchAllFunctions()).thenReturn(List.of(demo));
 
     final AdminSessionData result =
         service.bootstrap(claim, SUBJECT, null, null);
 
-    assertThat(result.adminOrgIdentifiers()).containsExactly("5590026042");
+    assertThat(result.adminOrgIdentifiers()).containsExactly("2021006883");
     assertThat(result.functions()).isEmpty();
   }
 }

@@ -31,14 +31,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class OrganizationLegalNameReadTest {
 
-  private static final String ORG = "5590026042";
+  private static final String ORG = "2021006883";
 
   /** The untagged attribute is the legal name whenever it is present. */
   @Test
   void untaggedAttribute_isTheLegalName() {
-    assertThat(KeycloakAdminClient.resolveLegalName(
-        "Litsec Aktiebolag", display("Litsec AB", "Litsec Ltd"), ORG))
-        .isEqualTo("Litsec Aktiebolag");
+    assertThat(KeycloakAdminClient.resolveLegalName("Myndigheten för Digital förvaltning",
+        display("Digg - Myndigheten för Digital förvaltning", "Digg - Authority for Digital Government"), ORG))
+        .isEqualTo("Myndigheten för Digital förvaltning");
   }
 
   /**
@@ -47,15 +47,17 @@ class OrganizationLegalNameReadTest {
    */
   @Test
   void noUntaggedAttribute_backfilledFromSwedishDisplayName() {
-    assertThat(KeycloakAdminClient.resolveLegalName(null, display("Litsec AB", "Litsec Ltd"), ORG))
-        .isEqualTo("Litsec AB");
+    assertThat(KeycloakAdminClient.resolveLegalName(
+        null, display("Digg - Myndigheten för Digital förvaltning", "Digg - Authority for Digital Government"), ORG))
+        .isEqualTo("Digg - Myndigheten för Digital förvaltning");
   }
 
   /** With no Swedish display name the English one is used. */
   @Test
   void noUntaggedAttribute_backfilledFromEnglishDisplayName() {
-    assertThat(KeycloakAdminClient.resolveLegalName(null, display(null, "Litsec Ltd"), ORG))
-        .isEqualTo("Litsec Ltd");
+    assertThat(KeycloakAdminClient.resolveLegalName(
+        null, display(null, "Digg - Authority for Digital Government"), ORG))
+        .isEqualTo("Digg - Authority for Digital Government");
   }
 
   /** A group with no name of any kind is malformed; the identifier keeps things working. */
@@ -70,8 +72,8 @@ class OrganizationLegalNameReadTest {
   void resolveName_noDisplayNames_usesLegalName() {
     final OrganizationInfo org = orgInfo(null);
 
-    assertThat(org.resolveName("sv")).isEqualTo("Litsec Aktiebolag");
-    assertThat(org.resolveName("en")).isEqualTo("Litsec Aktiebolag");
+    assertThat(org.resolveName("sv")).isEqualTo("Myndigheten för Digital förvaltning");
+    assertThat(org.resolveName("en")).isEqualTo("Myndigheten för Digital förvaltning");
     assertThat(org.displayName("sv")).isNull();
     assertThat(org.displayName("en")).isNull();
   }
@@ -79,18 +81,19 @@ class OrganizationLegalNameReadTest {
   /** The display name for the requested language wins when it is set. */
   @Test
   void resolveName_displayNamePerLanguage() {
-    final OrganizationInfo org = orgInfo(display("Litsec AB", "Litsec Ltd"));
+    final OrganizationInfo org = orgInfo(
+        display("Digg - Myndigheten för Digital förvaltning", "Digg - Authority for Digital Government"));
 
-    assertThat(org.resolveName("sv")).isEqualTo("Litsec AB");
-    assertThat(org.resolveName("en")).isEqualTo("Litsec Ltd");
+    assertThat(org.resolveName("sv")).isEqualTo("Digg - Myndigheten för Digital förvaltning");
+    assertThat(org.resolveName("en")).isEqualTo("Digg - Authority for Digital Government");
   }
 
   /** With only one display name set, that one is used for the other language too. */
   @Test
   void resolveName_fallsBackToTheOtherLanguage() {
-    final OrganizationInfo org = orgInfo(display("Litsec AB", null));
+    final OrganizationInfo org = orgInfo(display("Digg - Myndigheten för Digital förvaltning", null));
 
-    assertThat(org.resolveName("en")).isEqualTo("Litsec AB");
+    assertThat(org.resolveName("en")).isEqualTo("Digg - Myndigheten för Digital förvaltning");
     assertThat(org.displayName("en")).isNull();
   }
 
@@ -111,6 +114,6 @@ class OrganizationLegalNameReadTest {
 
   private static OrganizationInfo orgInfo(final LocalizedString displayName) {
     return new OrganizationInfo(
-        ORG, "Litsec Aktiebolag", displayName, "group-id", List.of(), null, null);
+        ORG, "Myndigheten för Digital förvaltning", displayName, "group-id", List.of(), null, null);
   }
 }

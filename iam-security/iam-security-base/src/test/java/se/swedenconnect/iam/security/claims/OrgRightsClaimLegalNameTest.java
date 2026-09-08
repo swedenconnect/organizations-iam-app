@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class OrgRightsClaimLegalNameTest {
 
-  private static final String ORG = "5590026042";
+  private static final String ORG = "2021006883";
 
   private final OrgRightsClaimParser parser = new OrgRightsClaimParser();
 
@@ -41,14 +41,14 @@ class OrgRightsClaimLegalNameTest {
   @Test
   void noDisplayNames_legalNameIsUsedForEveryLanguage() {
     final Map<String, Object> entry = entry();
-    entry.put("organization_legal_name", "Litsec Aktiebolag");
-    entry.put("organization_name", "Litsec Aktiebolag");
+    entry.put("organization_legal_name", "Myndigheten för Digital förvaltning");
+    entry.put("organization_name", "Myndigheten för Digital förvaltning");
 
     final OrgRightsClaim.OrgEntry parsed = parseSingle(entry);
 
-    assertThat(parsed.legalName()).isEqualTo("Litsec Aktiebolag");
-    assertThat(parsed.name().get("sv")).isEqualTo("Litsec Aktiebolag");
-    assertThat(parsed.name().get("en")).isEqualTo("Litsec Aktiebolag");
+    assertThat(parsed.legalName()).isEqualTo("Myndigheten för Digital förvaltning");
+    assertThat(parsed.name().get("sv")).isEqualTo("Myndigheten för Digital förvaltning");
+    assertThat(parsed.name().get("en")).isEqualTo("Myndigheten för Digital förvaltning");
     assertThat(parsed.name().asMap()).doesNotContainKeys("sv", "en");
   }
 
@@ -56,26 +56,26 @@ class OrgRightsClaimLegalNameTest {
   @Test
   void displayNames_areReadPerLanguage_legalNameUnaffected() {
     final Map<String, Object> entry = entry();
-    entry.put("organization_legal_name", "Litsec Aktiebolag");
-    entry.put("organization_name", "Litsec Aktiebolag");
-    entry.put("organization_name#sv", "Litsec AB");
-    entry.put("organization_name#en", "Litsec Ltd");
+    entry.put("organization_legal_name", "Myndigheten för Digital förvaltning");
+    entry.put("organization_name", "Myndigheten för Digital förvaltning");
+    entry.put("organization_name#sv", "Digg - Myndigheten för Digital förvaltning");
+    entry.put("organization_name#en", "Digg - Authority for Digital Government");
 
     final OrgRightsClaim.OrgEntry parsed = parseSingle(entry);
 
-    assertThat(parsed.legalName()).isEqualTo("Litsec Aktiebolag");
-    assertThat(parsed.name().get("sv")).isEqualTo("Litsec AB");
-    assertThat(parsed.name().get("en")).isEqualTo("Litsec Ltd");
+    assertThat(parsed.legalName()).isEqualTo("Myndigheten för Digital förvaltning");
+    assertThat(parsed.name().get("sv")).isEqualTo("Digg - Myndigheten för Digital förvaltning");
+    assertThat(parsed.name().get("en")).isEqualTo("Digg - Authority for Digital Government");
   }
 
   /** A claim from an older mapper carries only tagged names; the legal name is derived from them. */
   @Test
   void noLegalNameMember_derivedFromDisplayNames() {
     final Map<String, Object> entry = entry();
-    entry.put("organization_name#sv", "Litsec AB");
-    entry.put("organization_name#en", "Litsec Ltd");
+    entry.put("organization_name#sv", "Digg - Myndigheten för Digital förvaltning");
+    entry.put("organization_name#en", "Digg - Authority for Digital Government");
 
-    assertThat(parseSingle(entry).legalName()).isEqualTo("Litsec AB");
+    assertThat(parseSingle(entry).legalName()).isEqualTo("Digg - Myndigheten för Digital förvaltning");
   }
 
   /** With no name of any kind the organization identifier is used, so the value is never absent. */
@@ -88,14 +88,14 @@ class OrgRightsClaimLegalNameTest {
   @Test
   void organizations_carryTheLegalName() {
     final Map<String, Object> entry = entry();
-    entry.put("organization_legal_name", "Litsec Aktiebolag");
-    entry.put("organization_name", "Litsec Aktiebolag");
+    entry.put("organization_legal_name", "Myndigheten för Digital förvaltning");
+    entry.put("organization_name", "Myndigheten för Digital förvaltning");
 
     final OrgRightsClaim claim = this.parser.parse(List.of(entry));
 
     assertThat(claim.organizations()).singleElement()
         .extracting(OrgRightsClaim.Organization::legalName)
-        .isEqualTo("Litsec Aktiebolag");
+        .isEqualTo("Myndigheten för Digital förvaltning");
   }
 
   // ---------------------------------------------------------------------------

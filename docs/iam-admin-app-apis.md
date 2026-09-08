@@ -83,13 +83,13 @@ attributes:
 
 ```json
 {
-  "5590026042": {
-    "legal_name": "Litsec Aktiebolag",
-    "name#sv": "Litsec AB",
-    "name#en": "Litsec",
+  "2021006883": {
+    "legal_name": "Myndigheten för Digital förvaltning",
+    "name#sv": "Digg - Myndigheten för Digital förvaltning",
+    "name#en": "Digg - Authority for Digital Government",
     "attached_functions": ["demo", "walletreg"],
     "contact": {
-      "email": "info@litsec.se",
+      "email": "info@digg.se",
       "phone": null
     }
   },

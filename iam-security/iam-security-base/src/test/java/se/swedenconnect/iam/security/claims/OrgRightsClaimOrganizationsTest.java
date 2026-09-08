@@ -34,7 +34,7 @@ class OrgRightsClaimOrganizationsTest {
   @Test
   void organizations_withFunctionsAndOrgLevelRight() {
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
-        orgEntry("5590026042", "admin",
+        orgEntry("2021006883", "admin",
             new OrgRightsClaim.FunctionEntry("demo", "admin"),
             new OrgRightsClaim.FunctionEntry("walletreg", "admin"))
     ));
@@ -42,8 +42,8 @@ class OrgRightsClaimOrganizationsTest {
     assertThat(claim.organizations()).hasSize(1);
 
     final OrgRightsClaim.Organization org = claim.organizations().getFirst();
-    assertThat(org.orgIdentifier()).isEqualTo(OrganizationID.of("5590026042"));
-    assertThat(org.name().get("en")).isEqualTo("Litsec AB");
+    assertThat(org.orgIdentifier()).isEqualTo(OrganizationID.of("2021006883"));
+    assertThat(org.name().get("en")).isEqualTo("Digg - Myndigheten för Digital förvaltning");
     assertThat(org.orgLevelRight()).isEqualTo("admin");
   }
 
@@ -51,7 +51,7 @@ class OrgRightsClaimOrganizationsTest {
   @Test
   void organizations_withFunctionsAndNoOrgLevelRight() {
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
-        orgEntry("5590026042", null, new OrgRightsClaim.FunctionEntry("demo", "write"))
+        orgEntry("2021006883", null, new OrgRightsClaim.FunctionEntry("demo", "write"))
     ));
 
     assertThat(claim.organizations()).hasSize(1);
@@ -79,13 +79,13 @@ class OrgRightsClaimOrganizationsTest {
   @Test
   void organizations_preservesClaimOrder() {
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
-        orgEntry("5590026042", null, new OrgRightsClaim.FunctionEntry("demo", "read")),
+        orgEntry("2021006883", null, new OrgRightsClaim.FunctionEntry("demo", "read")),
         orgEntry("5561234567", "admin")
     ));
 
     assertThat(claim.organizations())
         .extracting(o -> o.orgIdentifier().toString())
-        .containsExactly("5590026042", "5561234567");
+        .containsExactly("2021006883", "5561234567");
   }
 
   /**
@@ -114,9 +114,10 @@ class OrgRightsClaimOrganizationsTest {
   private static OrgRightsClaim.OrgEntry orgEntry(final String orgId, final String orgLevelRight,
       final OrgRightsClaim.FunctionEntry... functions) {
     final LocalizedString name = new LocalizedString();
-    name.add("sv", "Litsec AB");
-    name.add("en", "Litsec AB");
+    name.add("sv", "Digg - Myndigheten för Digital förvaltning");
+    name.add("en", "Digg - Myndigheten för Digital förvaltning");
     return new OrgRightsClaim.OrgEntry(
-        OrganizationID.of(orgId), "Litsec AB", name, orgLevelRight, List.of(functions));
+        OrganizationID.of(orgId), "Digg - Myndigheten för Digital förvaltning", name, orgLevelRight,
+        List.of(functions));
   }
 }

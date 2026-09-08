@@ -102,7 +102,7 @@ class ResourceAudienceMapperTest {
     final MultivaluedMap<String, String> params = new MultivaluedHashMap<>();
     params.putSingle("resource", "https://api.example.com");
     when(httpRequest.getDecodedFormParameters()).thenReturn(params);
-    when(clientSessionCtx.getScopeString(false)).thenReturn("5590026042:demo:write");
+    when(clientSessionCtx.getScopeString(false)).thenReturn("2021006883:demo:write");
     when(clientProvider.getClientByClientId(realm, "https://api.example.com")).thenReturn(resourceClient);
     when(resourceClient.getAttribute("client_functions")).thenReturn("demo");
 
@@ -117,7 +117,7 @@ class ResourceAudienceMapperTest {
   void setClaim_noResource_audNotModified() {
     final MultivaluedMap<String, String> params = new MultivaluedHashMap<>();
     when(httpRequest.getDecodedFormParameters()).thenReturn(params);
-    when(clientSessionCtx.getScopeString(false)).thenReturn("5590026042:demo:read");
+    when(clientSessionCtx.getScopeString(false)).thenReturn("2021006883:demo:read");
     // clientSession.getNote returns null (set up in setUp)
 
     final IDToken token = new IDToken();
@@ -131,7 +131,7 @@ class ResourceAudienceMapperTest {
     final MultivaluedMap<String, String> params = new MultivaluedHashMap<>();
     when(httpRequest.getDecodedFormParameters()).thenReturn(params);
     when(clientSession.getNote(ScopeUtils.SESSION_NOTE_KEY)).thenReturn("https://api.example.com");
-    when(clientSessionCtx.getScopeString(false)).thenReturn("5590026042:demo:write");
+    when(clientSessionCtx.getScopeString(false)).thenReturn("2021006883:demo:write");
     when(clientProvider.getClientByClientId(realm, "https://api.example.com")).thenReturn(resourceClient);
     when(resourceClient.getAttribute("client_functions")).thenReturn("demo");
 
@@ -178,7 +178,7 @@ class ResourceAudienceMapperTest {
     params.putSingle("resource", "https://form.example.com");
     when(httpRequest.getDecodedFormParameters()).thenReturn(params);
     when(clientSession.getNote(ScopeUtils.SESSION_NOTE_KEY)).thenReturn("https://note.example.com");
-    when(clientSessionCtx.getScopeString(false)).thenReturn("5590026042:demo:write");
+    when(clientSessionCtx.getScopeString(false)).thenReturn("2021006883:demo:write");
     when(clientProvider.getClientByClientId(realm, "https://form.example.com")).thenReturn(resourceClient);
     when(resourceClient.getAttribute("client_functions")).thenReturn("demo");
 
@@ -194,7 +194,7 @@ class ResourceAudienceMapperTest {
     final MultivaluedMap<String, String> params = new MultivaluedHashMap<>();
     params.putSingle("resource", "https://api.example.com");
     when(httpRequest.getDecodedFormParameters()).thenReturn(params);
-    when(clientSessionCtx.getScopeString(false)).thenReturn("5590026042:demo:write 5561234567:walletreg:read");
+    when(clientSessionCtx.getScopeString(false)).thenReturn("2021006883:demo:write 5561234567:walletreg:read");
     when(clientProvider.getClientByClientId(realm, "https://api.example.com")).thenReturn(resourceClient);
     when(resourceClient.getAttribute("client_functions")).thenReturn(null);
 

@@ -38,7 +38,7 @@ import java.util.Optional;
  * {@code org_level_right}.</p>
  *
  * <p>Authorities follow the pattern {@code {org_identifier}:{function}:{right}}, e.g.
- * {@code 5590026042:walletreg:admin}, represented as {@link OrganizationalAuthority} instances.
+ * {@code 2021006883:walletreg:admin}, represented as {@link OrganizationalAuthority} instances.
  * They are derived exclusively from the {@code functions} array; {@code org_level_right} is
  * provenance and grants nothing on its own.</p>
  *

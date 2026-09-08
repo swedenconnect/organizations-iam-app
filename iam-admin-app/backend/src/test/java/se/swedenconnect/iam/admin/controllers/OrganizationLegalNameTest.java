@@ -59,7 +59,7 @@ import static org.mockito.Mockito.when;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class OrganizationLegalNameTest {
 
-  private static final String ORG = "5590026042";
+  private static final String ORG = "2021006883";
 
   @Mock
   private OrganizationService organizationService;
@@ -78,7 +78,7 @@ class OrganizationLegalNameTest {
     when(this.request.getSession(false)).thenReturn(this.session);
     when(this.organizationService.exists(ORG)).thenReturn(false);
     when(this.organizationService.update(anyString(), any(), any(), any(), any(), any()))
-        .thenReturn(orgInfo("Litsec Aktiebolag", null, null));
+        .thenReturn(orgInfo("Myndigheten för Digital förvaltning", null, null));
   }
 
   // ---------------------------------------------------------------------------
@@ -91,10 +91,10 @@ class OrganizationLegalNameTest {
     setupSuperuserSession();
 
     final ResponseEntity<?> response = this.controller.createOrganization(
-        new CreateOrganizationRequest(ORG, "Litsec Aktiebolag", null, null), this.request);
+        new CreateOrganizationRequest(ORG, "Myndigheten för Digital förvaltning", null, null), this.request);
 
     assertThat(response.getStatusCode().value()).isEqualTo(201);
-    verify(this.organizationService).create(ORG, "Litsec Aktiebolag", null, null);
+    verify(this.organizationService).create(ORG, "Myndigheten för Digital förvaltning", null, null);
   }
 
   /** A blank display name is the same as none, and nothing is stored for it. */
@@ -103,9 +103,9 @@ class OrganizationLegalNameTest {
     setupSuperuserSession();
 
     this.controller.createOrganization(
-        new CreateOrganizationRequest(ORG, "Litsec Aktiebolag", "  ", ""), this.request);
+        new CreateOrganizationRequest(ORG, "Myndigheten för Digital förvaltning", "  ", ""), this.request);
 
-    verify(this.organizationService).create(ORG, "Litsec Aktiebolag", null, null);
+    verify(this.organizationService).create(ORG, "Myndigheten för Digital förvaltning", null, null);
   }
 
   /** Display names are passed through when given. */
@@ -114,10 +114,12 @@ class OrganizationLegalNameTest {
     setupSuperuserSession();
 
     this.controller.createOrganization(
-        new CreateOrganizationRequest(ORG, "Litsec Aktiebolag", "Litsec AB", "Litsec Ltd"),
+        new CreateOrganizationRequest(ORG, "Myndigheten för Digital förvaltning",
+            "Digg - Myndigheten för Digital förvaltning", "Digg - Authority for Digital Government"),
         this.request);
 
-    verify(this.organizationService).create(ORG, "Litsec Aktiebolag", "Litsec AB", "Litsec Ltd");
+    verify(this.organizationService).create(ORG, "Myndigheten för Digital förvaltning",
+        "Digg - Myndigheten för Digital förvaltning", "Digg - Authority for Digital Government");
   }
 
   /** Creating without a legal name is rejected. */
@@ -126,7 +128,7 @@ class OrganizationLegalNameTest {
     setupSuperuserSession();
 
     final ResponseEntity<?> response = this.controller.createOrganization(
-        new CreateOrganizationRequest(ORG, "   ", "Litsec AB", null), this.request);
+        new CreateOrganizationRequest(ORG, "   ", "Digg - Myndigheten för Digital förvaltning", null), this.request);
 
     assertThat(response.getStatusCode().value()).isEqualTo(400);
     verify(this.organizationService, never()).create(anyString(), anyString(), any(), any());
@@ -177,7 +179,8 @@ class OrganizationLegalNameTest {
     setupOrgAdminSession();
 
     final ResponseEntity<?> response = this.controller.updateOrganization(
-        ORG, new UpdateOrganizationRequest("Litsec Aktiebolag", null, null, null, null), this.request);
+        ORG, new UpdateOrganizationRequest("Myndigheten för Digital förvaltning", null, null, null, null),
+        this.request);
 
     assertThat(response.getStatusCode().value()).isEqualTo(403);
     verify(this.organizationService, never()).update(anyString(), any(), any(), any(), any(), any());
@@ -189,7 +192,8 @@ class OrganizationLegalNameTest {
     setupOrgAdminSession();
 
     final ResponseEntity<?> response = this.controller.updateOrganization(
-        ORG, new UpdateOrganizationRequest(null, "Litsec AB", null, null, null), this.request);
+        ORG, new UpdateOrganizationRequest(null, "Digg - Myndigheten för Digital förvaltning", null, null, null),
+        this.request);
 
     assertThat(response.getStatusCode().value()).isEqualTo(403);
     verify(this.organizationService, never()).update(anyString(), any(), any(), any(), any(), any());
@@ -234,7 +238,7 @@ class OrganizationLegalNameTest {
 
   private void setupOrgAdminSession() {
     final OrgRightsClaim.OrgEntry entry = new OrgRightsClaim.OrgEntry(
-        OrganizationID.of(ORG), "Litsec Aktiebolag", new LocalizedString(), "admin", List.of());
+        OrganizationID.of(ORG), "Myndigheten för Digital förvaltning", new LocalizedString(), "admin", List.of());
     setSession(new AdminSessionData(false, null, null, List.of(), Set.of(ORG),
         new OrgRightsClaim(false, List.of(entry))));
   }

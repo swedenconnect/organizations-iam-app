@@ -1935,7 +1935,7 @@ public class KeycloakAdminClient {
    * @param orgIdentifier the organization identifier
    * @param functionId the function identifier
    * @param level the rights level
-   * @return the scope name, e.g. {@code 5590026042:demo:read}
+   * @return the scope name, e.g. {@code 2021006883:demo:read}
    */
   public static @NonNull String scopeName(
       final @NonNull String orgIdentifier, final @NonNull String functionId, final @NonNull String level) {
@@ -1948,7 +1948,7 @@ public class KeycloakAdminClient {
    * @param orgIdentifier the organization identifier
    * @param functionId the function identifier
    * @param level the rights level
-   * @return the policy name, e.g. {@code policy-5590026042-demo-read}
+   * @return the policy name, e.g. {@code policy-2021006883-demo-read}
    */
   public static @NonNull String policyName(
       final @NonNull String orgIdentifier, final @NonNull String functionId, final @NonNull String level) {
@@ -1961,7 +1961,7 @@ public class KeycloakAdminClient {
    * @param orgIdentifier the organization identifier
    * @param functionId the function identifier
    * @param level the rights level
-   * @return the permission name, e.g. {@code permission-5590026042-demo-read}
+   * @return the permission name, e.g. {@code permission-2021006883-demo-read}
    */
   public static @NonNull String permissionName(
       final @NonNull String orgIdentifier, final @NonNull String functionId, final @NonNull String level) {

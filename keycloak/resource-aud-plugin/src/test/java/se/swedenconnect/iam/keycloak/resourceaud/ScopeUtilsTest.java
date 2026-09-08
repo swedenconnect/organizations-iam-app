@@ -52,12 +52,12 @@ class ScopeUtilsTest {
 
   @Test
   void extractFunction_singleOrgScope() {
-    assertEquals("demo", ScopeUtils.extractFunction("5590026042:demo:read"));
+    assertEquals("demo", ScopeUtils.extractFunction("2021006883:demo:read"));
   }
 
   @Test
   void extractFunction_mixedScopes_returnsFirst() {
-    assertEquals("demo", ScopeUtils.extractFunction("openid 5590026042:demo:read profile"));
+    assertEquals("demo", ScopeUtils.extractFunction("openid 2021006883:demo:read profile"));
   }
 
   // ---------------------------------------------------------------------------
@@ -81,20 +81,20 @@ class ScopeUtilsTest {
 
   @Test
   void extractAllFunctions_singleFunction() {
-    assertEquals(Set.of("demo"), ScopeUtils.extractAllFunctions("5590026042:demo:read"));
+    assertEquals(Set.of("demo"), ScopeUtils.extractAllFunctions("2021006883:demo:read"));
   }
 
   @Test
   void extractAllFunctions_twoDistinctFunctions() {
     final var result = ScopeUtils.extractAllFunctions(
-        "5590026042:demo:read 5591617864:walletreg:write");
+        "2021006883:demo:read 5591617864:walletreg:write");
     assertEquals(Set.of("demo", "walletreg"), result);
   }
 
   @Test
   void extractAllFunctions_deduplication() {
     final var result = ScopeUtils.extractAllFunctions(
-        "5590026042:demo:read 5591617864:demo:write");
+        "2021006883:demo:read 5591617864:demo:write");
     assertEquals(Set.of("demo"), result);
     assertEquals(1, result.size());
   }
@@ -102,7 +102,7 @@ class ScopeUtilsTest {
   @Test
   void extractAllFunctions_mixedScopes() {
     final var result = ScopeUtils.extractAllFunctions(
-        "openid 5590026042:demo:read profile 5591617864:walletreg:write");
+        "openid 2021006883:demo:read profile 5591617864:walletreg:write");
     assertEquals(Set.of("demo", "walletreg"), result);
   }
 
@@ -122,11 +122,11 @@ class ScopeUtilsTest {
 
   @Test
   void parseOrgScopes_splitsIntoParts() {
-    final List<ScopeUtils.OrgScope> scopes = ScopeUtils.parseOrgScopes("5590026042:demo:write");
+    final List<ScopeUtils.OrgScope> scopes = ScopeUtils.parseOrgScopes("2021006883:demo:write");
     assertEquals(1, scopes.size());
     final ScopeUtils.OrgScope scope = scopes.get(0);
-    assertEquals("5590026042:demo:write", scope.raw());
-    assertEquals("5590026042", scope.organizationIdentifier());
+    assertEquals("2021006883:demo:write", scope.raw());
+    assertEquals("2021006883", scope.organizationIdentifier());
     assertEquals("demo", scope.function());
     assertEquals("write", scope.right());
   }
@@ -134,26 +134,26 @@ class ScopeUtilsTest {
   @Test
   void parseOrgScopes_ignoresPlainOidcScopes() {
     final List<ScopeUtils.OrgScope> scopes = ScopeUtils.parseOrgScopes(
-        "openid profile 5590026042:demo:read https://id.oidc.se/scope/naturalPersonNumber");
-    assertEquals(List.of("5590026042:demo:read"), scopes.stream().map(ScopeUtils.OrgScope::raw).toList());
+        "openid profile 2021006883:demo:read https://id.oidc.se/scope/naturalPersonNumber");
+    assertEquals(List.of("2021006883:demo:read"), scopes.stream().map(ScopeUtils.OrgScope::raw).toList());
   }
 
   @Test
   void parseOrgScopes_ignoresUnknownRightLevel() {
-    assertTrue(ScopeUtils.parseOrgScopes("5590026042:demo:delete").isEmpty());
+    assertTrue(ScopeUtils.parseOrgScopes("2021006883:demo:delete").isEmpty());
   }
 
   @Test
   void parseOrgScopes_ignoresBlankSegments() {
     assertTrue(ScopeUtils.parseOrgScopes(":demo:read").isEmpty());
-    assertTrue(ScopeUtils.parseOrgScopes("5590026042::read").isEmpty());
+    assertTrue(ScopeUtils.parseOrgScopes("2021006883::read").isEmpty());
   }
 
   @Test
   void parseOrgScopes_keepsRequestOrder() {
     final List<ScopeUtils.OrgScope> scopes = ScopeUtils.parseOrgScopes(
-        "5591617864:walletreg:admin 5590026042:demo:read");
-    assertEquals(List.of("5591617864:walletreg:admin", "5590026042:demo:read"),
+        "5591617864:walletreg:admin 2021006883:demo:read");
+    assertEquals(List.of("5591617864:walletreg:admin", "2021006883:demo:read"),
         scopes.stream().map(ScopeUtils.OrgScope::raw).toList());
   }
 
@@ -164,30 +164,30 @@ class ScopeUtilsTest {
   @Test
   void qualifyingGroupPaths_read_acceptsEveryLevel() {
     assertEquals(
-        Set.of("/orgs/5590026042/_read", "/orgs/5590026042/_write", "/orgs/5590026042/_admin",
-            "/orgs/5590026042/demo/_read", "/orgs/5590026042/demo/_write",
-            "/orgs/5590026042/demo/_admin"),
-        ScopeUtils.qualifyingGroupPaths("5590026042", "demo", "read"));
+        Set.of("/orgs/2021006883/_read", "/orgs/2021006883/_write", "/orgs/2021006883/_admin",
+            "/orgs/2021006883/demo/_read", "/orgs/2021006883/demo/_write",
+            "/orgs/2021006883/demo/_admin"),
+        ScopeUtils.qualifyingGroupPaths("2021006883", "demo", "read"));
   }
 
   @Test
   void qualifyingGroupPaths_write_excludesRead() {
     assertEquals(
-        Set.of("/orgs/5590026042/_write", "/orgs/5590026042/_admin",
-            "/orgs/5590026042/demo/_write", "/orgs/5590026042/demo/_admin"),
-        ScopeUtils.qualifyingGroupPaths("5590026042", "demo", "write"));
+        Set.of("/orgs/2021006883/_write", "/orgs/2021006883/_admin",
+            "/orgs/2021006883/demo/_write", "/orgs/2021006883/demo/_admin"),
+        ScopeUtils.qualifyingGroupPaths("2021006883", "demo", "write"));
   }
 
   @Test
   void qualifyingGroupPaths_admin_acceptsAdminOnly() {
     assertEquals(
-        Set.of("/orgs/5590026042/_admin", "/orgs/5590026042/demo/_admin"),
-        ScopeUtils.qualifyingGroupPaths("5590026042", "demo", "admin"));
+        Set.of("/orgs/2021006883/_admin", "/orgs/2021006883/demo/_admin"),
+        ScopeUtils.qualifyingGroupPaths("2021006883", "demo", "admin"));
   }
 
   @Test
   void qualifyingGroupPaths_unknownRight_isEmpty() {
-    assertTrue(ScopeUtils.qualifyingGroupPaths("5590026042", "demo", "delete").isEmpty());
+    assertTrue(ScopeUtils.qualifyingGroupPaths("2021006883", "demo", "delete").isEmpty());
   }
 
 }

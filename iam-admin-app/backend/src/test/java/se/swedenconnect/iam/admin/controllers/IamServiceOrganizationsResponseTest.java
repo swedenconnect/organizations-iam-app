@@ -43,7 +43,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class IamServiceOrganizationsResponseTest {
 
-  private static final String WITH_DISPLAY_NAMES = "5590026042";
+  private static final String WITH_DISPLAY_NAMES = "2021006883";
   private static final String LEGAL_NAME_ONLY = "5561234567";
 
   @Mock
@@ -61,13 +61,14 @@ class IamServiceOrganizationsResponseTest {
   @Test
   void withDisplayNames_returnsBothAndLegalName() {
     when(this.keycloakAdminClient.fetchAllOrganizationGroups()).thenReturn(List.of(
-        orgInfo(WITH_DISPLAY_NAMES, "Litsec Aktiebolag", "Litsec AB", "Litsec Ltd")));
+        orgInfo(WITH_DISPLAY_NAMES, "Myndigheten för Digital förvaltning", "Digg - Myndigheten för Digital förvaltning",
+            "Digg - Authority for Digital Government")));
 
     final var entry = listOrganizations().get(WITH_DISPLAY_NAMES);
 
-    assertThat(entry.legalName()).isEqualTo("Litsec Aktiebolag");
-    assertThat(entry.nameSv()).isEqualTo("Litsec AB");
-    assertThat(entry.nameEn()).isEqualTo("Litsec Ltd");
+    assertThat(entry.legalName()).isEqualTo("Myndigheten för Digital förvaltning");
+    assertThat(entry.nameSv()).isEqualTo("Digg - Myndigheten för Digital förvaltning");
+    assertThat(entry.nameEn()).isEqualTo("Digg - Authority for Digital Government");
   }
 
   /** Without a Swedish display name the legal name is substituted into {@code name#sv}. */

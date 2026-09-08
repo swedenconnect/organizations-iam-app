@@ -333,7 +333,7 @@ public class ResourceFunctionExecutor
    * Builds the full path of a group by walking up its parent chain.
    *
    * @param group the group
-   * @return the group path, e.g. {@code /orgs/5590026042/demo/_admin}
+   * @return the group path, e.g. {@code /orgs/2021006883/demo/_admin}
    */
   private static @NonNull String groupPath(final @NonNull GroupModel group) {
     final Deque<String> segments = new ArrayDeque<>();

@@ -158,13 +158,13 @@ all functions are represented as `OrganizationalAuthority` instances with the fo
 `{orgId}:{functionId}:{right}`.
 
 Example authorities after login:
-- `5590026042:walletreg:write`
-- `5590026042:*:admin` — org-wide admin right, implicitly covers all functions
+- `2021006883:walletreg:write`
+- `2021006883:*:admin` — org-wide admin right, implicitly covers all functions
 - `5561234567:sweden-connect:read`
 
 Checking access:
 ```java
-@PreAuthorize("hasAuthority('5590026042:walletreg:write')")
+@PreAuthorize("hasAuthority('2021006883:walletreg:write')")
 ```
 
 ### Function-scoped mode
@@ -189,22 +189,22 @@ In this mode the library:
   — the function identifier is implicit and not encoded in the authority string
 - Ignores `org_level_right` entirely — that field is provenance, not a grant
 
-Example: a user was granted `read` at the organization level of `5590026042` (which has `demo`
+Example: a user was granted `read` at the organization level of `2021006883` (which has `demo`
 and `walletreg` attached) and `write` on `walletreg`. The claim therefore carries
 `{ "function": "demo", "right": "read" }` and `{ "function": "walletreg", "right": "write" }`,
-and a `walletreg`-scoped application derives the authority `5590026042:write`.
+and a `walletreg`-scoped application derives the authority `2021006883:write`.
 
 Note the consequence for an organization the function is *not* attached to: an org-level admin
 there receives **no** authority from this application, because the mapper never expanded the
 right onto a function this application knows about.
 
 Example authorities after login:
-- `5590026042:write`
+- `2021006883:write`
 - `5561234567:admin`
 
 Checking access:
 ```java
-@PreAuthorize("hasAuthority('5590026042:write')")
+@PreAuthorize("hasAuthority('2021006883:write')")
 ```
 
 Dynamically, using the organization identifier from the session or token:
@@ -222,7 +222,7 @@ Applications that support superuser login must include `hasRole('SUPERUSER')` al
 their regular authority checks:
 
 ```java
-@PreAuthorize("hasRole('SUPERUSER') or hasAuthority('5590026042:write')")
+@PreAuthorize("hasRole('SUPERUSER') or hasAuthority('2021006883:write')")
 ```
 
 Or dynamically:
@@ -591,11 +591,11 @@ For a regular user:
 ```json
 "org_rights": [
   {
-    "organization_identifier": "5590026042",
-    "organization_legal_name": "Litsec Aktiebolag",
-    "organization_name": "Litsec Aktiebolag",
-    "organization_name#sv": "Litsec AB",
-    "organization_name#en": "Litsec Ltd",
+    "organization_identifier": "2021006883",
+    "organization_legal_name": "Myndigheten för Digital förvaltning",
+    "organization_name": "Myndigheten för Digital förvaltning",
+    "organization_name#sv": "Digg - Myndigheten för Digital förvaltning",
+    "organization_name#en": "Digg - Authority for Digital Government",
     "org_level_right": "read",
     "functions": [
       { "function": "demo",      "right": "read"  },
@@ -670,14 +670,14 @@ empty list. Fetch the full list from `/iam-api/v1/organizations` in that case.
 
 Authority string form: `{orgIdentifier}:{functionId}:{right}`
 
-Examples: `5590026042:walletreg:write`, `5590026042:demo:admin`
+Examples: `2021006883:walletreg:write`, `2021006883:demo:admin`
 
 The function identifier always names a function attached to the organization. A right granted at
 the organization level yields one authority per attached function, because the `org_rights`
 claim it is derived from is already expanded.
 
 ```java
-OrganizationalAuthority.parse("5590026042:walletreg:write");
+OrganizationalAuthority.parse("2021006883:walletreg:write");
 OrganizationalAuthority.of(orgId, funcId, OrganizationRight.WRITE);
 ```
 
@@ -687,10 +687,10 @@ Authority string form: `{orgIdentifier}:{right}`
 
 The function is implicit — it is the value of `iam.security.function`.
 
-Examples: `5590026042:write`, `5561234567:admin`
+Examples: `2021006883:write`, `5561234567:admin`
 
 ```java
-FunctionScopedAuthority.parse("5590026042:write");
+FunctionScopedAuthority.parse("2021006883:write");
 FunctionScopedAuthority.of(orgId, OrganizationRight.WRITE);
 ```
 

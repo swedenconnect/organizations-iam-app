@@ -31,13 +31,13 @@ groups `_admin`, `_write` and `_read`. Matching those three names exactly — ra
 filtering on a leading underscore — keeps a legal function identifier such as `_foo` from being
 dropped.
 
-**Example claim** for a user with org-level `write` on `5590026042` (which has `walletreg` and
+**Example claim** for a user with org-level `write` on `2021006883` (which has `walletreg` and
 `reporting` attached) and an explicit function-level `admin` on `walletreg`:
 
 ```json
 "org_rights": [
   {
-    "organization_identifier": "5590026042",
+    "organization_identifier": "2021006883",
     "organization_legal_name": "Exempelorganisationen Aktiebolag",
     "organization_name": "Exempelorganisationen Aktiebolag",
     "organization_name#sv": "Exempelorganisationen",

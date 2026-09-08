@@ -36,14 +36,16 @@ class OrgRightsClaimParserFunctionScopedTest {
 
   private static OrgRightsClaim.OrgEntry orgEntry(final String orgId, final OrgRightsClaim.FunctionEntry... functions) {
     return new OrgRightsClaim.OrgEntry(
-        OrganizationID.of(orgId), "Litsec AB", new LocalizedString(), null, List.of(functions));
+        OrganizationID.of(orgId), "Digg - Myndigheten för Digital förvaltning", new LocalizedString(), null,
+        List.of(functions));
   }
 
   /** As {@link #orgEntry(String, OrgRightsClaim.FunctionEntry...)}, but with an org-level right set. */
   private static OrgRightsClaim.OrgEntry orgEntry(final String orgId, final String orgLevelRight,
       final OrgRightsClaim.FunctionEntry... functions) {
     return new OrgRightsClaim.OrgEntry(
-        OrganizationID.of(orgId), "Litsec AB", new LocalizedString(), orgLevelRight, List.of(functions));
+        OrganizationID.of(orgId), "Digg - Myndigheten för Digital förvaltning", new LocalizedString(), orgLevelRight,
+        List.of(functions));
   }
 
   /** Superuser always receives ROLE_SUPERUSER regardless of function. */
@@ -61,11 +63,11 @@ class OrgRightsClaimParserFunctionScopedTest {
   @Test
   void orgLevelRightExpandedOntoFunction_producesCorrectAuthority() {
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
-        orgEntry("5590026042", "read", new OrgRightsClaim.FunctionEntry("walletreg", "read"))
+        orgEntry("2021006883", "read", new OrgRightsClaim.FunctionEntry("walletreg", "read"))
     ));
     final List<GrantedAuthority> authorities = this.parser.buildFunctionScopedAuthorities(claim, "walletreg");
     assertThat(authorities).containsExactly(
-        FunctionScopedAuthority.of(OrganizationID.of("5590026042"), OrganizationRight.READ));
+        FunctionScopedAuthority.of(OrganizationID.of("2021006883"), OrganizationRight.READ));
   }
 
   /**
@@ -76,7 +78,7 @@ class OrgRightsClaimParserFunctionScopedTest {
   @Test
   void orgLevelRightOnUnattachedFunction_producesNoAuthority() {
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
-        orgEntry("5590026042", "admin", new OrgRightsClaim.FunctionEntry("demo", "admin"))
+        orgEntry("2021006883", "admin", new OrgRightsClaim.FunctionEntry("demo", "admin"))
     ));
     final List<GrantedAuthority> authorities = this.parser.buildFunctionScopedAuthorities(claim, "walletreg");
     assertThat(authorities).isEmpty();
@@ -86,7 +88,7 @@ class OrgRightsClaimParserFunctionScopedTest {
   @Test
   void orgLevelRightWithNoAttachedFunctions_producesNoAuthority() {
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
-        orgEntry("5590026042", "admin")
+        orgEntry("2021006883", "admin")
     ));
     final List<GrantedAuthority> authorities = this.parser.buildFunctionScopedAuthorities(claim, "walletreg");
     assertThat(authorities).isEmpty();
@@ -96,31 +98,31 @@ class OrgRightsClaimParserFunctionScopedTest {
   @Test
   void exactFunctionOnly_producesCorrectAuthority() {
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
-        orgEntry("5590026042", new OrgRightsClaim.FunctionEntry("walletreg", "write"))
+        orgEntry("2021006883", new OrgRightsClaim.FunctionEntry("walletreg", "write"))
     ));
     final List<GrantedAuthority> authorities = this.parser.buildFunctionScopedAuthorities(claim, "walletreg");
     assertThat(authorities).containsExactly(
-        FunctionScopedAuthority.of(OrganizationID.of("5590026042"), OrganizationRight.WRITE));
+        FunctionScopedAuthority.of(OrganizationID.of("2021006883"), OrganizationRight.WRITE));
   }
 
   /** When several entries name the same function, the highest right wins. */
   @Test
   void duplicateFunctionEntries_highestRightWins() {
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
-        orgEntry("5590026042",
+        orgEntry("2021006883",
             new OrgRightsClaim.FunctionEntry("walletreg", "read"),
             new OrgRightsClaim.FunctionEntry("walletreg", "write"))
     ));
     final List<GrantedAuthority> authorities = this.parser.buildFunctionScopedAuthorities(claim, "walletreg");
     assertThat(authorities).containsExactly(
-        FunctionScopedAuthority.of(OrganizationID.of("5590026042"), OrganizationRight.WRITE));
+        FunctionScopedAuthority.of(OrganizationID.of("2021006883"), OrganizationRight.WRITE));
   }
 
   /** User with no entries matching the configured function receives an empty authority list. */
   @Test
   void noMatchingEntries_producesEmptyList() {
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
-        orgEntry("5590026042", new OrgRightsClaim.FunctionEntry("sweden-connect", "write"))
+        orgEntry("2021006883", new OrgRightsClaim.FunctionEntry("sweden-connect", "write"))
     ));
     final List<GrantedAuthority> authorities = this.parser.buildFunctionScopedAuthorities(claim, "walletreg");
     assertThat(authorities).isEmpty();
@@ -130,7 +132,7 @@ class OrgRightsClaimParserFunctionScopedTest {
   @Test
   void multipleOrgs_eachGetHighestRight() {
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
-        orgEntry("5590026042", "read",
+        orgEntry("2021006883", "read",
             new OrgRightsClaim.FunctionEntry("demo", "read"),
             new OrgRightsClaim.FunctionEntry("walletreg", "admin")),
         orgEntry("5561234567",
@@ -138,7 +140,7 @@ class OrgRightsClaimParserFunctionScopedTest {
     ));
     final List<GrantedAuthority> authorities = this.parser.buildFunctionScopedAuthorities(claim, "walletreg");
     assertThat(authorities).containsExactlyInAnyOrder(
-        FunctionScopedAuthority.of(OrganizationID.of("5590026042"), OrganizationRight.ADMIN),
+        FunctionScopedAuthority.of(OrganizationID.of("2021006883"), OrganizationRight.ADMIN),
         FunctionScopedAuthority.of(OrganizationID.of("5561234567"), OrganizationRight.WRITE)
     );
   }
