@@ -21,6 +21,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -49,6 +51,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -200,26 +203,69 @@ class ClientControllerTest {
   // ---------------------------------------------------------------------------
 
   @Test
-  @DisplayName("A wildcard redirect URI is rejected")
-  void wildcardRedirectUriIsRejected() {
+  @DisplayName("A redirect URI ending in a wildcard is accepted and reaches Keycloak unchanged")
+  void trailingWildcardRedirectUriIsAccepted() {
+    setupSession(true);
+    when(this.keycloakAdminClient.clientExists(CLIENT_ID)).thenReturn(false);
+    whenCreateReturns(managedClient());
+
+    final String uri = "https://demo-app.example.se/login/oauth2/code/*";
+    final ResponseEntity<?> response = this.controller.createClient(
+        createRequest(true, false, List.of(uri), Set.of("demo"), JWKS_URI, null),
+        this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(201);
+    verify(this.keycloakAdminClient).createManagedClient(
+        anyString(), any(), anyBoolean(), anyBoolean(), eq(List.of(uri)), anySet(), any(), any(),
+        anyBoolean(), anyBoolean(), anyBoolean());
+  }
+
+  /**
+   * Keycloak treats a redirect URI as a wildcard pattern only when the {@code *} is the last
+   * character and the pattern carries no query string. Anywhere else it is matched literally, which
+   * would produce a client whose callbacks silently never match, so each of these forms is refused.
+   */
+  @ParameterizedTest
+  @DisplayName("A wildcard anywhere but at the end is rejected")
+  @ValueSource(strings = {
+      "https://*.example.se/cb",
+      "https://demo-app.example.se/*/cb",
+      "https://demo-app.example.se/cb?next=*",
+      "*://demo-app.example.se/cb",
+      "https://demo-app.example.se/cb/**"
+  })
+  void misplacedWildcardRedirectUriIsRejected(final String uri) {
     setupSession(true);
 
     final ResponseEntity<?> response = this.controller.createClient(
-        createRequest(true, false, List.of("https://demo-app.example.se/*"), Set.of("demo"),
-            JWKS_URI, null),
+        createRequest(true, false, List.of(uri), Set.of("demo"), JWKS_URI, null),
         this.request);
 
     assertThat(response.getStatusCode().value()).isEqualTo(400);
-    assertThat(response.getBody()).asString().contains("wildcards are not allowed");
+    assertThat(response.getBody()).asString().contains("only allowed as the last character");
   }
 
   @Test
-  @DisplayName("A relative redirect URI is rejected")
+  @DisplayName("A relative redirect URI is rejected — it must be completed first")
   void relativeRedirectUriIsRejected() {
     setupSession(true);
 
     final ResponseEntity<?> response = this.controller.createClient(
         createRequest(true, false, List.of("/login/oauth2/code/orgiam"), Set.of("demo"),
+            JWKS_URI, null),
+        this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(400);
+    assertThat(response.getBody()).asString().contains("absolute URI");
+  }
+
+  @Test
+  @DisplayName("A relative redirect URI ending in a wildcard is rejected too")
+  void relativeWildcardRedirectUriIsRejected() {
+    setupSession(true);
+
+    final ResponseEntity<?> response = this.controller.createClient(
+        createRequest(true, false, List.of("/login/oauth2/code/*"), Set.of("demo"),
             JWKS_URI, null),
         this.request);
 

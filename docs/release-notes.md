@@ -49,8 +49,8 @@
   `add-oidc-client.sh` and `set-iam-admin-managed.sh` against the Keycloak host. A client is
   registered with the same settings the script applies: `private_key_jwt` authentication,
   Authorization Services, the three protocol mappers, and the `naturalPersonNumber` and
-  `phone` optional scopes. Redirect URIs must be exact, wildcards are rejected. Deletion is
-  permanent, and is open to any superuser.
+  `phone` optional scopes. A redirect URI may carry a `*` as its last character, the form Keycloak
+  matches. Deletion is permanent, and is open to any superuser.
 
 - **Clients and resource servers are administered in one place, and a client can be both.**
   The **Services** tab lists everything the application administers. A client carries two
