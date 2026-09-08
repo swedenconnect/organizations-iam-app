@@ -154,9 +154,10 @@ Sets up:
 - Service account with `realm-management` roles (if `--service-account` is passed)
 
 All steps are idempotent — safe to re-run against an existing client. A re-run overwrites
-`rootUrl`, `redirectUris`, the `iam_admin_managed` attribute, and (if `--name` was passed)
-the display name with the values from the current invocation. Redirect URI patterns added
-manually in the Keycloak UI will be removed on re-run.
+`redirectUris`, the `iam_admin_managed` attribute, and (if `--name` was passed) the display
+name with the values from the current invocation. Redirect URI patterns added manually in
+the Keycloak UI will be removed on re-run. `rootUrl` is only written when the invocation
+supplies one (see below); otherwise a root URL already on the client is left untouched.
 
 **Prerequisites:**
 
@@ -189,6 +190,7 @@ that is missing.
 | `--client-id`                 | Yes      | prompt                | The OAuth2 `client_id` (typically the application's base URL)                                                                          |
 | `--name`                      | No       |                       | Display name shown in the Keycloak admin console                                                                                       |
 | `--redirect-uri`              | Yes      | prompt                | Redirect URI pattern. May be specified multiple times (see note below).                                                                |
+| `--root-url`                  | No       | prompt when a redirect URI is a path | Client root URL. Written only when supplied (see note below).                                                           |
 | `--jwks-url`                  | No       | `{client-id}/jwks`    | JWKS endpoint for `private_key_jwt` client authentication                                                                              |
 | `--service-account`           | No       | off                   | Enable if the application needs to read or write Keycloak realm information directly via the Admin REST API. Not required for ordinary clients. |
 | `--no-org-rights-id-token`    | No       | included              | Exclude the `org_rights` claim from the ID token                                                                                       |
@@ -203,7 +205,7 @@ that is missing.
     --password keycloak \
     --client-id https://my-app.example.com \
     --name "My App" \
-    --redirect-uri '/login/oauth2/code/*'
+    --redirect-uri 'https://my-app.example.com/login/oauth2/code/*'
 ```
 
 **Example — client with service account (needs Keycloak Admin API access):**
@@ -214,7 +216,7 @@ that is missing.
     --username admin \
     --password keycloak \
     --client-id https://my-app.example.com \
-    --redirect-uri '/login/oauth2/code/*' \
+    --redirect-uri 'https://my-app.example.com/login/oauth2/code/*' \
     --service-account
 ```
 
@@ -226,8 +228,8 @@ that is missing.
     --username admin \
     --password keycloak \
     --client-id https://my-app.example.com \
-    --redirect-uri '/login/oauth2/code/*' \
-    --redirect-uri '/callback/oauth2/code/*'
+    --redirect-uri 'https://my-app.example.com/login/oauth2/code/*' \
+    --redirect-uri 'https://my-app.example.com/callback/oauth2/code/*'
 ```
 
 > **Multiple redirect URIs:** `--redirect-uri` may be repeated to register more than
@@ -236,6 +238,25 @@ that is missing.
 > callback base paths — for example `/login/oauth2/code/*` for OIDC and
 > `/callback/oauth2/code/*` for OAuth2 API token flows. A plain OIDC relying party
 > needs only a single `--redirect-uri`.
+
+> **The root URL follows the redirect URIs.** Keycloak resolves a redirect URI given as a
+> path against the client's root URL, and ignores the root URL when the redirect URIs are
+> complete. The script therefore writes a root URL only when the invocation supplies one:
+> if at least one `--redirect-uri` starts with `/` and `--root-url` was not given, it asks
+> for the root URL once, offering the client ID as the default. If every redirect URI is a
+> complete URI and `--root-url` was not given, nothing is asked and no root URL is sent, so
+> whatever the client already has stays as it is. `--root-url` is always honoured without a
+> prompt, whatever form the redirect URIs take.
+>
+> ```bash
+> ./compose/keycloak-scripts/add-oidc-client.sh \
+>     --realm orgiam \
+>     --username admin \
+>     --password keycloak \
+>     --client-id https://my-app.example.com \
+>     --redirect-uri '/login/oauth2/code/*' \
+>     --root-url https://my-app.example.com
+> ```
 
 ---
 

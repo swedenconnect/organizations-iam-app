@@ -32,6 +32,8 @@ NAME=""
 # For a plain OIDC relying party a single pattern (e.g. /login/oauth2/code/*) is
 # sufficient.
 REDIRECT_URIS=()
+ROOT_URL=""
+ROOT_URL_SET="false"
 JWKS_URL=""
 SERVICE_ACCOUNT="false"
 ORG_RIGHTS_ID_TOKEN="true"
@@ -58,6 +60,8 @@ Options:
   --client-id <id>                 Client ID (e.g. https://my-app.example.com)
   --name <name>                    Display name shown in the Keycloak admin UI
   --redirect-uri <pattern>         Redirect URI pattern (repeatable)
+  --root-url <url>                 Client root URL. Written only when given here or
+                                   when a redirect URI is a path (see below)
   --jwks-url <url>                 JWKS endpoint URL (default: <client-id>/jwks)
   --service-account                Keep the service account and assign
                                    realm-management roles
@@ -68,6 +72,12 @@ Options:
 All parameters are optional on the command line; missing required values
 will be prompted for interactively. --redirect-uri may be specified
 multiple times.
+
+The client root URL is only used by Keycloak to resolve redirect URIs given as
+paths. If at least one --redirect-uri starts with '/' and --root-url was not
+given, the root URL is prompted for, with the client ID as the default. If every
+redirect URI is a complete URI and --root-url was not given, no root URL is
+written and any root URL already on the client is left as it is.
 EOF
 }
 
@@ -84,6 +94,7 @@ while [ $# -gt 0 ]; do
     --client-id)                CLIENT_ID="$2";     shift 2 ;;
     --name)                     NAME="$2";          shift 2 ;;
     --redirect-uri)             REDIRECT_URIS+=("$2"); shift 2 ;;
+    --root-url)                 ROOT_URL="$2"; ROOT_URL_SET="true"; shift 2 ;;
     --jwks-url)                 JWKS_URL="$2";      shift 2 ;;
     --service-account)          SERVICE_ACCOUNT="true"; shift ;;
     --no-org-rights-id-token)   ORG_RIGHTS_ID_TOKEN="false";    shift ;;
@@ -120,6 +131,24 @@ if [ ${#REDIRECT_URIS[@]} -eq 0 ]; then
     echo "ERROR: at least one redirect URI is required." >&2
     exit 1
   fi
+fi
+
+# The root URL only matters when a redirect URI is given as a path, which Keycloak then
+# resolves against it. Ask for it once in that case, defaulting to the client ID. When
+# every redirect URI is complete, no root URL is written at all.
+if [ "${ROOT_URL_SET}" = "false" ]; then
+  for _URI in "${REDIRECT_URIS[@]}"; do
+    case "${_URI}" in
+      /*)
+        read -r -p "Root URL (redirect URIs given as paths resolve against it) [${CLIENT_ID}]: " ROOT_URL
+        if [ -z "${ROOT_URL}" ]; then
+          ROOT_URL="${CLIENT_ID}"
+        fi
+        ROOT_URL_SET="true"
+        break
+        ;;
+    esac
+  done
 fi
 
 # Derive default JWKS URL from client ID if not provided
@@ -180,10 +209,11 @@ fi
 # ---------------------------------------------------------------------------
 # Step 1b — Sync invocation-driven fields (always)
 #
-# Runs unconditionally so that re-invocations with changed redirect URIs,
-# root URL, or display name overwrite the stored values. Any redirect URIs
-# added manually in the Keycloak UI will be replaced by the supplied set —
-# this matches the documented "idempotent — safe to re-run" contract.
+# Runs unconditionally so that re-invocations with changed redirect URIs or
+# display name overwrite the stored values. Any redirect URIs added manually in
+# the Keycloak UI will be replaced by the supplied set — this matches the
+# documented "idempotent — safe to re-run" contract. The root URL is only part of
+# this when the invocation supplied one; otherwise it is left as it is.
 # ---------------------------------------------------------------------------
 
 REDIRECT_URIS_JSON="["
@@ -193,12 +223,14 @@ for i in "${!REDIRECT_URIS[@]}"; do
 done
 REDIRECT_URIS_JSON+="]"
 
-echo "==> Syncing rootUrl, redirectUris, attributes, name..."
+echo "==> Syncing redirectUris, attributes, name..."
 UPDATE_ARGS=(
-  -s "rootUrl=${CLIENT_ID}"
   -s "redirectUris=${REDIRECT_URIS_JSON}"
   -s 'attributes.iam_admin_managed=true'
 )
+if [ "${ROOT_URL_SET}" = "true" ]; then
+  UPDATE_ARGS+=(-s "rootUrl=${ROOT_URL}")
+fi
 if [ -n "${NAME}" ]; then
   UPDATE_ARGS+=(-s "name=${NAME}")
 fi
@@ -405,6 +437,11 @@ fi
 echo "      Client UUID        : ${CLIENT_UUID}"
 echo "      JWKS URL           : ${JWKS_URL}"
 echo "      Redirect URIs      : ${REDIRECT_URIS[*]}"
+if [ "${ROOT_URL_SET}" = "true" ]; then
+  echo "      Root URL           : ${ROOT_URL}"
+else
+  echo "      Root URL           : not set (left unchanged)"
+fi
 echo "      Service account    : ${SERVICE_ACCOUNT}"
 echo "      org-rights ID token: ${ORG_RIGHTS_ID_TOKEN}"
 echo "      org-rights acc.tok.: ${ORG_RIGHTS_ACCESS_TOKEN}"

@@ -74,15 +74,16 @@ export function ClientForm({ client, functions, isOpen, onClose, onSave }: Clien
   };
 
   const setRedirectUri = (index: number, value: string) => {
-    // Wildcards are never valid here, so strip them on entry rather than only on submit
-    const sanitized = value.replace(/\*/g, '');
-    if (sanitized !== value) {
-      setFieldErrors((current) => ({
-        ...current,
-        redirectUris: t('clients.validation.noWildcards'),
-      }));
-    }
-    setRedirectUris((current) => current.map((uri, i) => (i === index ? sanitized : uri)));
+    setRedirectUris((current) => current.map((uri, i) => (i === index ? value : uri)));
+  };
+
+  // Keycloak treats a redirect URI as a wildcard pattern only when the `*` is the last character
+  // and the pattern carries no query string. Anywhere else the `*` is matched literally, giving a
+  // client whose callbacks silently never match, so those forms are refused.
+  const wildcardOnlyAtEnd = (value: string): boolean => {
+    const first = value.indexOf('*');
+    if (first < 0) return true;
+    return first === value.length - 1 && !value.includes('?');
   };
 
   const removeRedirectUri = (index: number) => {
@@ -113,8 +114,8 @@ export function ClientForm({ client, functions, isOpen, onClose, onSave }: Clien
     if (oidcClient) {
       if (uris.length === 0) {
         errors.redirectUris = t('clients.validation.redirectRequired');
-      } else if (uris.some((uri) => uri.includes('*'))) {
-        errors.redirectUris = t('clients.validation.noWildcards');
+      } else if (!uris.every(wildcardOnlyAtEnd)) {
+        errors.redirectUris = t('clients.validation.wildcardPosition');
       } else if (uris.some((uri) => !isAbsoluteUri(uri))) {
         errors.redirectUris = t('clients.validation.absoluteUri');
       }
