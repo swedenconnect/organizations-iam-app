@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Badge } from '@/app/components/ui/badge';
 import { useLanguage } from '@/app/contexts/LanguageContext';
 import { Building2, Boxes, X } from 'lucide-react';
-import { formatPersonalIdentityNumber } from '@/utils';
+import { formatPersonalIdentityNumber, resolveOrgName } from '@/utils';
 
 type PendingOp =
   | { kind: 'remove'; orgIdentifier: string; functionId: string | null; right: 'read' | 'write' | 'admin' }
@@ -156,9 +156,7 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
   const orgRights = stagedRights.filter(r => r.functionId === null);
   const funcRights = stagedRights.filter(r => r.functionId !== null);
 
-  const getOrgName = (org: Organization) => {
-    return language === 'sv' ? org.nameSv : org.nameEn;
-  };
+  const getOrgName = (org: Organization) => resolveOrgName(org, language);
 
   const isSelf = user !== null && user.id === currentUserId;
 

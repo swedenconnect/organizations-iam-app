@@ -28,7 +28,7 @@ import { useState, useEffect } from 'react';
 import { AddUserToOrgDialog } from '@/app/components/AddUserToOrgDialog';
 import { AssignFunctionsDialog } from '@/app/components/AssignFunctionsDialog';
 import { AddUserToFunctionDialog } from '@/app/components/AddUserToFunctionDialog';
-import { formatOrgNumber, canAdminOrg, canAdminFunction } from '@/utils';
+import { formatOrgNumber, canAdminOrg, canAdminFunction, resolveOrgName } from '@/utils';
 import { LastAdminError } from '@/services/userService';
 
 interface OrganizationListProps {
@@ -147,12 +147,7 @@ export function OrganizationList({
   const [selectedOrgForAddUserToFunction, setSelectedOrgForAddUserToFunction] = useState<Organization | null>(null);
   const [selectedFunctionForAddUser, setSelectedFunctionForAddUser] = useState<FunctionType | null>(null);
 
-  const getOrgName = (org: Organization) => {
-    if (org.nameSv || org.nameEn) {
-      return language === 'sv' ? org.nameSv : org.nameEn;
-    }
-    return (org as any).name || 'Unnamed Organization';
-  };
+  const getOrgName = (org: Organization) => resolveOrgName(org, language);
 
 
   const getUsersForOrganization = (orgId: string) => {

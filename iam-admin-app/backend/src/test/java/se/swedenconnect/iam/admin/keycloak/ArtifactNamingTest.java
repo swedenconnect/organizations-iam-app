@@ -36,21 +36,21 @@ class ArtifactNamingTest {
   @Test
   @DisplayName("Scope names are colon-separated")
   void scopeNamesAreColonSeparated() {
-    assertEquals("5590026042:demo:read", KeycloakAdminClient.scopeName("5590026042", "demo", "read"));
+    assertEquals("2021006883:demo:read", KeycloakAdminClient.scopeName("2021006883", "demo", "read"));
   }
 
   @Test
   @DisplayName("Policy names are dash-separated, as documented")
   void policyNamesAreDashSeparated() {
-    assertEquals("policy-5590026042-demo-read",
-        KeycloakAdminClient.policyName("5590026042", "demo", "read"));
+    assertEquals("policy-2021006883-demo-read",
+        KeycloakAdminClient.policyName("2021006883", "demo", "read"));
   }
 
   @Test
   @DisplayName("Permission names are dash-separated, as documented")
   void permissionNamesAreDashSeparated() {
-    assertEquals("permission-5590026042-demo-read",
-        KeycloakAdminClient.permissionName("5590026042", "demo", "read"));
+    assertEquals("permission-2021006883-demo-read",
+        KeycloakAdminClient.permissionName("2021006883", "demo", "read"));
   }
 
   @Test

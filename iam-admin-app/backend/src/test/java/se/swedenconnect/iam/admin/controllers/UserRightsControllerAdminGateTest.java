@@ -60,7 +60,7 @@ import static org.mockito.Mockito.when;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class UserRightsControllerAdminGateTest {
 
-  private static final String ORG = "5590026042";
+  private static final String ORG = "2021006883";
   private static final String FUNC = "demo";
   private static final String CALLER_ID = "caller-uuid";
   private static final String TARGET_ID = "target-uuid";
@@ -361,6 +361,7 @@ class UserRightsControllerAdminGateTest {
   private static OrgRightsClaim.OrgEntry orgEntry(final String orgId, final String orgLevelRight,
       final OrgRightsClaim.FunctionEntry... functions) {
     return new OrgRightsClaim.OrgEntry(
-        OrganizationID.of(orgId), new LocalizedString(), orgLevelRight, List.of(functions));
+        OrganizationID.of(orgId), "Digg - Myndigheten för Digital förvaltning", new LocalizedString(), orgLevelRight,
+        List.of(functions));
   }
 }

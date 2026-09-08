@@ -2,8 +2,12 @@
 export interface Organization {
   id: string;
   organizationNumber: string;
-  nameSv: string;
-  nameEn: string;
+  /** The name registered at Bolagsverket. Mandatory, and the fallback whenever no display name is set. */
+  legalName: string;
+  /** Optional Swedish display name. */
+  nameSv?: string | null;
+  /** Optional English display name. */
+  nameEn?: string | null;
   contactEmail?: string;
   additionalData?: Record<string, string>;
 }
@@ -67,6 +71,7 @@ export interface UserOrgRight {
 
 export interface OrganizationData {
   orgIdentifier: string;
+  legalName: string;
   nameSv: string | null;
   nameEn: string | null;
   groupId: string;

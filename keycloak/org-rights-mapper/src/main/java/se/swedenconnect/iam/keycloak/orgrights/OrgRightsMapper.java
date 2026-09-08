@@ -108,11 +108,32 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
   /** Group attribute and claim field: the ten-digit organization number. */
   public static final String ATTR_ORGANIZATION_IDENTIFIER = "organization_identifier";
 
-  /** Group attribute and claim field: the organization name in Swedish. */
+  /**
+   * Group attribute and claim field: the organization's legal name, as registered at Bolagsverket.
+   * Carries no language tag. Always present on the group and always emitted in the claim.
+   */
+  public static final String ATTR_ORGANIZATION_NAME = "organization_name";
+
+  /**
+   * Group attribute and claim field: the organization display name in Swedish. Optional — the
+   * attribute is absent when no Swedish display name has been given, and the claim member is then
+   * not emitted.
+   */
   public static final String ATTR_ORGANIZATION_NAME_SV = "organization_name#sv";
 
-  /** Group attribute and claim field: the organization name in English. */
+  /**
+   * Group attribute and claim field: the organization display name in English. Optional, in the
+   * same way as {@link #ATTR_ORGANIZATION_NAME_SV}.
+   */
   public static final String ATTR_ORGANIZATION_NAME_EN = "organization_name#en";
+
+  /**
+   * Claim entry field: the organization's legal name. Always present, and the member consumers are
+   * meant to read when they want the registered name. {@link #ATTR_ORGANIZATION_NAME} carries the
+   * same value and exists only so a consumer doing a language lookup across the
+   * {@code organization_name*} members still resolves to something.
+   */
+  public static final String CLAIM_FIELD_ORGANIZATION_LEGAL_NAME = "organization_legal_name";
 
   // ---- Claim entry field keys ----
 
@@ -302,8 +323,9 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
             orgIdentifier);
       }
 
-      final String orgNameSv = readOrgAttribute(orgGroup, ATTR_ORGANIZATION_NAME_SV, orgIdentifier);
-      final String orgNameEn = readOrgAttribute(orgGroup, ATTR_ORGANIZATION_NAME_EN, orgIdentifier);
+      final String orgNameSv = readOptionalOrgAttribute(orgGroup, ATTR_ORGANIZATION_NAME_SV);
+      final String orgNameEn = readOptionalOrgAttribute(orgGroup, ATTR_ORGANIZATION_NAME_EN);
+      final String legalName = resolveLegalName(orgGroup, orgNameSv, orgNameEn, orgIdentifier);
       final String orgId     = readOrgAttribute(orgGroup, ATTR_ORGANIZATION_IDENTIFIER, orgIdentifier);
 
       // Effective right per function: the org-level right expanded onto every attached function,
@@ -323,15 +345,23 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
           .map(fr -> functionEntry(fr.getKey(), fr.getValue()))
           .toList();
 
-      LOG.debugf("[org-rights] Building entry for org '%s' (id=%s, sv='%s', en='%s', %s=%s) "
+      LOG.debugf("[org-rights] Building entry for org '%s' (id=%s, legal='%s', sv='%s', en='%s', %s=%s) "
               + "with %d function(s): %s",
-          orgIdentifier, orgId, orgNameSv, orgNameEn, CLAIM_FIELD_ORG_LEVEL_RIGHT, orgLevelRight,
+          orgIdentifier, orgId, legalName, orgNameSv, orgNameEn, CLAIM_FIELD_ORG_LEVEL_RIGHT, orgLevelRight,
           functionEntries.size(), functionEntries);
 
       final Map<String, Object> entry = new LinkedHashMap<>();
       entry.put(ATTR_ORGANIZATION_IDENTIFIER, orgId);
-      entry.put(ATTR_ORGANIZATION_NAME_SV, orgNameSv);
-      entry.put(ATTR_ORGANIZATION_NAME_EN, orgNameEn);
+      entry.put(CLAIM_FIELD_ORGANIZATION_LEGAL_NAME, legalName);
+      // The untagged member repeats the legal name so that a consumer doing a language lookup
+      // across organization_name* still resolves to something. Backwards compatibility only.
+      entry.put(ATTR_ORGANIZATION_NAME, legalName);
+      if (orgNameSv != null) {
+        entry.put(ATTR_ORGANIZATION_NAME_SV, orgNameSv);
+      }
+      if (orgNameEn != null) {
+        entry.put(ATTR_ORGANIZATION_NAME_EN, orgNameEn);
+      }
       if (orgLevelRight != null) {
         entry.put(CLAIM_FIELD_ORG_LEVEL_RIGHT, orgLevelRight);
       }
@@ -435,6 +465,64 @@ public class OrgRightsMapper extends AbstractOIDCProtocolMapper
     entry.put(CLAIM_FIELD_FUNCTION, functionName);
     entry.put(CLAIM_FIELD_RIGHT, right);
     return entry;
+  }
+
+  /**
+   * Reads the first value of an optional attribute from a group. Unlike
+   * {@link #readOrgAttribute(GroupModel, String, String)} an absent attribute is a normal outcome
+   * and is not logged, because display names are optional.
+   *
+   * @param group the group to read from, may be {@code null}
+   * @param attributeKey the attribute key
+   * @return the first attribute value, or {@code null} if the group or the attribute is absent
+   */
+  private static @Nullable String readOptionalOrgAttribute(
+      final @Nullable GroupModel group, final @NonNull String attributeKey) {
+    if (group == null) {
+      return null;
+    }
+    final List<String> values = group.getAttributes().get(attributeKey);
+    if (values == null || values.isEmpty() || values.getFirst() == null || values.getFirst().isBlank()) {
+      return null;
+    }
+    return values.getFirst();
+  }
+
+  /**
+   * Resolves an organization's legal name from its group.
+   *
+   * <p>The untagged {@link #ATTR_ORGANIZATION_NAME} attribute is the legal name. A group created
+   * before the legal name existed does not carry it, so the Swedish display name is used, then the
+   * English one, and the fact is logged: a human has to enter the real registered name. The derived
+   * value is not written back. A group carrying neither is malformed, and the organization
+   * identifier is used so that nothing downstream breaks.</p>
+   *
+   * @param group the organization group, may be {@code null}
+   * @param orgNameSv the Swedish display name, or {@code null}
+   * @param orgNameEn the English display name, or {@code null}
+   * @param orgIdentifier the organization identifier, used in log messages and as last resort
+   * @return the legal name; never {@code null}
+   */
+  private static @NonNull String resolveLegalName(
+      final @Nullable GroupModel group,
+      final @Nullable String orgNameSv,
+      final @Nullable String orgNameEn,
+      final @NonNull String orgIdentifier) {
+
+    final String legalName = readOptionalOrgAttribute(group, ATTR_ORGANIZATION_NAME);
+    if (legalName != null) {
+      return legalName;
+    }
+    if (orgNameSv != null || orgNameEn != null) {
+      LOG.warnf("[org-rights] Organization '%s' has no '%s' attribute — its legal name has not been "
+              + "entered and needs to be updated; using a display name in the meantime",
+          orgIdentifier, ATTR_ORGANIZATION_NAME);
+      return orgNameSv != null ? orgNameSv : orgNameEn;
+    }
+    LOG.errorf("[org-rights] Organization group '%s' carries no name at all — neither '%s' nor a "
+            + "display name; using the organization identifier as its name",
+        orgIdentifier, ATTR_ORGANIZATION_NAME);
+    return orgIdentifier;
   }
 
   /**

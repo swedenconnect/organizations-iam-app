@@ -16,7 +16,7 @@ import {
 import { Pencil, Trash2, Users, Mail, Phone, Search, Building2, Boxes, ChevronDown, ChevronRight, ShieldCheck, X } from 'lucide-react';
 import { useLanguage } from '@/app/contexts/LanguageContext';
 import { useState } from 'react';
-import { formatPersonalIdentityNumber } from '@/utils';
+import { formatPersonalIdentityNumber, resolveOrgName } from '@/utils';
 
 function groupRightsByOrg(rights: UserRightData[]) {
   const map = new Map<string, { orgRights: UserRightData[]; funcRights: UserRightData[] }>();
@@ -60,7 +60,7 @@ function checkDeleteSafety(
       );
       if (!otherAdminExists) {
         const org = organizations.find((o) => o.id === right.orgIdentifier);
-        const name = org ? (language === 'sv' ? org.nameSv : org.nameEn) : right.orgIdentifier;
+        const name = org ? resolveOrgName(org, language) : right.orgIdentifier;
         if (!reasons.includes(name)) reasons.push(name);
       }
     } else {
@@ -138,9 +138,7 @@ export function UserList({ users, organizations, functions, currentUserId, isSup
     reasons: string[];
   } | null>(null);
 
-  const getOrgName = (org: Organization) => {
-    return language === 'sv' ? org.nameSv : org.nameEn;
-  };
+  const getOrgName = (org: Organization) => resolveOrgName(org, language);
 
   const getRoleBadgeVariant = (role: string): 'default' | 'secondary' | 'outline' => {
     if (role === 'admin') return 'default';

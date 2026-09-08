@@ -231,8 +231,9 @@ directory, or configured as a Script Mapper if scripting is enabled.
 
 * Group all relevant memberships by organization identifier. For each organization:
 
-  - Load the org group's attributes to obtain `organization_identifier`, `organization_name#sv`,
-      `organization_name#en`.
+  - Load the org group's attributes to obtain `organization_identifier`, the untagged
+      `organization_name` holding the legal name, and the optional display names
+      `organization_name#sv` and `organization_name#en`.
   - For each membership at path `orgs/{identifier}/{function}/_admin`, `/_write`, or
       `/_read`, add a `{ "function": "<function>", "right": "<right>" }` entry to the
       `functions` array for this org.
@@ -589,10 +590,10 @@ This appendix walks through the complete initial setup of the `orgiam` realm, fo
 the creation of:
 
 - Function: `demo` (Demo)
-- Organization: `5590026042` — Litsec AB
-- Attaching `demo` to Litsec AB
+- Organization: `2021006883` — Digg - Myndigheten för Digital förvaltning
+- Attaching `demo` to Digg - Myndigheten för Digital förvaltning
 - Superuser: Internal admin without a personal identity number
-- Regular user: `196911292032` — Martin Lindström, with `write` on `demo` under Litsec AB
+- Regular user: `196911292032` — Martin Lindström, with `write` on `demo` under Digg - Myndigheten för Digital förvaltning
 
 ---
 
@@ -854,7 +855,7 @@ tokens issued by this client.
 
 > **Note:** Adding the scope as **optional** would not work here. In an OAuth 2.0
 > authorization request (without `openid`), the `scope` parameter carries only the API
-> scopes such as `5590026042:demo:write`. The `naturalPersonNumber` scope would not be
+> scopes such as `2021006883:demo:write`. The `naturalPersonNumber` scope would not be
 > present in the request, so an optional scope would not be applied and the mapper would not
 > fire. A default scope is applied by Keycloak regardless of what the client requests.
 
@@ -908,32 +909,32 @@ user has no `phoneNumber` attribute set, the claim is absent even when the scope
 
 ---
 
-### A.7. Create Organization `5590026042` — Litsec AB
+### A.7. Create Organization `2021006883` — Digg - Myndigheten för Digital förvaltning
 
 1. Navigate to **Groups**.
 2. Click on the `orgs` group.
 3. In the **Child groups** tab, click **Create group**.
-4. Name: `5590026042`.
+4. Name: `2021006883`.
 5. Click **Create**.
 6. Go to the **Attributes** tab of this sub-group:
-7. Add the following attributes: `organization_identifier`: `5590026042`, `organization_name#sv`: `Litsec AB` and `organization_name#en`: `Litsec AB`.
+7. Add the following attributes: `organization_identifier`: `2021006883` and `organization_name`: `Myndigheten för Digital förvaltning`. `organization_name` holds the legal name as registered at Bolagsverket and is mandatory. The display names `organization_name#sv` and `organization_name#en` are optional; add them only if the organization should be shown under something other than its legal name, for example `organization_name#sv`: `Digg - Myndigheten för Digital förvaltning` and `organization_name#en`: `Digg - Authority for Digital Government`.
 
 8. Click **Save**.
 
-**Create child groups under `5590026042`:**
+**Create child groups under `2021006883`:**
 
 Repeat the following three times (creating `_admin`, `_write`, `_read`):
 
-1. Click on the `5590026042` group.
+1. Click on the `2021006883` group.
 2. In the **Child groups**, click **Create group**.
 3. Name: `_admin` (then `_write`, then `_read`).
 4. Click **Create**.
 
 ---
 
-### A.8. Attach Function `demo` to Organization `5590026042`
+### A.8. Attach Function `demo` to Organization `2021006883`
 
-1. Navigate to **Groups → orgs → 5590026042**.
+1. Navigate to **Groups → orgs → 2021006883**.
 2. In the **Child groups** tab, click **Create group**.
 3. Name: `demo`.
 4. Click **Create**.
@@ -941,18 +942,18 @@ Repeat the following three times (creating `_admin`, `_write`, `_read`):
 6. Add attribute: `function_ref` = `demo`.
 7. Click **Save**.
 
-**Create right sub-groups under `5590026042/demo`:**
+**Create right sub-groups under `2021006883/demo`:**
 
-1. Click on the `demo` sub-group (under `5590026042`).
+1. Click on the `demo` sub-group (under `2021006883`).
 2. Create sub-groups `_admin`, `_write`, and `_read`.
 
 **Create client scopes for this org/function combination:**
 
 Create three client scopes via the Admin Console or REST API (see [Appendix B](#appendix-b-keycloak-admin-rest-api-reference)):
 
-- `5590026042:demo:read`
-- `5590026042:demo:write`
-- `5590026042:demo:admin`
+- `2021006883:demo:read`
+- `2021006883:demo:write`
+- `2021006883:demo:admin`
 
 For each scope, create an Authorization Services Group Policy with the qualifying groups
 as described in the [Rights Model](rights-model.md#scopes-for-api-access). Add each scope as an optional scope on the relevant client(s).
@@ -963,19 +964,19 @@ as described in the [Rights Model](rights-model.md#scopes-for-api-access). Add e
 
 1. Navigate to **Client scopes**.
 2. Click **Create client scope**.
-3. Name: `5590026042:demo:read`
+3. Name: `2021006883:demo:read`
 4. Protocol: `OpenID Connect`
 5. Include in token scope: `ON`
 6. Display on consent screen: `OFF`
 7. Click **Save**.
 
-Repeat for `5590026042:demo:write` and `5590026042:demo:admin`.
+Repeat for `2021006883:demo:write` and `2021006883:demo:admin`.
 
 **Add the scopes as optional to the relevant clients:**
 
 1. Navigate to **Clients → `https://local.dev.swedenconnect.se:17005` → Client scopes** tab.
 2. Click **Add client scope**.
-3. Select `5590026042:demo:read` and add as **Optional**.
+3. Select `2021006883:demo:read` and add as **Optional**.
 4. Repeat for `:write` and `:admin`.
 
 Repeat steps 1–4 for client `https://local.dev.swedenconnect.se:16990`.
@@ -996,50 +997,50 @@ This must be done for both clients:
 
 1. Navigate to **Clients → `https://local.dev.swedenconnect.se:17005` → Authorization → Scopes** tab.
 2. Click **Create authorization scope**.
-3. Name: `5590026042:demo:read`
+3. Name: `2021006883:demo:read`
 4. Click **Save**.
-5. Repeat for `5590026042:demo:write` and `5590026042:demo:admin`.
+5. Repeat for `2021006883:demo:write` and `2021006883:demo:admin`.
 
 Repeat steps 1–5 for **Clients → `https://local.dev.swedenconnect.se:16990` → Authorization → Scopes** tab.
 
 Now create a Group Policy for each:
 
-For `5590026042:demo:read`:
+For `2021006883:demo:read`:
 
 1. Navigate to **Clients → `https://local.dev.swedenconnect.se:17005` → Authorization** tab.
 2. Click **Policies**.
 3. Click **Create policy → Group**.
-4. Name: `policy-5590026042-demo-read`
+4. Name: `policy-2021006883-demo-read`
 5. Under **Groups**, add:
-   - `/orgs/5590026042/_read`
-   - `/orgs/5590026042/_write`
-   - `/orgs/5590026042/_admin`
-   - `/orgs/5590026042/demo/_read`
-   - `/orgs/5590026042/demo/_write`
-   - `/orgs/5590026042/demo/_admin`
+   - `/orgs/2021006883/_read`
+   - `/orgs/2021006883/_write`
+   - `/orgs/2021006883/_admin`
+   - `/orgs/2021006883/demo/_read`
+   - `/orgs/2021006883/demo/_write`
+   - `/orgs/2021006883/demo/_admin`
 6. Logic: `Positive`
 7. Click **Save**.
 
-For `policy-5590026042-demo-write`, add only:
-- `/orgs/5590026042/_write`
-- `/orgs/5590026042/_admin`
-- `/orgs/5590026042/demo/_write`
-- `/orgs/5590026042/demo/_admin`
+For `policy-2021006883-demo-write`, add only:
+- `/orgs/2021006883/_write`
+- `/orgs/2021006883/_admin`
+- `/orgs/2021006883/demo/_write`
+- `/orgs/2021006883/demo/_admin`
 
-For `policy-5590026042-demo-admin`, add only:
-- `/orgs/5590026042/_admin`
-- `/orgs/5590026042/demo/_admin`
+For `policy-2021006883-demo-admin`, add only:
+- `/orgs/2021006883/_admin`
+- `/orgs/2021006883/demo/_admin`
 
 **Create a Permission linking each scope to its policy:**
 
-For `5590026042:demo:read`:
+For `2021006883:demo:read`:
 
 1. Navigate to **Clients → `https://local.dev.swedenconnect.se:17005` → Authorization** tab.
 2. Navigate to **Authorization → Permissions**.
 3. Click **Create permission → Scope-based**.
-4. Name: `permission-5590026042-demo-read`
-5. Authorization scopes: select `5590026042:demo:read`
-6. Policies: select `policy-5590026042-demo-read`
+4. Name: `permission-2021006883-demo-read`
+5. Authorization scopes: select `2021006883:demo:read`
+6. Policies: select `policy-2021006883-demo-read`
 7. Decision strategy: `Affirmative`
 8. Click **Save**.
 
@@ -1108,24 +1109,24 @@ will appear in any token issued for this user.
 
 ---
 
-### A.11. Assign Write Right on `demo` under Litsec AB
+### A.11. Assign Write Right on `demo` under Digg - Myndigheten för Digital förvaltning
 
-Martin should have `write` access to `demo` within organization `5590026042`.
+Martin should have `write` access to `demo` within organization `2021006883`.
 
 1. Navigate to **Users → Martin Lindström**.
 2. Go to the **Groups** tab.
 3. Click **Join group**.
-4. Navigate to: `orgs → 5590026042 → demo → _write`.
+4. Navigate to: `orgs → 2021006883 → demo → _write`.
 5. Select `_write` and click **Join**.
 
-Martin is now a member of `orgs/5590026042/demo/_write`. The `org_rights` mapper will
+Martin is now a member of `orgs/2021006883/demo/_write`. The `org_rights` mapper will
 produce the following entry in his token:
 
 ```json
 {
-  "organization_identifier": "5590026042",
-  "organization_name#sv": "Litsec AB",
-  "organization_name#en": "Litsec AB",
+  "organization_identifier": "2021006883",
+  "organization_legal_name": "Myndigheten för Digital förvaltning",
+  "organization_name": "Myndigheten för Digital förvaltning",
   "functions": [
     { "function": "demo", "right": "write" }
   ]
@@ -1242,11 +1243,12 @@ POST /admin/realms/orgiam/groups/<orgs-group-id>/children
 Content-Type: application/json
 
 {
-  "name": "5590026042",
+  "name": "2021006883",
   "attributes": {
-    "organization_identifier": ["5590026042"],
-    "organization_name#sv": ["Litsec AB"],
-    "organization_name#en": ["Litsec AB"]
+    "organization_identifier": ["2021006883"],
+    "organization_name": ["Myndigheten för Digital förvaltning"],
+    "organization_name#sv": ["Digg - Myndigheten för Digital förvaltning"],
+    "organization_name#en": ["Digg - Authority for Digital Government"]
   }
 }
 ```
@@ -1279,7 +1281,7 @@ GET /admin/realms/orgiam/groups/<orgs-group-id>/children?briefRepresentation=fal
 #### Get a Specific Organization by Identifier
 
 ```http
-GET /admin/realms/orgiam/groups?search=5590026042&exact=true
+GET /admin/realms/orgiam/groups?search=2021006883&exact=true
 ```
 
 #### Update Organization Metadata
@@ -1289,11 +1291,12 @@ PUT /admin/realms/orgiam/groups/<org-group-id>
 Content-Type: application/json
 
 {
-  "name": "5590026042",
+  "name": "2021006883",
   "attributes": {
-    "organization_identifier": ["5590026042"],
-    "organization_name#sv": ["Litsec AB — uppdaterat namn"],
-    "organization_name#en": ["Litsec AB — updated name"]
+    "organization_identifier": ["2021006883"],
+    "organization_name": ["Myndigheten för Digital förvaltning"],
+    "organization_name#sv": ["Digg - Myndigheten för Digital förvaltning, uppdaterat namn"],
+    "organization_name#en": ["Digg - Authority for Digital Government, updated name"]
   }
 }
 ```
@@ -1342,7 +1345,7 @@ POST /admin/realms/orgiam/client-scopes
 Content-Type: application/json
 
 {
-  "name": "5590026042:demo:read",
+  "name": "2021006883:demo:read",
   "protocol": "openid-connect",
   "attributes": {
     "include.in.token.scope": "true",
@@ -1363,7 +1366,7 @@ this registry. Create each of the three scopes on **both** clients:
 POST /admin/realms/orgiam/clients/<client-id>/authz/resource-server/scope
 Content-Type: application/json
 
-{ "name": "5590026042:demo:read" }
+{ "name": "2021006883:demo:read" }
 ```
 
 Repeat for `:write` and `:admin`. The response body contains the created scope with its `id`.
@@ -1378,14 +1381,14 @@ POST /admin/realms/orgiam/clients/<client-id>/authz/resource-server/policy/group
 Content-Type: application/json
 
 {
-  "name": "policy-5590026042-demo-read",
+  "name": "policy-2021006883-demo-read",
   "groups": [
-    { "path": "/orgs/5590026042/_read",        "extendChildren": false },
-    { "path": "/orgs/5590026042/_write",       "extendChildren": false },
-    { "path": "/orgs/5590026042/_admin",       "extendChildren": false },
-    { "path": "/orgs/5590026042/demo/_read",   "extendChildren": false },
-    { "path": "/orgs/5590026042/demo/_write",  "extendChildren": false },
-    { "path": "/orgs/5590026042/demo/_admin",  "extendChildren": false }
+    { "path": "/orgs/2021006883/_read",        "extendChildren": false },
+    { "path": "/orgs/2021006883/_write",       "extendChildren": false },
+    { "path": "/orgs/2021006883/_admin",       "extendChildren": false },
+    { "path": "/orgs/2021006883/demo/_read",   "extendChildren": false },
+    { "path": "/orgs/2021006883/demo/_write",  "extendChildren": false },
+    { "path": "/orgs/2021006883/demo/_admin",  "extendChildren": false }
   ],
   "logic": "POSITIVE",
   "decisionStrategy": "AFFIRMATIVE"
@@ -1407,15 +1410,15 @@ POST /admin/realms/orgiam/clients/<client-id>/authz/resource-server/permission/s
 Content-Type: application/json
 
 {
-  "name": "permission-5590026042-demo-read",
+  "name": "permission-2021006883-demo-read",
   "type": "scope",
-  "scopes": ["5590026042:demo:read"],
+  "scopes": ["2021006883:demo:read"],
   "policies": ["<policy-id>"],
   "decisionStrategy": "AFFIRMATIVE"
 }
 ```
 
-> **Note:** The `scopes` array must contain the **scope name** (e.g. `"5590026042:demo:read"`),
+> **Note:** The `scopes` array must contain the **scope name** (e.g. `"2021006883:demo:read"`),
 > not the scope UUID. This is inconsistent with the `policies` field which takes a UUID, but it
 > is how the Keycloak Authorization Services API works.
 
@@ -1503,7 +1506,7 @@ GET /admin/realms/orgiam/groups?search=_write&exact=true
 Alternatively, traverse the tree:
 
 ```http
-GET /admin/realms/orgiam/groups?search=5590026042&exact=true
+GET /admin/realms/orgiam/groups?search=2021006883&exact=true
 ```
 
 Then navigate into sub-groups using the returned `subGroupCount` or:
@@ -1514,7 +1517,7 @@ GET /admin/realms/orgiam/groups/<org-group-id>/children
 
 #### Assign a Right to a User
 
-Add the user to the appropriate right group. For `write` on `demo` under `5590026042`:
+Add the user to the appropriate right group. For `write` on `demo` under `2021006883`:
 
 ```http
 PUT /admin/realms/orgiam/users/<user-id>/groups/<_write-group-id-under-demo>
@@ -1610,8 +1613,8 @@ Then for each organization, check if a child group exists with the desired funct
 GET /admin/realms/orgiam/groups/<group-id>/members
 ```
 
-For example, to list all users with `write` right on `demo` under `5590026042`, obtain
-the ID of `orgs/5590026042/demo/_write` and call the members endpoint.
+For example, to list all users with `write` right on `demo` under `2021006883`, obtain
+the ID of `orgs/2021006883/demo/_write` and call the members endpoint.
 
 ---
 
@@ -1635,21 +1638,23 @@ Content-Type: application/json
 
 {
   "id": "<org-group-id>",
-  "name": "5590026042",
+  "name": "2021006883",
   "attributes": {
-    "organization_identifier": ["5590026042"],
-    "organization_name#sv": ["Litsec AB"],
-    "organization_name#en": ["Litsec AB"],
-    "contact_info": ["{\"email\":\"info@litsec.se\",\"phone_number\":\"+46701234567\"}"]
+    "organization_identifier": ["2021006883"],
+    "organization_name": ["Myndigheten för Digital förvaltning"],
+    "organization_name#sv": ["Digg - Myndigheten för Digital förvaltning"],
+    "organization_name#en": ["Digg - Authority for Digital Government"],
+    "contact_info": ["{\"email\":\"info@digg.se\",\"phone_number\":\"+46701234567\"}"]
   }
 }
 ```
 
 The `contact_info` attribute is a single-element list containing a compact JSON string with
 the optional members `email` and `phone_number`. Omit the attribute entirely if no contact
-details are set. Always carry forward the existing `organization_identifier` and
-`organization_name#*` attributes when only updating contact info, and vice versa — the PUT
-replaces all attributes.
+details are set. Always carry forward the existing `organization_identifier`,
+`organization_name` and any `organization_name#*` attributes when only updating contact info, and
+vice versa, since the PUT replaces all attributes. `organization_name` holds the legal name and is
+mandatory; the tagged display names are optional and may simply be omitted.
 
 A `204 No Content` response indicates success.
 
