@@ -132,7 +132,8 @@ Managed clients are OIDC relying parties / OAuth2 clients. The shape is identica
 - `clientAuthenticatorType=client-jwt` (private_key_jwt, RFC 7523)
 - `standardFlowEnabled=true`, `implicitFlowEnabled=false`, `directAccessGrantsEnabled=false`
 - `authorizationServicesEnabled=true`
-- `rootUrl` = client id, `redirectUris` as supplied
+- `redirectUris` as supplied. `rootUrl` is never written: it is read to expand relative redirect
+  URIs for display and otherwise left as the client has it, including having none
 - Attributes per 4.1
 - Protocol mappers: `org-rights-mapper`, `scope-org-identifier-mapper`,
   `resource-audience-mapper`
@@ -145,7 +146,7 @@ Managed clients are OIDC relying parties / OAuth2 clients. The shape is identica
 | Field | Rule |
 |---|---|
 | `clientId` | Required, non-blank, must not already exist in the realm |
-| `redirectUris` | Required, at least one entry. Each must be an absolute URI and **must not contain `*`** — wildcard redirect patterns are rejected |
+| `redirectUris` | Required, at least one entry. Each must be an absolute URI. A `*` is accepted **only as the final character**, which is the form Keycloak matches; a `*` in the scheme, the host, the middle of the path or a query is rejected |
 | `functions` | Optional. Each identifier must resolve via `fetchAllFunctions()`. An empty list means the client handles no functions — never all of them |
 | JWKS | Exactly one of `jwksUri` / `jwksString`. `jwksUri` must be an absolute `https` URI; `jwksString` must parse as a JWK Set |
 
@@ -434,7 +435,9 @@ iam:
   nothing missing, missing scope, missing policy, missing permission, missing optional
   scope binding, client narrowed to a subset of functions.
 - `ManagedClientInfo.handles()` — exact match, non-match, legacy empty set.
-- Request validation — wildcard redirect URI rejected, both/neither JWKS form rejected,
+- Request validation — redirect URI wildcard accepted at the end and rejected elsewhere,
+  relative redirect URI expanded against the root URL and rejected without one,
+  both/neither JWKS form rejected,
   empty function list rejected, unknown function rejected, duplicate client id rejected.
 - `ClientController` MockMvc tests following `UserRightsControllerAdminGateTest`:
   superuser gate (`403` for non-superusers on every endpoint), including on `DELETE`.
