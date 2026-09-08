@@ -19,6 +19,8 @@ interface UserFormProps {
   functions: FunctionType[];
   isOpen: boolean;
   currentUserId: string;
+  /** When false, the admin right is read-only: it cannot be granted, changed or removed here. */
+  canAssignAdmin: boolean;
   onClose: () => void;
   onSave: (user: Omit<User, 'id'> & { id?: string }) => void;
   onRemoveRight: (
@@ -36,7 +38,7 @@ interface UserFormProps {
   ) => void;
 }
 
-export function UserForm({ user, organizations, functions, isOpen, currentUserId, onClose, onSave, onRemoveRight, onChangeRight }: UserFormProps) {
+export function UserForm({ user, organizations, functions, isOpen, currentUserId, canAssignAdmin, onClose, onSave, onRemoveRight, onChangeRight }: UserFormProps) {
   const { t, language } = useLanguage();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -251,7 +253,7 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
                         return (
                           <div key={i} className="flex items-center justify-between bg-white p-2 rounded border">
                             <span className="text-sm">{orgName}</span>
-                            {isSelf ? (
+                            {isSelf || (!canAssignAdmin && r.right === 'admin') ? (
                               <Badge variant={getRoleBadgeVariant(r.right)}>{t(`role.${r.right}`)}</Badge>
                             ) : (
                               <div className="flex items-center gap-1">
@@ -267,7 +269,7 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
                                   >
                                     <option value="read">{t('role.read')}</option>
                                     <option value="write">{t('role.write')}</option>
-                                    <option value="admin">{t('role.admin')}</option>
+                                    {canAssignAdmin && <option value="admin">{t('role.admin')}</option>}
                                   </select>
                                 ) : (
                                   <Badge
@@ -318,7 +320,7 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
                               <p className="text-sm font-medium">{orgName}</p>
                               <p className="text-xs text-gray-500">{func ? (language === 'sv' ? func.nameSv : func.nameEn) || (language === 'sv' ? func.nameEn : func.nameSv) || func.name : r.functionId}</p>
                             </div>
-                            {isSelf ? (
+                            {isSelf || (!canAssignAdmin && r.right === 'admin') ? (
                               <Badge variant={getRoleBadgeVariant(r.right)}>{t(`role.${r.right}`)}</Badge>
                             ) : (
                               <div className="flex items-center gap-1">
@@ -334,7 +336,7 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
                                   >
                                     <option value="read">{t('role.read')}</option>
                                     <option value="write">{t('role.write')}</option>
-                                    <option value="admin">{t('role.admin')}</option>
+                                    {canAssignAdmin && <option value="admin">{t('role.admin')}</option>}
                                   </select>
                                 ) : (
                                   <Badge

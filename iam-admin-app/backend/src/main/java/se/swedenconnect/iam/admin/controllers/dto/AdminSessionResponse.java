@@ -33,6 +33,7 @@ public record AdminSessionResponse(
     @Nullable String orgConstraint,
     boolean allowFunctionRemoval,
     boolean allowOrgRights,
+    boolean allowAdminAssigningAdmin,
     @NonNull List<FunctionResponse> functions,
     @NonNull List<OrgRightResponse> orgRights,
     @NonNull Set<String> adminOrgIdentifiers) {

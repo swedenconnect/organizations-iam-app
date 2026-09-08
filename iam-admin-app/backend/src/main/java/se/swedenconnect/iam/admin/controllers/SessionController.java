@@ -88,6 +88,7 @@ public class SessionController {
         data.orgConstraint(),
         this.properties.isAllowFunctionRemoval(),
         this.properties.isAllowOrgRights(),
+        this.properties.isAllowAdminAssigningAdmin(),
         data.functions().stream().map(SessionController::toFunctionResponse).toList(),
         toOrgRights(data.claim()),
         data.adminOrgIdentifiers()

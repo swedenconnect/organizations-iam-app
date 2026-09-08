@@ -8,8 +8,19 @@
 
 **Date:** 
 
+- **An admin can no longer create further admins.** The new
+  `iam.admin.allow-admin-assigning-admin` setting, which defaults to `false`, restricts a caller
+  who is not a superuser to the `read` and `write` rights. Such a caller can neither grant nor
+  remove the `admin` right, nor lower an existing admin to a lesser right, at the organization
+  level or at the organization/function level.
+
+  The intended consequence is that the admin population of an organization or a function does not
+  change without a superuser. Combined with the existing rule that the last admin of a scope
+  cannot be removed, an organization whose only admin is not a superuser keeps exactly that one
+  admin until a superuser intervenes.
+
 - **An organization now carries a legal name, and the two existing names become optional display
-  names.** The legal name is the name registered at Bolagsverket. It is mandatory and is what
+  names.** The legal name is the registered name. It is mandatory and is what
   identifies the organization. The Swedish and English names become optional display names, used for
   presentation only; the legal name is shown where none is set. See
   [Rights Model](rights-model.md) for the group attributes and the claim.

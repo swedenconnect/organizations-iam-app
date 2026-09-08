@@ -163,6 +163,21 @@ for that function.
 A special `superuser` role exists at the realm level. A user holding this role can administer
 all organizations, all functions, and all users, regardless of group memberships.
 
+#### Who may grant the `admin` right
+
+Whether an organization admin or a function admin may manage the `admin` right within the scope
+they administer is not fixed by the model. A deployment may permit it, or restrict it so that only
+a superuser can grant, remove or downgrade `admin`. Both positions are legitimate.
+
+Where it is restricted, an admin works with `read` and `write` only: they cannot make another user
+an admin, they cannot remove an existing admin, and they cannot lower an existing admin to a lesser
+right. It follows that the admin population of an organization or a function does not change
+without a superuser. Combined with the rule that the last admin of a scope cannot be removed, an
+organization whose only admin is not a superuser keeps exactly that one admin until a superuser
+intervenes.
+
+Superusers are unaffected either way.
+
 <a name="group-structure"></a>
 
 ### 2.5. Group Structure
