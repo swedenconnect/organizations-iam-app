@@ -39,6 +39,7 @@ import se.swedenconnect.iam.admin.keycloak.model.UserRight;
 import se.swedenconnect.iam.commons.types.LocalizedString;
 
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -1300,6 +1301,39 @@ public class KeycloakAdminClient {
    * @param client the client representation
    * @return the managed client, or {@code null} if the representation has no id or clientId
    */
+  /**
+   * Expands a redirect URI that Keycloak stores as a path into the complete URI it resolves to.
+   *
+   * <p>Keycloak permits a redirect URI given as a path only and resolves it against the client root
+   * URL. Showing the stored value raw leaves the user unable to see where the callback actually
+   * goes, so it is joined here with exactly one {@code /} between the two parts. A trailing wildcard
+   * is carried along untouched.</p>
+   *
+   * <p>Where the client has no root URL the path is returned unchanged. Keycloak would resolve it
+   * against the auth server root URL, but that is not known here, and guessing would display a
+   * callback that is not the real one. Such a URI is rejected on save, so the user has to complete
+   * it first.</p>
+   *
+   * @param uri the stored redirect URI
+   * @param rootUrl the client's root URL, or {@code null} if it has none
+   * @return the complete redirect URI, or the input unchanged if it cannot be expanded
+   */
+  static @NonNull String expandRedirectUri(final @NonNull String uri, final @Nullable String rootUrl) {
+    if (rootUrl == null || rootUrl.isBlank() || uri.isBlank()) {
+      return uri;
+    }
+    try {
+      if (new URI(uri).isAbsolute()) {
+        return uri;
+      }
+    }
+    catch (final URISyntaxException e) {
+      return uri;
+    }
+    final String base = rootUrl.endsWith("/") ? rootUrl.substring(0, rootUrl.length() - 1) : rootUrl;
+    return uri.startsWith("/") ? base + uri : base + "/" + uri;
+  }
+
   private @Nullable ManagedClientInfo toManagedClientInfo(final @NonNull Map<String, Object> client) {
     final String uuid = getString(client, "id");
     final String clientId = getString(client, "clientId");
@@ -1307,8 +1341,13 @@ public class KeycloakAdminClient {
       log.debug("Skipping Keycloak client representation without id or clientId");
       return null;
     }
+    final String rootUrl = getString(client, "rootUrl");
     final List<String> redirectUris = client.get("redirectUris") instanceof final List<?> uris
-        ? uris.stream().filter(String.class::isInstance).map(String.class::cast).toList()
+        ? uris.stream()
+            .filter(String.class::isInstance)
+            .map(String.class::cast)
+            .map(uri -> expandRedirectUri(uri, rootUrl))
+            .toList()
         : List.of();
     return new ManagedClientInfo(
         uuid,
@@ -1685,7 +1724,8 @@ public class KeycloakAdminClient {
 
     if (oidcClient) {
       attributes.put(SERVICE_ACCOUNT_ATTRIBUTE, String.valueOf(serviceAccount));
-      body.put("rootUrl", body.get("clientId"));
+      // The root URL is never written. It is read to expand relative redirect URIs for display and
+      // is otherwise left exactly as the client has it, including having none.
       body.put("redirectUris", redirectUris);
       body.put("clientAuthenticatorType", "client-jwt");
       attributes.put("iam_admin_managed", "true");

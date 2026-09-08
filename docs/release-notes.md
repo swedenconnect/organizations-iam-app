@@ -40,8 +40,7 @@
 - **Managed clients can be administered from the IAM admin application.** A superuser can register,
   edit and delete OIDC clients under a new **Services** tab, instead of running
   `add-oidc-client.sh` and `set-iam-admin-managed.sh` against the Keycloak host. A client is
-  registered with the same settings the script applies. Redirect URIs must be exact, wildcards are
-  rejected, and deletion is permanent.
+  registered with the same settings the script applies.
 
 - **Clients and resource servers are administered in one place, and a client can be both.** A client
   carries two independent roles, set with toggles when it is registered: *OIDC client*, which logs

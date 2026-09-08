@@ -203,10 +203,11 @@ downstream APIs on behalf of users.
 - Optional client scopes: `https://id.oidc.se/scope/naturalPersonNumber` and `phone`
 - Service account with `realm-management` roles (if `--service-account` is passed)
 
-A re-run against an existing client overwrites `rootUrl`, `redirectUris`, the
-`iam_admin_managed` attribute, and the JWKS URL with the values from the current
-invocation. Redirect URI patterns added manually in the Keycloak UI will be removed on
-re-run.
+A re-run against an existing client overwrites `redirectUris`, the `iam_admin_managed`
+attribute, and the JWKS URL with the values from the current invocation. Redirect URI
+patterns added manually in the Keycloak UI will be removed on re-run. `rootUrl` is only
+written when the invocation supplies one (see below); otherwise a root URL already on the
+client is left untouched.
 
 `{org}:{function}:{right}` scopes and their Authorization Services policies are **not**
 created by this script — they are managed automatically by the IAM admin application when
@@ -233,6 +234,7 @@ functions are attached to organizations.
 | `--client-id <id>` | Yes | prompt | OAuth2 `client_id` — typically the application's base URL |
 | `--name <name>` | No | | Display name shown in the Keycloak admin console |
 | `--redirect-uri <pattern>` | Yes | prompt | Redirect URI pattern. May be repeated (see note below). |
+| `--root-url <url>` | No | prompt when a redirect URI is a path | Client root URL. Written only when supplied (see note below). |
 | `--jwks-url <url>` | No | `{client-id}/jwks` | JWKS endpoint for `private_key_jwt` client authentication |
 | `--service-account` | No | off | Enable service account and assign `realm-management` roles |
 | `--no-org-rights-id-token` | No | *(included)* | Exclude `org_rights` from the ID token |
@@ -244,7 +246,16 @@ functions are attached to organizations.
 > `/login/oauth2/code/*` for OIDC and `/callback/oauth2/code/*` for OAuth2 client flows.
 > A plain OIDC relying party typically needs only a single `--redirect-uri`.
 
-**Example — standard OIDC/OAuth client:**
+> **The root URL follows the redirect URIs.** Keycloak resolves a redirect URI given as a
+> path against the client's root URL, and ignores the root URL when the redirect URIs are
+> complete. The script therefore writes a root URL only when the invocation supplies one:
+> if at least one `--redirect-uri` starts with `/` and `--root-url` was not given, it asks
+> for the root URL once, offering the client ID as the default. If every redirect URI is a
+> complete URI and `--root-url` was not given, nothing is asked and no root URL is sent, so
+> whatever the client already has stays as it is. `--root-url` is always honoured without a
+> prompt, whatever form the redirect URIs take.
+
+**Example — standard OIDC/OAuth client (complete redirect URI, no root URL involved):**
 
 ```bash
 ./keycloak/scripts/add-oidc-client.sh \
@@ -254,7 +265,21 @@ functions are attached to organizations.
     --password keycloak \
     --client-id https://my-app.example.com \
     --name "My App" \
-    --redirect-uri '/login/oauth2/code/*'
+    --redirect-uri 'https://my-app.example.com/login/oauth2/code/*'
+```
+
+**Example — redirect URI given as a path (root URL supplied so nothing is prompted for):**
+
+```bash
+./keycloak/scripts/add-oidc-client.sh \
+    --url https://keycloak.example.com \
+    --realm orgiam \
+    --username admin \
+    --password keycloak \
+    --client-id https://my-app.example.com \
+    --name "My App" \
+    --redirect-uri '/login/oauth2/code/*' \
+    --root-url https://my-app.example.com
 ```
 
 **Example — IAM admin application (needs service account for Keycloak Admin API access):**
@@ -267,7 +292,7 @@ functions are attached to organizations.
     --password keycloak \
     --client-id https://iam.example.com \
     --name "IAM Admin Application" \
-    --redirect-uri '/login/oauth2/code/*' \
+    --redirect-uri 'https://iam.example.com/login/oauth2/code/*' \
     --service-account
 ```
 
@@ -280,7 +305,7 @@ functions are attached to organizations.
     --username admin \
     --password keycloak \
     --client-id https://my-app.example.com \
-    --redirect-uri '/login/oauth2/code/*' \
+    --redirect-uri 'https://my-app.example.com/login/oauth2/code/*' \
     --no-org-rights-access-token
 ```
 
@@ -463,7 +488,7 @@ your actual values.
     --password keycloak \
     --client-id https://iam.example.com \
     --name "IAM Admin Application" \
-    --redirect-uri '/login/oauth2/code/*' \
+    --redirect-uri 'https://iam.example.com/login/oauth2/code/*' \
     --service-account
 ```
 
@@ -477,7 +502,7 @@ your actual values.
     --password keycloak \
     --client-id https://my-app.example.com \
     --name "My App" \
-    --redirect-uri '/login/oauth2/code/*' \
+    --redirect-uri 'https://my-app.example.com/login/oauth2/code/*' \
     --no-org-rights-access-token
 ```
 

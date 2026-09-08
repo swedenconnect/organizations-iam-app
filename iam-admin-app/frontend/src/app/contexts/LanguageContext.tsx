@@ -16,7 +16,7 @@ const translations = {
     'header.adminPortal': 'Admin Portal',
     'header.logout': 'Logout',
     'header.language': 'English',
-    
+
     // Login
     'login.title': 'Admin Login',
     'login.description': 'Sign in to manage organizations and users',
@@ -29,7 +29,7 @@ const translations = {
     // Dashboard
     'dashboard.title': 'Admin Dashboard',
     'dashboard.description': 'Manage organizations and users',
-    
+
     // Organizations
     'organizations.title': 'Organizations',
     'organizations.count': 'organization',
@@ -47,7 +47,7 @@ const translations = {
     'organizations.contactEmail': 'Contact Email',
     'organizations.contactPhone': 'Contact Phone Number',
     'organizations.invalidOrgNumber': 'Organization number must be 10 digits',
-    
+
     // Users
     'users.title': 'Users',
     'users.count': 'user',
@@ -83,7 +83,7 @@ const translations = {
     'services.clientIdHint': 'The value clients target with the OAuth2 resource parameter, and the aud claim they receive.',
     'clients.roles': 'Client Roles',
     'clients.roleOidcClient': 'OIDC Client',
-    'clients.roleOidcClientHint': 'The client logs users in and requests org-scoped tokens. Requires redirect URIs and client keys.',
+    'clients.roleOidcClientHint': 'The client logs in users and requests org-scoped tokens. Requires redirect URIs and client keys.',
     'clients.roleResourceServer': 'Resource Server',
     'clients.roleResourceServerHint': 'Other clients may request this client as a token audience (aud).',
     'clients.validation.roleRequired': 'Select at least one role',
@@ -98,15 +98,15 @@ const translations = {
     'clients.search': 'Search clients',
     'clients.empty': 'No managed clients yet.',
     'clients.clientId': 'Client ID',
-    'clients.clientIdHint': 'Used as the OAuth2 client_id and as the client root URL.',
+    'clients.clientIdHint': 'Used as the OAuth2 client_id.',
     'clients.clientIdImmutable': 'The client ID cannot be changed after creation.',
     'clients.name': 'Display Name',
     'clients.redirectUris': 'Redirect URIs',
-    'clients.redirectUrisHint': 'Exact URIs only. Wildcards are not accepted.',
+    'clients.redirectUrisHint': 'Absolute URIs. A wildcard (*) is allowed only as the last character and not in a URI with a query string, for example https://app.example.com/login/oauth2/code/*',
     'clients.addRedirectUri': 'Add redirect URI',
     'clients.functions': 'Functions',
     'clients.functionsHint': 'The client receives scopes for these functions in every organization they are attached to.',
-    'clients.unscoped': 'No functions selected. This client receives no scopes at all.',
+    'clients.unscoped': 'No associated functions.',
     'clients.jwks': 'Client Keys (JWKS)',
     'clients.jwksUri': 'JWKS URI',
     'clients.jwksInline': 'Inline JWK Set',
@@ -128,7 +128,7 @@ const translations = {
     'clients.confirmDeletePrefix': 'The client ',
     'clients.confirmDeleteSuffix': ' is permanently removed from, together with its policies and permissions. This cannot be undone.',
     'clients.validation.redirectRequired': 'At least one redirect URI is required',
-    'clients.validation.noWildcards': '(*) is not allowed. Enter the exact redirect URI',
+    'clients.validation.wildcardPosition': 'A wildcard (*) is allowed only as the last character of a redirect URI, and not in one with a query string',
     'clients.validation.absoluteUri': 'Redirect URIs must be absolute',
     'clients.validation.jwksHttps': 'The JWKS URI must be an absolute https URI',
     'clients.error.duplicate': 'A client with that client ID already exists',
@@ -164,12 +164,12 @@ const translations = {
     'functions.help': 'Help',
     'functions.helpTitle': 'What is a Function?',
     'functions.helpContent': 'A Function represents a specific area of functionality or service that can be assigned to organizations. Users can be granted rights on specific functions within an organization, allowing for granular access control beyond organization-level permissions. For example, if an organization has access to multiple services, you can assign different users to different functions based on their responsibilities.',
-    
+
     // Roles
     'role.read': 'Read',
     'role.write': 'Write',
     'role.admin': 'Admin',
-    
+
     // Common
     'common.save': 'Save',
     'common.cancel': 'Cancel',
@@ -204,7 +204,7 @@ const translations = {
     'search.organizations': 'Search organizations by name or number',
     'search.users': 'Search users by name or ID',
     'search.functions': 'Search functions by name or description',
-    
+
     // Organization details
     'org.usersWithAccess': 'Users with access on organizational level',
     'org.noUsers': 'No users have access to this organization',
@@ -285,7 +285,7 @@ const translations = {
     'header.adminPortal': 'Administrationsportal',
     'header.logout': 'Logga ut',
     'header.language': 'Svenska',
-    
+
     // Login
     'login.title': 'Administratörsinloggning',
     'login.description': 'Logga in för att hantera organisationer och användare',
@@ -294,11 +294,11 @@ const translations = {
     'login.demo': 'Demo: Klicka för att simulera OpenID Connect-autentisering',
     'login.accessDenied': 'Du har inte administrativa rättigheter att utföra användardelegering. Kontakta din systemadministratör.',
     'login.sessionExpired': 'Din session har gått ut. Logga in igen.',
-    
+
     // Dashboard
     'dashboard.title': 'Administratörspanel',
     'dashboard.description': 'Hantera organisationer och användare',
-    
+
     // Organizations
     'organizations.title': 'Organisationer',
     'organizations.count': 'organisation',
@@ -316,7 +316,7 @@ const translations = {
     'organizations.contactEmail': 'Kontakt E-post',
     'organizations.contactPhone': 'Kontakt Telefonnummer',
     'organizations.invalidOrgNumber': 'Organisationsnummer måste vara 10 siffror',
-    
+
     // Users
     'users.title': 'Användare',
     'users.count': 'användare',
@@ -367,15 +367,15 @@ const translations = {
     'clients.search': 'Sök klienter',
     'clients.empty': 'Inga hanterade klienter ännu.',
     'clients.clientId': 'Client-ID',
-    'clients.clientIdHint': 'Används som OAuth2 client_id och som klientens rot-URL.',
+    'clients.clientIdHint': 'Används som OAuth2 client_id.',
     'clients.clientIdImmutable': 'Client-ID kan inte ändras efter att klienten skapats.',
     'clients.name': 'Visningsnamn',
     'clients.redirectUris': 'Redirect-URI:er',
-    'clients.redirectUrisHint': 'Endast exakta URI:er (*) accepteras inte.',
+    'clients.redirectUrisHint': 'Absoluta URI:er. Ett jokertecken (*) är endast tillåtet som sista tecken och inte i en URI med frågesträng, till exempel https://app.example.com/login/oauth2/code/*',
     'clients.addRedirectUri': 'Lägg till redirect-URI',
     'clients.functions': 'Funktioner',
     'clients.functionsHint': 'Klienten får scopes för dessa funktioner i alla organisationer där de är kopplade.',
-    'clients.unscoped': 'Inga funktioner valda.',
+    'clients.unscoped': 'Inga associerade funktioner.',
     'clients.jwks': 'Klientnycklar (JWKS)',
     'clients.jwksUri': 'JWKS-URI',
     'clients.jwksInline': 'Inbäddad JWK Set',
@@ -397,7 +397,7 @@ const translations = {
     'clients.confirmDeletePrefix': 'Klienten ',
     'clients.confirmDeleteSuffix': ' tas bort permanent, tillsammans med sina policyer och behörigheter. Detta kan inte ångras.',
     'clients.validation.redirectRequired': 'Minst en redirect-URI krävs',
-    'clients.validation.noWildcards': '(*) är inte tillåtna. Ange exakt redirect-URI',
+    'clients.validation.wildcardPosition': 'Ett jokertecken (*) är endast tillåtet som sista tecken i en redirect-URI, och inte i en URI med frågesträng',
     'clients.validation.absoluteUri': 'Redirect-URI:er måste vara absoluta',
     'clients.validation.jwksHttps': 'JWKS-URI måste vara en absolut https-URI',
     'clients.error.duplicate': 'Det finns redan en klient med det client-ID:t',
@@ -433,12 +433,12 @@ const translations = {
     'functions.help': 'Hjälp',
     'functions.helpTitle': 'Vad är en funktion?',
     'functions.helpContent': 'En funktion representerar ett specifikt område av funktionalitet eller tjänst som kan tilldelas organisationer. Användare kan ges rättigheter på specifika funktioner inom en organisation, vilket möjliggör granulär åtkomstkontroll utöver organisationsnivåns behörigheter. Till exempel, om en organisation har åtkomst till flera tjänster kan du tilldela olika användare till olika funktioner baserat på deras ansvar.',
-    
+
     // Roles
     'role.read': 'Läs',
     'role.write': 'Skriv',
     'role.admin': 'Admin',
-    
+
     // Common
     'common.save': 'Spara',
     'common.cancel': 'Avbryt',
@@ -473,7 +473,7 @@ const translations = {
     'search.organizations': 'Sök organisationer efter namn eller nummer',
     'search.users': 'Sök användare efter namn eller ID',
     'search.functions': 'Sök funktioner efter namn eller beskrivning',
-    
+
     // Organization details
     'org.usersWithAccess': 'Användare med åtkomst på organisationsnivå',
     'org.noUsers': 'Inga användare har åtkomst till denna organisation',

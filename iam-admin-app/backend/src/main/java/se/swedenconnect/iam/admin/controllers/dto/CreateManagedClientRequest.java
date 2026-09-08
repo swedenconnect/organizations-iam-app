@@ -31,7 +31,8 @@ import java.util.Set;
  * @param name the display name or description, or {@code null}
  * @param oidcClient whether the client obtains org-scoped tokens; requires redirect URIs and JWKS
  * @param resourceServer whether other clients may name it as an OAuth2 {@code resource} target
- * @param redirectUris the redirect URIs; at least one, and none may contain a wildcard
+ * @param redirectUris the redirect URIs; at least one, each an absolute URI. A {@code *} is
+ *     accepted only as the final character, which is the form Keycloak matches
  * @param functions the functions the client handles; at least one
  * @param jwksUri the JWKS URI; exactly one of {@code jwksUri} and {@code jwksString} must be given
  * @param jwksString the inline JWK Set; exactly one of {@code jwksUri} and {@code jwksString} must

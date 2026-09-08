@@ -413,8 +413,9 @@ public class ClientController {
       if (uri.isBlank()) {
         return "redirectUris must not contain blank entries";
       }
-      if (uri.contains("*")) {
-        return "wildcards are not allowed in redirectUris — enter the exact redirect URI";
+      if (!wildcardOnlyAtEnd(uri)) {
+        return "a wildcard is only allowed as the last character of a redirectUri, "
+            + "and not in one carrying a query string: " + uri;
       }
       if (!isAbsoluteUri(uri)) {
         return "redirectUri is not an absolute URI: " + uri;
@@ -482,6 +483,28 @@ public class ClientController {
    * @param value the value to check
    * @return {@code true} if the value parses as an absolute URI
    */
+  /**
+   * True if the URI carries no wildcard, or carries one in the only position Keycloak matches.
+   *
+   * <p>This is Keycloak's own rule and nothing wider: it treats a redirect URI as a wildcard
+   * pattern only when the {@code *} is the final character and the pattern carries no query string.
+   * A {@code *} in the scheme, the host or the middle of the path, or a trailing {@code *} after a
+   * {@code ?}, is matched literally, which would produce a client whose callbacks silently never
+   * match. {@code https://app.example.com/cb/*} is valid; {@code https://*.example.com/cb},
+   * {@code https://app.example.com/*}{@code /cb} and {@code https://app.example.com/cb?next=*} are
+   * not.</p>
+   *
+   * @param value the redirect URI
+   * @return {@code true} if the URI's use of {@code *} is acceptable
+   */
+  static boolean wildcardOnlyAtEnd(final @NonNull String value) {
+    final int first = value.indexOf('*');
+    if (first < 0) {
+      return true;
+    }
+    return first == value.length() - 1 && value.indexOf('?') < 0;
+  }
+
   private static boolean isAbsoluteUri(final @NonNull String value) {
     try {
       return new URI(value).isAbsolute();

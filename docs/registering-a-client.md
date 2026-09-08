@@ -132,16 +132,17 @@ At least one role is required.
 
 | Field | Rules |
 |---|---|
-| **Client ID** | Required. Used as the OAuth2 `client_id` and as the client's root URL, typically the application's base URL. No whitespace. Cannot be changed after creation. |
+| **Client ID** | Required. Used as the OAuth2 `client_id`, typically the application's base URL. No whitespace. Cannot be changed after creation. |
 | **Display Name** | Optional. Shown in the Keycloak admin console and in the client list. |
-| **Redirect URIs** | Required for the OIDC client role. Absolute URIs only, and **no wildcards**, enter each callback URI exactly. Use **Add redirect URI** for more than one. |
+| **Redirect URIs** | Required for the OIDC client role. Absolute URIs. A `*` is accepted only as the **last character**, for example `https://app.example.com/login/oauth2/code/*`. Use **Add redirect URI** for more than one. |
 | **Functions** | Optional. The complete list of functions this client receives artifacts for. Selecting none means *none*, never *all*. |
 | **Client Keys (JWKS)** | Required for the OIDC client role. Either a **JWKS URI** (absolute, `https://`) or an **Inline JWK Set**, exactly one of the two. |
 
-> **Redirect URIs differ between the routes.** The GUI and the REST API reject wildcards
-> outright. `add-oidc-client.sh` takes URI *patterns* and its examples use them
-> (`/login/oauth2/code/*`). A client registered by script with a wildcard pattern keeps it;
-> the admin application will not let you enter a new one.
+> **Relative redirect URIs are shown complete.** Keycloak allows a redirect URI given as a path
+> and resolves it against the client's root URL. Where a client has a root URL, the application
+> shows and saves the two joined, so a client registered by script with a path shows the full
+> callback. Where a client has no root URL, the path is shown unchanged and must be completed
+> before the client can be saved.
 
 **About Functions:** the selected functions become the client's `client_functions`
 attribute. The client is then given scopes, policies and permissions for every organization
@@ -264,7 +265,20 @@ follow-up marking step is needed.
     --password keycloak \
     --client-id https://my-app.example.com \
     --name "My App" \
-    --redirect-uri '/login/oauth2/code/*'
+    --redirect-uri 'https://my-app.example.com/login/oauth2/code/*'
+```
+
+A redirect URI given as a complete URI needs no root URL, and the script writes none: a
+root URL already on the client stays as it is. Give the redirect URI as a path instead and
+Keycloak resolves it against the client's root URL, so the script asks for that root URL,
+offering the client ID as the default. Pass `--root-url` to answer it up front, which is
+what a non-interactive run needs:
+
+```bash
+./keycloak/scripts/add-oidc-client.sh \
+    ... \
+    --redirect-uri '/login/oauth2/code/*' \
+    --root-url https://my-app.example.com
 ```
 
 **Step 2. Declare the functions it handles:**
@@ -377,8 +391,8 @@ for an inline JWK Set; exactly one of the two is required for an OIDC client.
 
 The validation rules are the ones the [form](#fill-in-the-client-details) enforces, applied
 server-side as well: at least one role, no whitespace in `clientId`, at least one absolute
-wildcard-free redirect URI for an OIDC client, an `https://` `jwksUri`, and functions that
-exist in the realm.
+redirect URI for an OIDC client with any `*` as its last character, an `https://` `jwksUri`, and
+functions that exist in the realm.
 
 ---
 
@@ -426,8 +440,10 @@ Reconciliation removes the scopes a client holds that are not defined by a funct
 for that client. Attach the function groups, then reconcile again.
 
 **A redirect URI is rejected.**
-The GUI and the API accept absolute URIs only, and no wildcards. Enter each callback URI in
-full. Wildcard patterns can only be registered with `add-oidc-client.sh`.
+The GUI and the API accept absolute URIs, with a `*` allowed only as the last character. A `*` in
+the scheme, the host or the middle of the path is refused, because Keycloak would never match it.
+A redirect URI stored as a bare path is also refused unless the client has a root URL to expand it
+against; complete it by hand in that case.
 
 **`unknown function: <id>`.**
 The function does not exist in the realm. Create it under the **Functions** tab first.
