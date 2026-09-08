@@ -73,7 +73,7 @@ functions. Functions are defined centrally in Keycloak and can be attached to an
 of organizations.
 
 **Organizations** are identified by their ten-digit Swedish organizational number (e.g.
-`5590026042`). An organization participates in a function by having it attached, at which
+`2021006883`). An organization participates in a function by having it attached, at which
 point users can be granted rights on that function within that organization.
 
 **Rights** come in three levels: `read`, `write`, and `admin`. They are hierarchical:
@@ -89,7 +89,7 @@ per attached function, so relying parties never have to know which functions an 
 has attached.
 
 **OAuth2 scopes for API access** follow the pattern `{orgId}:{function}:{right}`, for
-example `5590026042:demo:write`. When a client application needs to call a downstream API
+example `2021006883:demo:write`. When a client application needs to call a downstream API
 on behalf of a user, it requests a scope of this form. Keycloak evaluates the user's group
 membership at token issuance time and either grants or denies the scope. Resource servers
 can therefore trust the granted scopes directly — no further authorization callback to
@@ -328,10 +328,10 @@ the same organization, the highest effective right is used. The resulting author
 `FunctionScopedAuthority` instances with the simplified form `{orgId}:{right}` — the function
 identifier is implicit.
 
-Example: a user was granted `read` at the organization level of `5590026042` (which has `demo`
+Example: a user was granted `read` at the organization level of `2021006883` (which has `demo`
 and `walletreg` attached) plus `write` on `demo`. The claim carries
 `{ "function": "demo", "right": "write" }` and `{ "function": "walletreg", "right": "read" }`,
-so a `demo`-scoped application derives the authority `5590026042:write`.
+so a `demo`-scoped application derives the authority `2021006883:write`.
 
 The `org_level_right` field of the claim is ignored when building authorities: it is provenance,
 not a grant. An org-level admin on an organization where the configured function is not attached
@@ -900,7 +900,7 @@ The redirect URL is composed as:
 Example:
 
 ```
-https://local.dev.swedenconnect.se:17005/sso/login?org=5590026042&func=demo
+https://local.dev.swedenconnect.se:17005/sso/login?org=2021006883&func=demo
 ```
 
 The recommended pattern is for the backend to construct and return this URL via an API

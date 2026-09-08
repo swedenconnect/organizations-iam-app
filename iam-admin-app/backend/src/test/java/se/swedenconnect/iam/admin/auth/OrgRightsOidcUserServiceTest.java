@@ -84,7 +84,7 @@ class OrgRightsOidcUserServiceTest {
   @Test
   void checkAdminConstraint_noAdminRight_throws() {
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
-        orgEntry("5590026042", new OrgRightsClaim.FunctionEntry("walletreg", "read"))
+        orgEntry("2021006883", new OrgRightsClaim.FunctionEntry("walletreg", "read"))
     ));
 
     assertThatThrownBy(() -> claimParser.checkAdminConstraint(claim, null, null))
@@ -102,7 +102,7 @@ class OrgRightsOidcUserServiceTest {
   @Test
   void checkAdminConstraint_adminRight_passes() {
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
-        orgEntry("5590026042", new OrgRightsClaim.FunctionEntry("walletreg", "admin"))
+        orgEntry("2021006883", new OrgRightsClaim.FunctionEntry("walletreg", "admin"))
     ));
 
     // Must not throw
@@ -114,10 +114,10 @@ class OrgRightsOidcUserServiceTest {
     // Org-level admin, expanded by the mapper onto the only attached function ('demo').
     // A walletreg-constrained login must be rejected — org_level_right grants nothing by itself.
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
-        orgEntry("5590026042", "admin", new OrgRightsClaim.FunctionEntry("demo", "admin"))
+        orgEntry("2021006883", "admin", new OrgRightsClaim.FunctionEntry("demo", "admin"))
     ));
 
-    assertThatThrownBy(() -> claimParser.checkAdminConstraint(claim, "5590026042", "walletreg"))
+    assertThatThrownBy(() -> claimParser.checkAdminConstraint(claim, "2021006883", "walletreg"))
         .isInstanceOf(InsufficientRightsException.class)
         .hasMessageContaining("walletreg");
   }
@@ -125,7 +125,7 @@ class OrgRightsOidcUserServiceTest {
   @Test
   void checkAdminConstraint_orgLevelAdminWithNoAttachedFunctions_throws() {
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
-        orgEntry("5590026042", "admin")
+        orgEntry("2021006883", "admin")
     ));
 
     assertThatThrownBy(() -> claimParser.checkAdminConstraint(claim, null, null))
@@ -139,7 +139,7 @@ class OrgRightsOidcUserServiceTest {
   @Test
   void buildAuthorities_withFuncConstraint_filtersToFunction() {
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
-        orgEntry("5590026042",
+        orgEntry("2021006883",
             new OrgRightsClaim.FunctionEntry("demo", "admin"),
             new OrgRightsClaim.FunctionEntry("walletreg", "write"))
     ));
@@ -154,14 +154,14 @@ class OrgRightsOidcUserServiceTest {
   @Test
   void buildAuthorities_withOrgConstraint_filtersToOrg() {
     final OrgRightsClaim claim = new OrgRightsClaim(false, List.of(
-        orgEntry("5590026042", new OrgRightsClaim.FunctionEntry("demo", "admin")),
+        orgEntry("2021006883", new OrgRightsClaim.FunctionEntry("demo", "admin")),
         orgEntry("5561234567", new OrgRightsClaim.FunctionEntry("walletreg", "write"))
     ));
 
-    final List<GrantedAuthority> authorities = claimParser.buildAuthorities(claim, "5590026042", null);
+    final List<GrantedAuthority> authorities = claimParser.buildAuthorities(claim, "2021006883", null);
 
     assertThat(authorities).hasSize(1);
-    assertThat(authorities.get(0).getAuthority()).contains("5590026042");
+    assertThat(authorities.get(0).getAuthority()).contains("2021006883");
     assertThat(authorities.get(0).getAuthority()).doesNotContain("5561234567");
   }
 
@@ -181,13 +181,15 @@ class OrgRightsOidcUserServiceTest {
   private static OrgRightsClaim.OrgEntry orgEntry(final String orgId,
       final OrgRightsClaim.FunctionEntry... functions) {
     return new OrgRightsClaim.OrgEntry(
-        OrganizationID.of(orgId), new LocalizedString(), null, List.of(functions));
+        OrganizationID.of(orgId), "Digg - Myndigheten för Digital förvaltning", new LocalizedString(), null,
+        List.of(functions));
   }
 
   /** As {@link #orgEntry(String, OrgRightsClaim.FunctionEntry...)}, but with an org-level right set. */
   private static OrgRightsClaim.OrgEntry orgEntry(final String orgId, final String orgLevelRight,
       final OrgRightsClaim.FunctionEntry... functions) {
     return new OrgRightsClaim.OrgEntry(
-        OrganizationID.of(orgId), new LocalizedString(), orgLevelRight, List.of(functions));
+        OrganizationID.of(orgId), "Digg - Myndigheten för Digital förvaltning", new LocalizedString(), orgLevelRight,
+        List.of(functions));
   }
 }

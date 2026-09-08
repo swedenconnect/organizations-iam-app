@@ -20,6 +20,7 @@ interface OrganizationFormProps {
 
 export function OrganizationForm({ organization, isOpen, isSuperuser, onClose, onSave }: OrganizationFormProps) {
   const { t } = useLanguage();
+  const [legalName, setLegalName] = useState('');
   const [nameSv, setNameSv] = useState('');
   const [nameEn, setNameEn] = useState('');
   const [organizationNumber, setOrganizationNumber] = useState('');
@@ -31,12 +32,14 @@ export function OrganizationForm({ organization, isOpen, isSuperuser, onClose, o
     if (isOpen) {
       setErrors({});
       if (organization) {
-        setNameSv(organization.nameSv);
-        setNameEn(organization.nameEn);
+        setLegalName(organization.legalName);
+        setNameSv(organization.nameSv ?? '');
+        setNameEn(organization.nameEn ?? '');
         setOrganizationNumber(formatOrgNumber(organization.organizationNumber));
         setContactEmail(organization.contactEmail || '');
         setContactPhone(organization.additionalData?.contactPhone || '');
       } else {
+        setLegalName('');
         setNameSv('');
         setNameEn('');
         setOrganizationNumber('');
@@ -55,14 +58,10 @@ export function OrganizationForm({ organization, isOpen, isSuperuser, onClose, o
       newErrors.organizationNumber = t('organizations.invalidOrgNumber');
     }
 
-    // Name validation only for superusers (non-superusers don't see name fields in edit mode)
-    if (!organization || isSuperuser) {
-      if (!nameSv.trim()) {
-        newErrors.nameSv = 'Required';
-      }
-      if (!nameEn.trim()) {
-        newErrors.nameEn = 'Required';
-      }
+    // Name validation only for superusers (non-superusers don't see name fields in edit mode).
+    // The legal name is mandatory; display names are optional.
+    if ((!organization || isSuperuser) && !legalName.trim()) {
+      newErrors.legalName = 'Required';
     }
 
     // Contact email validation
@@ -96,8 +95,9 @@ export function OrganizationForm({ organization, isOpen, isSuperuser, onClose, o
       }
       onSave({
         id: organization.id,
-        nameSv: isSuperuser ? nameSv : undefined,
-        nameEn: isSuperuser ? nameEn : undefined,
+        legalName: isSuperuser ? legalName.trim() : organization.legalName,
+        nameSv: isSuperuser ? nameSv.trim() : undefined,
+        nameEn: isSuperuser ? nameEn.trim() : undefined,
         organizationNumber: organizationNumber,
         contactEmail: resolvedEmail,
         additionalData: Object.keys(additionalData).length > 0 ? additionalData : undefined,
@@ -109,8 +109,9 @@ export function OrganizationForm({ organization, isOpen, isSuperuser, onClose, o
         additionalData.contactPhone = resolvedPhone;
       }
       onSave({
-        nameSv,
-        nameEn,
+        legalName: legalName.trim(),
+        nameSv: nameSv.trim() || null,
+        nameEn: nameEn.trim() || null,
         organizationNumber: normalizedOrgNumber,
         contactEmail: resolvedEmail,
         additionalData: Object.keys(additionalData).length > 0 ? additionalData : undefined,
@@ -179,10 +180,33 @@ export function OrganizationForm({ organization, isOpen, isSuperuser, onClose, o
               )}
             </div>
 
-            {/* Organization Names */}
+            {/* Legal name — mandatory, the name registered at Bolagsverket */}
+            <div className="space-y-2">
+              <Label htmlFor="legalName" className="text-base font-medium">
+                {t('organizations.legalName')} *
+              </Label>
+              {organization && !isSuperuser ? (
+                <div className="px-3 py-2 text-sm bg-gray-50 border rounded-md text-gray-700">
+                  {legalName}
+                </div>
+              ) : (
+                <Input
+                  id="legalName"
+                  value={legalName}
+                  onChange={(e) => setLegalName(e.target.value)}
+                  className="text-base"
+                />
+              )}
+              <p className="text-sm text-gray-500">{t('organizations.legalNameHelp')}</p>
+              {errors.legalName && (
+                <p className="text-sm text-red-500 mt-1">{errors.legalName}</p>
+              )}
+            </div>
+
+            {/* Display names — optional, for presentation only */}
             <div className="space-y-2">
               <Label htmlFor="nameSv" className="text-base font-medium">
-                {t('organizations.nameSv')} {(!organization || isSuperuser) && '*'}
+                {t('organizations.nameSv')}
               </Label>
               {organization && !isSuperuser ? (
                 <div className="px-3 py-2 text-sm bg-gray-50 border rounded-md text-gray-700">
@@ -196,14 +220,12 @@ export function OrganizationForm({ organization, isOpen, isSuperuser, onClose, o
                   className="text-base"
                 />
               )}
-              {errors.nameSv && (
-                <p className="text-sm text-red-500 mt-1">{errors.nameSv}</p>
-              )}
+              <p className="text-sm text-gray-500">{t('organizations.displayNameHelp')}</p>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="nameEn" className="text-base font-medium">
-                {t('organizations.nameEn')} {(!organization || isSuperuser) && '*'}
+                {t('organizations.nameEn')}
               </Label>
               {organization && !isSuperuser ? (
                 <div className="px-3 py-2 text-sm bg-gray-50 border rounded-md text-gray-700">
@@ -217,9 +239,7 @@ export function OrganizationForm({ organization, isOpen, isSuperuser, onClose, o
                   className="text-base"
                 />
               )}
-              {errors.nameEn && (
-                <p className="text-sm text-red-500 mt-1">{errors.nameEn}</p>
-              )}
+              <p className="text-sm text-gray-500">{t('organizations.displayNameHelp')}</p>
             </div>
 
             {/* Edit Mode Only: Contact Email and Phone */}

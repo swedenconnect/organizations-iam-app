@@ -401,15 +401,15 @@ functions that exist in the realm.
 ## 6. Verifying the Result
 
 After registration and a reconciliation run, a managed client handling function `demo`,
-with `demo` attached to organization `5590026042`, holds:
+with `demo` attached to organization `2021006883`, holds:
 
 | Artifact | Name | Where |
 |---|---|---|
-| Realm client scope | `5590026042:demo:read` (and `:write`, `:admin`) | Realm, shared between clients |
-| Authz scope | `5590026042:demo:read` (and the other two) | The client's Authorization Services |
-| Group policy | `policy-5590026042-demo-read` (and the other two) | The client's Authorization Services |
-| Scope permission | `permission-5590026042-demo-read` (and the other two) | The client's Authorization Services |
-| Optional client scope | `5590026042:demo:read` (and the other two) | Bound to the client |
+| Realm client scope | `2021006883:demo:read` (and `:write`, `:admin`) | Realm, shared between clients |
+| Authz scope | `2021006883:demo:read` (and the other two) | The client's Authorization Services |
+| Group policy | `policy-2021006883-demo-read` (and the other two) | The client's Authorization Services |
+| Scope permission | `permission-2021006883-demo-read` (and the other two) | The client's Authorization Services |
+| Optional client scope | `2021006883:demo:read` (and the other two) | Bound to the client |
 
 Nine artifacts per organization and function. In the Keycloak admin console they are under
 **Clients → your client → Authorization → Policies / Permissions / Scopes**, and under

@@ -27,10 +27,10 @@ import java.util.Objects;
  * A {@link GrantedAuthority} representing an organizational right for a specific function.
  *
  * <p>The authority string follows the scope naming convention used throughout the system:
- * {@code {orgIdentifier}:{functionId}:{right}}, for example {@code 5590026042:walletreg:write}.</p>
+ * {@code {orgIdentifier}:{functionId}:{right}}, for example {@code 2021006883:walletreg:write}.</p>
  *
  * <p>The {@code *} function identifier denotes an org-wide right covering all functions,
- * e.g. {@code 5590026042:*:admin}.</p>
+ * e.g. {@code 2021006883:*:admin}.</p>
  *
  * <p>Instances are created via the static factory methods {@link #of(OrganizationID, String, OrganizationRight)}
  * and {@link #parse(String)}.</p>
@@ -86,7 +86,7 @@ public final class OrganizationalAuthority implements GrantedAuthority, Serializ
    * Parses an authority string of the form {@code {orgIdentifier}:{functionId}:{right}} into an
    * {@code OrganizationalAuthority}.
    *
-   * <p>Example: {@code OrganizationalAuthority.parse("5590026042:walletreg:write")}</p>
+   * <p>Example: {@code OrganizationalAuthority.parse("2021006883:walletreg:write")}</p>
    *
    * @param authority the authority string to parse; must not be null and must contain exactly two colons
    * @return the parsed {@code OrganizationalAuthority}; never null

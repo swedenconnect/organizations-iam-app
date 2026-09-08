@@ -79,7 +79,7 @@ class OrgRightsOidcUserServiceTest {
   @Test
   void fullMode_producesOrganizationalAuthorities() {
     final OidcIdToken idToken = idTokenWithClaim(List.of(Map.of(
-        "organization_identifier", "5590026042",
+        "organization_identifier", "2021006883",
         "organization_name#sv", "Test Org",
         "functions", List.of(Map.of("function", "demo", "right", "write"))
     )));
@@ -95,14 +95,14 @@ class OrgRightsOidcUserServiceTest {
       final Collection<? extends GrantedAuthority> authorities = result.getAuthorities();
       assertThat(authorities).hasSize(1);
       assertThat(authorities.iterator().next()).isInstanceOf(OrganizationalAuthority.class);
-      assertThat(authorities.iterator().next().getAuthority()).isEqualTo("5590026042:demo:write");
+      assertThat(authorities.iterator().next().getAuthority()).isEqualTo("2021006883:demo:write");
     }
   }
 
   @Test
   void functionScopedMode_producesFunctionScopedAuthorities() {
     final OidcIdToken idToken = idTokenWithClaim(List.of(Map.of(
-        "organization_identifier", "5590026042",
+        "organization_identifier", "2021006883",
         "organization_name#sv", "Test Org",
         "functions", List.of(Map.of("function", "demo", "right", "write"))
     )));
@@ -118,7 +118,7 @@ class OrgRightsOidcUserServiceTest {
       final Collection<? extends GrantedAuthority> authorities = result.getAuthorities();
       assertThat(authorities).hasSize(1);
       assertThat(authorities.iterator().next()).isInstanceOf(FunctionScopedAuthority.class);
-      assertThat(authorities.iterator().next().getAuthority()).isEqualTo("5590026042:write");
+      assertThat(authorities.iterator().next().getAuthority()).isEqualTo("2021006883:write");
     }
   }
 

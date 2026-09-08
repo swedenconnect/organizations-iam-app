@@ -74,8 +74,9 @@ function mapOrgData(o: OrganizationData): Organization {
   return {
     id: o.orgIdentifier,
     organizationNumber: o.orgIdentifier,
-    nameSv: o.nameSv ?? '',
-    nameEn: o.nameEn ?? '',
+    legalName: o.legalName,
+    nameSv: o.nameSv ?? null,
+    nameEn: o.nameEn ?? null,
     contactEmail: o.contactEmail ?? undefined,
     additionalData: o.contactPhone ? { contactPhone: o.contactPhone } : undefined,
   };

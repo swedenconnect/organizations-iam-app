@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/ta
 import { Search, User as UserIcon, Loader2, Info } from 'lucide-react';
 import { useLanguage } from '@/app/contexts/LanguageContext';
 import { createUser, DuplicatePinError } from '@/services/userService';
+import { resolveOrgName } from '@/utils';
 
 interface AddUserToOrgDialogProps {
   open: boolean;
@@ -65,8 +66,7 @@ export function AddUserToOrgDialog({
   const [duplicateUser, setDuplicateUser] = useState<User | null>(null);
   const [externalDuplicateUserId, setExternalDuplicateUserId] = useState<string | null>(null);
 
-  const getOrgName = (org: Organization) =>
-    language === 'sv' ? org.nameSv : org.nameEn;
+  const getOrgName = (org: Organization) => resolveOrgName(org, language);
 
   // Reset all state when dialog closes
   useEffect(() => {

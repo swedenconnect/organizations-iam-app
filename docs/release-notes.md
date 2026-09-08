@@ -8,92 +8,73 @@
 
 **Date:** 
 
-- **Org-scoped scopes are now checked against the user's rights at token issuance.**
-  The `resource-function-executor` Client Policy executor in the `resource-aud-plugin` rejects a
-  token request with `invalid_scope` if the user is not entitled to a requested scope of the form
-  `{org}:{function}:{right}`.
+- **An organization now carries a legal name, and the two existing names become optional display
+  names.** The legal name is the name registered at Bolagsverket. It is mandatory and is what
+  identifies the organization. The Swedish and English names become optional display names, used for
+  presentation only; the legal name is shown where none is set. See
+  [Rights Model](rights-model.md) for the group attributes and the claim.
 
-  This closes a gap in how Keycloak treats optional client scopes: it grants one to whoever asks
-  for it, and it never evaluates the Authorization Services scope permissions during standard
-  token issuance. Those are only consulted by the `uma-ticket` grant and the policy evaluation
-  API. The group policies created alongside each scope were therefore not enforcing anything at
-  token time, and any authenticated user of a managed client could obtain any organisation's
-  scope.
+  **Affects integrations.** Each `org_rights` organization entry gains `organization_legal_name`,
+  which is what to read for the registered name, and `OrgRightsClaim` gains a matching `legalName`.
+  `GET /iam-api/v1/organizations` gains `legal_name`; `name#sv` and `name#en` become the display
+  names, with the legal name substituted into `name#sv` when no Swedish display name is set so that
+  existing callers keep working.
 
-  A scope is granted if the user holds the `superuser` realm role, or is a member of at least one
-  qualifying group under `/orgs/{org}`. A higher right qualifies for a lower one, and an
-  organisation-wide group qualifies for every function of that organisation:
+  **Upgrade action required.** No migration is run. An organization created before this release has
+  no legal name; one is derived for display and the derivation is logged, but the registered name
+  has to be entered by hand in the admin application for each such organization.
 
-  | Requested right | Qualifying groups |
-  |-----------------|-------------------|
-  | `read` | `/orgs/{org}/_read`, `/orgs/{org}/_write`, `/orgs/{org}/_admin`, `/orgs/{org}/{function}/_read`, `/orgs/{org}/{function}/_write`, `/orgs/{org}/{function}/_admin` |
-  | `write` | `/orgs/{org}/_write`, `/orgs/{org}/_admin`, `/orgs/{org}/{function}/_write`, `/orgs/{org}/{function}/_admin` |
-  | `admin` | `/orgs/{org}/_admin`, `/orgs/{org}/{function}/_admin` |
+- **Org-scoped scopes are now checked against the user's rights at token issuance.** The
+  `resource-function-executor` Client Policy executor in the `resource-aud-plugin` rejects a token
+  request with `invalid_scope` if the user is not entitled to a requested scope of the form
+  `{org}:{function}:{right}`. Previously any authenticated user of a managed client could obtain any
+  organization's scope. Entitlement is read from live group memberships, so a right revoked after
+  login takes effect on the next token request. Scopes that are not org-scoped and service account
+  tokens are unaffected, and a refresh token keeps the scopes it was issued with.
 
-  This is the same rule the admin application uses when it builds the group policies for a newly
-  attached function, so no rights that were correct before are lost.
+  **Deployment.** Deploy the new `resource-aud-plugin` JAR; a `start --optimized` installation needs
+  an explicit `kc.sh build`. The check only runs where the Client Policy profile containing
+  `resource-function-executor` is present, so verify the profile after upgrading Keycloak or
+  restoring a realm.
 
-  Entitlement is read from live group memberships rather than from a claim, so a right revoked
-  after login takes effect on the next token request. Scopes that are not org-scoped are
-  untouched. Service account tokens (`client_credentials`) are exempt, since they are issued to the
-  client, not to a user. A refresh token keeps the scopes it was issued with until it expires.
-
-  **Deployment:** deploy the new `resource-aud-plugin` JAR as usual; a `start --optimized`
-  installation needs an explicit `kc.sh build`. No realm configuration changes are required, but
-  the check only runs where the Client Policy profile containing `resource-function-executor` is
-  present. A realm missing it performs no entitlement check at all. Verify the profile after
-  upgrading Keycloak or restoring a realm.
-
-- **Managed clients can be administered from the IAM admin application.** A superuser can
-  register, edit and delete OIDC clients under a new **Services** tab, instead of running
+- **Managed clients can be administered from the IAM admin application.** A superuser can register,
+  edit and delete OIDC clients under a new **Services** tab, instead of running
   `add-oidc-client.sh` and `set-iam-admin-managed.sh` against the Keycloak host. A client is
-  registered with the same settings the script applies: `private_key_jwt` authentication,
-  Authorization Services, the three protocol mappers, and the `naturalPersonNumber` and
-  `phone` optional scopes. A redirect URI may carry a `*` as its last character, the form Keycloak
-  matches. Deletion is permanent, and is open to any superuser.
+  registered with the same settings the script applies.
 
-- **Clients and resource servers are administered in one place, and a client can be both.**
-  The **Services** tab lists everything the application administers. A client carries two
-  independent roles, set with toggles when it is registered: *OIDC client* (logs users in and
-  requests org-scoped tokens) and *resource server* (may be named as an OAuth2 `resource`
-  target and appears in `aud`). Redirect URIs and client keys are asked for only when the OIDC
-  client role is on. A client with both roles is the shape for a service that answers requests
-  and calls another service onwards. The resource server role is marked with the new
-  `iam_admin_resource_server=true` attribute, which `add-resource-server.sh` now sets as well;
-  resource servers registered before this release need the attribute set once before they
-  appear in the application.
+- **Clients and resource servers are administered in one place, and a client can be both.** A client
+  carries two independent roles, set with toggles when it is registered: *OIDC client*, which logs
+  users in and requests org-scoped tokens, and *resource server*, which may be named as an OAuth2
+  `resource` target. Both may be set on one client.
 
-- **Client artifacts are reconciled instead of only created on attach.** A managed client is
-  now brought in line with the org/function topology whenever it is created or updated, when
-  a function is attached to or detached from an organization, on demand from the Clients tab,
-  and, when `iam.admin.client-reconciliation.enabled` is set, on a schedule. This repairs
-  the case a client registered *after* functions were already attached to organizations,
-  which previously left the client without any of the scopes and policies its users need, as
-  well as drift from partial failures and manual edits in the Keycloak admin console.
-  Reconciliation only creates by default; removing the artifacts of functions a client no
-  longer handles requires opting in to pruning.
+  **Upgrade action required.** The resource server role is marked with the new
+  `iam_admin_resource_server=true` attribute, which `add-resource-server.sh` now sets. Resource
+  servers registered before this release need the attribute set once before they appear in the
+  application.
 
-- **`client_functions` now scopes which functions a client receives artifacts for.** The
-  attribute was previously honoured only by the `resource-aud-plugin` at token issuance; the
-  admin application gave every managed client artifacts for every function. The attribute is
-  now the complete list of functions a client handles, and an empty or absent attribute means
-  **no functions, not all of them**. Functions are optional when registering a client; one
-  registered without them is inert until functions are assigned.
+- **Client artifacts are reconciled instead of only created on attach.** A managed client is brought
+  in line with the org/function topology whenever it is created or updated, when a function is
+  attached or detached, on demand from the Services tab, and, when
+  `iam.admin.client-reconciliation.enabled` is set, on a schedule. This repairs clients registered
+  after functions were already attached, as well as drift from partial failures and manual edits in
+  the Keycloak admin console. Reconciliation only creates by default; removing the artifacts of
+  functions a client no longer handles requires opting in to pruning.
 
-  **Upgrade action required.** A managed client that carries no `client_functions` attribute,
-  which includes every client registered with `add-oidc-client.sh` before this release, stops
-  receiving artifacts for newly attached functions. Its existing scopes, policies and
-  permissions are left in place, so nothing breaks immediately, but the client will not pick up
-  functions attached from now on. Assign functions to such clients from the admin application,
-  or with `set-client-functions.sh`. Unscoped clients are flagged in the application and named
-  in a warning on every reconciliation run.
+- **`client_functions` now scopes which functions a client receives artifacts for.** The attribute
+  is the complete list of functions a client handles, and an empty or absent attribute means **no
+  functions, not all of them**. Functions are optional when registering a client; one registered
+  without them is inert until functions are assigned.
 
-- **Fixed: scope permissions were never removed when a function was detached or deleted.**
-  Permissions are created as `permission-{org}-{function}-{right}`, but the cleanup paths
-  looked for `permission-{org}:{function}:{right}`. The lookup never matched, so every
-  function detach and function deletion left its scope permissions behind in Keycloak. Both
-  paths now derive the name from the same place. Permissions orphaned by earlier releases are
-  removed by a reconciliation run with pruning enabled.
+  **Upgrade action required.** A managed client carrying no `client_functions` attribute, which
+  includes every client registered with `add-oidc-client.sh` before this release, stops receiving
+  artifacts for newly attached functions. Existing artifacts are left in place, so nothing breaks
+  immediately. Assign functions to such clients from the admin application or with
+  `set-client-functions.sh`. Unscoped clients are flagged in the application and named in a warning
+  on every reconciliation run.
+
+- **Fixed: scope permissions were never removed when a function was detached or deleted.** Every
+  function detach and function deletion left its scope permissions behind in Keycloak. Permissions
+  orphaned by earlier releases are removed by a reconciliation run with pruning enabled.
 
 ---
 

@@ -75,9 +75,20 @@ public class IamServiceOrganizationController {
 
     final Map<String, OrganizationEntry> result = new LinkedHashMap<>();
     for (final OrganizationInfo org : orgs) {
+      String nameSv = org.displayName("sv");
+      if (nameSv == null) {
+        // Backwards compatibility: callers that predate legal_name read name#sv and would otherwise
+        // see nothing for an organization without a Swedish display name.
+        log.warn("GET /iam-api/v1/organizations — organization '{}' has no Swedish display name; "
+                + "returning its legal name in 'name#sv' for backwards compatibility. Callers should "
+                + "read 'legal_name' instead.",
+            org.orgIdentifier());
+        nameSv = org.legalName();
+      }
       result.put(org.orgIdentifier(), new OrganizationEntry(
-          org.name().get("sv"),
-          org.name().get("en"),
+          org.legalName(),
+          nameSv,
+          org.displayName("en"),
           org.attachedFunctions(),
           new OrganizationEntry.Contact(org.contactEmail(), org.contactPhone())));
     }
@@ -87,6 +98,7 @@ public class IamServiceOrganizationController {
   }
 
   record OrganizationEntry(
+      @JsonProperty("legal_name") @NonNull String legalName,
       @JsonProperty("name#sv") @Nullable String nameSv,
       @JsonProperty("name#en") @Nullable String nameEn,
       @JsonProperty("attached_functions") @NonNull List<String> attachedFunctions,

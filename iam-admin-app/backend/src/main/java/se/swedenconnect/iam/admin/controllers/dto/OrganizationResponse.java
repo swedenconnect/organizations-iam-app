@@ -23,10 +23,14 @@ import java.util.List;
 /**
  * JSON representation of a single organization.
  *
+ * <p>{@code legalName} is the registered name and is always present. {@code nameSv} and
+ * {@code nameEn} are optional display names and are {@code null} when not set.</p>
+ *
  * @author Martin Lindström
  */
 public record OrganizationResponse(
     @NonNull String orgIdentifier,
+    @NonNull String legalName,
     @Nullable String nameSv,
     @Nullable String nameEn,
     @NonNull String groupId,

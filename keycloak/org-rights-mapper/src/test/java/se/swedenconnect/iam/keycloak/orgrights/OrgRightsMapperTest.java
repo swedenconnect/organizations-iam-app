@@ -41,14 +41,17 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.ATTR_ORGANIZATION_IDENTIFIER;
+import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.ATTR_ORGANIZATION_NAME;
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.ATTR_ORGANIZATION_NAME_EN;
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.ATTR_ORGANIZATION_NAME_SV;
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.CLAIM_FIELD_FUNCTION;
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.CLAIM_FIELD_FUNCTIONS;
+import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.CLAIM_FIELD_ORGANIZATION_LEGAL_NAME;
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.CLAIM_FIELD_ORG_LEVEL_RIGHT;
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.CLAIM_FIELD_RIGHT;
 import static se.swedenconnect.iam.keycloak.orgrights.OrgRightsMapper.CLAIM_FIELD_SUPERUSER;
@@ -126,7 +129,7 @@ class OrgRightsMapperTest {
   }
 
   /**
-   * Test 2: Org-level right. User is a member of orgs/5590026042/_write, and the organization has
+   * Test 2: Org-level right. User is a member of orgs/2021006883/_write, and the organization has
    * the functions demo and walletreg attached.
    * Expected: org_level_right=write, and the right expanded onto both attached functions.
    */
@@ -138,12 +141,12 @@ class OrgRightsMapperTest {
     when(realm.getTopLevelGroupsStream()).thenReturn(Stream.of(orgsGroup));
     when(orgsGroup.getId()).thenReturn("orgs-id");
 
-    final GroupModel orgGroup = mockGroup("org1-id", "5590026042", "orgs-id");
+    final GroupModel orgGroup = mockGroup("org1-id", "2021006883", "orgs-id");
     when(orgsGroup.getSubGroupsStream()).thenReturn(Stream.of(orgGroup));
     when(orgGroup.getAttributes()).thenReturn(Map.of(
-        ATTR_ORGANIZATION_IDENTIFIER, List.of("5590026042"),
-        ATTR_ORGANIZATION_NAME_SV,    List.of("Litsec AB"),
-        ATTR_ORGANIZATION_NAME_EN,    List.of("Litsec AB")));
+        ATTR_ORGANIZATION_IDENTIFIER, List.of("2021006883"),
+        ATTR_ORGANIZATION_NAME_SV,    List.of("Digg - Myndigheten för Digital förvaltning"),
+        ATTR_ORGANIZATION_NAME_EN,    List.of("Digg - Myndigheten för Digital förvaltning")));
     when(orgGroup.getParentId()).thenReturn("orgs-id");
     mockOrgChildren(orgGroup, "demo", "walletreg",
         RIGHT_GROUP_ADMIN, RIGHT_GROUP_WRITE, RIGHT_GROUP_READ);
@@ -164,10 +167,10 @@ class OrgRightsMapperTest {
     assertEquals(1, orgRights.size());
 
     final Map<String, Object> entry = orgRights.get(0);
-    assertEquals("5590026042", entry.get(ATTR_ORGANIZATION_IDENTIFIER));
-    assertEquals("Litsec AB",  entry.get(ATTR_ORGANIZATION_NAME_SV));
-    assertEquals("Litsec AB",  entry.get(ATTR_ORGANIZATION_NAME_EN));
-    assertEquals(RIGHT_WRITE,  entry.get(CLAIM_FIELD_ORG_LEVEL_RIGHT));
+    assertEquals("2021006883",                                 entry.get(ATTR_ORGANIZATION_IDENTIFIER));
+    assertEquals("Digg - Myndigheten för Digital förvaltning", entry.get(ATTR_ORGANIZATION_NAME_SV));
+    assertEquals("Digg - Myndigheten för Digital förvaltning", entry.get(ATTR_ORGANIZATION_NAME_EN));
+    assertEquals(RIGHT_WRITE,                                  entry.get(CLAIM_FIELD_ORG_LEVEL_RIGHT));
     assertTrue(entry.containsKey(CLAIM_FIELD_FUNCTIONS));
 
     assertEquals(Map.of("demo", RIGHT_WRITE, "walletreg", RIGHT_WRITE), functionRights(entry));
@@ -186,12 +189,12 @@ class OrgRightsMapperTest {
     when(realm.getTopLevelGroupsStream()).thenReturn(Stream.of(orgsGroup));
     when(orgsGroup.getId()).thenReturn("orgs-id");
 
-    final GroupModel orgGroup = mockGroup("org1-id", "5590026042", "orgs-id");
+    final GroupModel orgGroup = mockGroup("org1-id", "2021006883", "orgs-id");
     when(orgsGroup.getSubGroupsStream()).thenReturn(Stream.of(orgGroup));
     when(orgGroup.getAttributes()).thenReturn(Map.of(
-        ATTR_ORGANIZATION_IDENTIFIER, List.of("5590026042"),
-        ATTR_ORGANIZATION_NAME_SV,    List.of("Litsec AB"),
-        ATTR_ORGANIZATION_NAME_EN,    List.of("Litsec AB")));
+        ATTR_ORGANIZATION_IDENTIFIER, List.of("2021006883"),
+        ATTR_ORGANIZATION_NAME_SV,    List.of("Digg - Myndigheten för Digital förvaltning"),
+        ATTR_ORGANIZATION_NAME_EN,    List.of("Digg - Myndigheten för Digital förvaltning")));
     when(orgGroup.getParentId()).thenReturn("orgs-id");
     mockOrgChildren(orgGroup, "_foo", RIGHT_GROUP_ADMIN, RIGHT_GROUP_WRITE, RIGHT_GROUP_READ);
 
@@ -261,7 +264,7 @@ class OrgRightsMapperTest {
   }
 
   /**
-   * Test 3: Function-level right. User is a member of orgs/5590026042/walletreg/_read.
+   * Test 3: Function-level right. User is a member of orgs/2021006883/walletreg/_read.
    * Expected: one entry with functions=[{function:"walletreg", right:"read"}] and no
    * org_level_right field.
    */
@@ -273,12 +276,12 @@ class OrgRightsMapperTest {
     when(realm.getTopLevelGroupsStream()).thenReturn(Stream.of(orgsGroup));
     when(orgsGroup.getId()).thenReturn("orgs-id");
 
-    final GroupModel orgGroup = mockGroup("org1-id", "5590026042", "orgs-id");
+    final GroupModel orgGroup = mockGroup("org1-id", "2021006883", "orgs-id");
     when(orgsGroup.getSubGroupsStream()).thenReturn(Stream.of(orgGroup));
     when(orgGroup.getAttributes()).thenReturn(Map.of(
-        ATTR_ORGANIZATION_IDENTIFIER, List.of("5590026042"),
-        ATTR_ORGANIZATION_NAME_SV,    List.of("Litsec AB"),
-        ATTR_ORGANIZATION_NAME_EN,    List.of("Litsec AB")));
+        ATTR_ORGANIZATION_IDENTIFIER, List.of("2021006883"),
+        ATTR_ORGANIZATION_NAME_SV,    List.of("Digg - Myndigheten för Digital förvaltning"),
+        ATTR_ORGANIZATION_NAME_EN,    List.of("Digg - Myndigheten för Digital förvaltning")));
     when(orgGroup.getParentId()).thenReturn("orgs-id");
 
     final GroupModel walletregGroup = mockGroup("walletreg-id", "walletreg", "org1-id");
@@ -300,7 +303,7 @@ class OrgRightsMapperTest {
     assertEquals(1, orgRights.size());
 
     final Map<String, Object> entry = orgRights.get(0);
-    assertEquals("5590026042", entry.get(ATTR_ORGANIZATION_IDENTIFIER));
+    assertEquals("2021006883", entry.get(ATTR_ORGANIZATION_IDENTIFIER));
     assertFalse(entry.containsKey(CLAIM_FIELD_ORG_LEVEL_RIGHT));
 
     @SuppressWarnings("unchecked")
@@ -385,7 +388,7 @@ class OrgRightsMapperTest {
 
   /**
    * Test 5: Org-level and function-level on the same organization. User is a member of both
-   * orgs/5590026042/_read and orgs/5590026042/walletreg/_write, with demo and walletreg attached.
+   * orgs/2021006883/_read and orgs/2021006883/walletreg/_write, with demo and walletreg attached.
    * The org-level read is expanded onto both functions, and the explicit write on walletreg wins
    * over it.
    */
@@ -397,12 +400,12 @@ class OrgRightsMapperTest {
     when(realm.getTopLevelGroupsStream()).thenReturn(Stream.of(orgsGroup));
     when(orgsGroup.getId()).thenReturn("orgs-id");
 
-    final GroupModel orgGroup = mockGroup("org1-id", "5590026042", "orgs-id");
+    final GroupModel orgGroup = mockGroup("org1-id", "2021006883", "orgs-id");
     when(orgsGroup.getSubGroupsStream()).thenReturn(Stream.of(orgGroup));
     when(orgGroup.getAttributes()).thenReturn(Map.of(
-        ATTR_ORGANIZATION_IDENTIFIER, List.of("5590026042"),
-        ATTR_ORGANIZATION_NAME_SV,    List.of("Litsec AB"),
-        ATTR_ORGANIZATION_NAME_EN,    List.of("Litsec AB")));
+        ATTR_ORGANIZATION_IDENTIFIER, List.of("2021006883"),
+        ATTR_ORGANIZATION_NAME_SV,    List.of("Digg - Myndigheten för Digital förvaltning"),
+        ATTR_ORGANIZATION_NAME_EN,    List.of("Digg - Myndigheten för Digital förvaltning")));
     when(orgGroup.getParentId()).thenReturn("orgs-id");
     mockOrgChildren(orgGroup, "demo", "walletreg",
         RIGHT_GROUP_ADMIN, RIGHT_GROUP_WRITE, RIGHT_GROUP_READ);
@@ -431,7 +434,7 @@ class OrgRightsMapperTest {
     assertEquals(1, orgRights.size()); // single org entry
 
     final Map<String, Object> entry = orgRights.get(0);
-    assertEquals("5590026042", entry.get(ATTR_ORGANIZATION_IDENTIFIER));
+    assertEquals("2021006883", entry.get(ATTR_ORGANIZATION_IDENTIFIER));
     assertEquals(RIGHT_READ, entry.get(CLAIM_FIELD_ORG_LEVEL_RIGHT));
 
     // demo gets the expanded org-level read; walletreg keeps the higher explicit write
@@ -465,8 +468,8 @@ class OrgRightsMapperTest {
   }
 
   /**
-   * Test 7: Missing org attributes. Org group has no organization_name#sv attribute.
-   * Verify the mapper does not throw and uses empty string as fallback.
+   * Test 7: An org group with no Swedish display name. Display names are optional, so the mapper
+   * simply omits that claim member; the legal name is unaffected.
    */
   @Test
   void testMissingOrgAttributes() {
@@ -476,12 +479,13 @@ class OrgRightsMapperTest {
     when(realm.getTopLevelGroupsStream()).thenReturn(Stream.of(orgsGroup));
     when(orgsGroup.getId()).thenReturn("orgs-id");
 
-    final GroupModel orgGroup = mockGroup("org1-id", "5590026042", "orgs-id");
+    final GroupModel orgGroup = mockGroup("org1-id", "2021006883", "orgs-id");
     when(orgsGroup.getSubGroupsStream()).thenReturn(Stream.of(orgGroup));
     // ATTR_ORGANIZATION_NAME_SV is intentionally absent
     when(orgGroup.getAttributes()).thenReturn(Map.of(
-        ATTR_ORGANIZATION_IDENTIFIER, List.of("5590026042"),
-        ATTR_ORGANIZATION_NAME_EN,    List.of("Litsec AB")));
+        ATTR_ORGANIZATION_IDENTIFIER, List.of("2021006883"),
+        ATTR_ORGANIZATION_NAME,       List.of("Myndigheten för Digital förvaltning"),
+        ATTR_ORGANIZATION_NAME_EN,    List.of("Digg - Myndigheten för Digital förvaltning")));
     when(orgGroup.getParentId()).thenReturn("orgs-id");
     mockOrgChildren(orgGroup, "demo", RIGHT_GROUP_ADMIN, RIGHT_GROUP_WRITE, RIGHT_GROUP_READ);
 
@@ -500,11 +504,105 @@ class OrgRightsMapperTest {
 
     assertNotNull(orgRights);
     assertEquals(1, orgRights.size());
-    assertEquals("",          orgRights.get(0).get(ATTR_ORGANIZATION_NAME_SV));
-    assertEquals("Litsec AB", orgRights.get(0).get(ATTR_ORGANIZATION_NAME_EN));
+
+    final Map<String, Object> entry = orgRights.get(0);
+    assertNull(entry.get(ATTR_ORGANIZATION_NAME_SV));
+    assertEquals("Digg - Myndigheten för Digital förvaltning", entry.get(ATTR_ORGANIZATION_NAME_EN));
+    assertEquals("Myndigheten för Digital förvaltning",        entry.get(CLAIM_FIELD_ORGANIZATION_LEGAL_NAME));
+    assertEquals("Myndigheten för Digital förvaltning",        entry.get(ATTR_ORGANIZATION_NAME));
+  }
+
+  /**
+   * An organization with no display names at all: the claim carries the legal name under both
+   * {@code organization_legal_name} and the untagged {@code organization_name}, and neither tagged
+   * key is present.
+   */
+  @Test
+  void testLegalNameOnly_noDisplayNamesEmitted() {
+    final Map<String, Object> entry = singleOrgEntry(Map.of(
+        ATTR_ORGANIZATION_IDENTIFIER, List.of("2021006883"),
+        ATTR_ORGANIZATION_NAME,       List.of("Myndigheten för Digital förvaltning")));
+
+    assertEquals("Myndigheten för Digital förvaltning", entry.get(CLAIM_FIELD_ORGANIZATION_LEGAL_NAME));
+    assertEquals("Myndigheten för Digital förvaltning", entry.get(ATTR_ORGANIZATION_NAME));
+    assertFalse(entry.containsKey(ATTR_ORGANIZATION_NAME_SV));
+    assertFalse(entry.containsKey(ATTR_ORGANIZATION_NAME_EN));
+  }
+
+  /**
+   * Backfill: an org group created before the legal name existed carries only tagged names. The
+   * Swedish display name is used as the legal name, and it is not written back to the group.
+   */
+  @Test
+  void testLegalNameBackfilledFromSwedishDisplayName() {
+    final Map<String, Object> entry = singleOrgEntry(Map.of(
+        ATTR_ORGANIZATION_IDENTIFIER, List.of("2021006883"),
+        ATTR_ORGANIZATION_NAME_SV,    List.of("Digg - Myndigheten för Digital förvaltning"),
+        ATTR_ORGANIZATION_NAME_EN,    List.of("Digg - Authority for Digital Government")));
+
+    assertEquals("Digg - Myndigheten för Digital förvaltning", entry.get(CLAIM_FIELD_ORGANIZATION_LEGAL_NAME));
+    assertEquals("Digg - Myndigheten för Digital förvaltning", entry.get(ATTR_ORGANIZATION_NAME));
+    assertEquals("Digg - Myndigheten för Digital förvaltning", entry.get(ATTR_ORGANIZATION_NAME_SV));
+    assertEquals("Digg - Authority for Digital Government", entry.get(ATTR_ORGANIZATION_NAME_EN));
+  }
+
+  /** Backfill falls through to the English display name when there is no Swedish one. */
+  @Test
+  void testLegalNameBackfilledFromEnglishDisplayName() {
+    final Map<String, Object> entry = singleOrgEntry(Map.of(
+        ATTR_ORGANIZATION_IDENTIFIER, List.of("2021006883"),
+        ATTR_ORGANIZATION_NAME_EN,    List.of("Digg - Authority for Digital Government")));
+
+    assertEquals("Digg - Authority for Digital Government", entry.get(CLAIM_FIELD_ORGANIZATION_LEGAL_NAME));
+    assertEquals("Digg - Authority for Digital Government", entry.get(ATTR_ORGANIZATION_NAME));
+    assertFalse(entry.containsKey(ATTR_ORGANIZATION_NAME_SV));
+  }
+
+  /** A group with no name at all is malformed; the organization identifier is used instead. */
+  @Test
+  void testNoNameAtAll_fallsBackToOrgIdentifier() {
+    final Map<String, Object> entry = singleOrgEntry(Map.of(
+        ATTR_ORGANIZATION_IDENTIFIER, List.of("2021006883")));
+
+    assertEquals("2021006883", entry.get(CLAIM_FIELD_ORGANIZATION_LEGAL_NAME));
+    assertEquals("2021006883", entry.get(ATTR_ORGANIZATION_NAME));
+    assertFalse(entry.containsKey(ATTR_ORGANIZATION_NAME_SV));
+    assertFalse(entry.containsKey(ATTR_ORGANIZATION_NAME_EN));
   }
 
   // ---- helpers ----
+
+  /**
+   * Runs the mapper for a user holding org-level write on a single organization whose group carries
+   * the given attributes, and returns the one claim entry produced.
+   */
+  @SuppressWarnings("unchecked")
+  private Map<String, Object> singleOrgEntry(final Map<String, List<String>> orgAttributes) {
+    when(realm.getRole(REALM_ROLE_SUPERUSER)).thenReturn(null);
+
+    final GroupModel orgsGroup = mockGroup("orgs-id", GROUP_ORGS, null);
+    when(realm.getTopLevelGroupsStream()).thenReturn(Stream.of(orgsGroup));
+    when(orgsGroup.getId()).thenReturn("orgs-id");
+
+    final GroupModel orgGroup = mockGroup("org1-id", "2021006883", "orgs-id");
+    when(orgsGroup.getSubGroupsStream()).thenReturn(Stream.of(orgGroup));
+    when(orgGroup.getAttributes()).thenReturn(Map.copyOf(orgAttributes));
+    when(orgGroup.getParentId()).thenReturn("orgs-id");
+    mockOrgChildren(orgGroup, "demo", RIGHT_GROUP_ADMIN, RIGHT_GROUP_WRITE, RIGHT_GROUP_READ);
+
+    final GroupModel writeGroup = mockGroup("org-write-id", RIGHT_GROUP_WRITE, "org1-id");
+    when(writeGroup.getParent()).thenReturn(orgGroup);
+    when(user.getGroupsStream()).thenReturn(Stream.of(writeGroup));
+
+    final IDToken token = new IDToken();
+    mapper.setClaim(token, mappingModel, userSession, keycloakSession, clientSessionCtx);
+
+    final List<Map<String, Object>> orgRights =
+        (List<Map<String, Object>>) token.getOtherClaims().get(CLAIM_NAME);
+    assertNotNull(orgRights);
+    assertEquals(1, orgRights.size());
+    return orgRights.get(0);
+  }
 
   private GroupModel mockGroup(final String id, final String name, final String parentId) {
     final GroupModel g = mock(GroupModel.class);

@@ -83,16 +83,18 @@ attributes:
 
 ```json
 {
-  "5590026042": {
-    "name#sv": "Litsec AB",
-    "name#en": "Litsec",
+  "2021006883": {
+    "legal_name": "Myndigheten för Digital förvaltning",
+    "name#sv": "Digg - Myndigheten för Digital förvaltning",
+    "name#en": "Digg - Authority for Digital Government",
     "attached_functions": ["demo", "walletreg"],
     "contact": {
-      "email": "info@litsec.se",
+      "email": "info@digg.se",
       "phone": null
     }
   },
   "5591617864": {
+    "legal_name": "IDsec Solutions Aktiebolag",
     "name#sv": "IDsec Solutions AB",
     "name#en": "IDsec Solutions",
     "attached_functions": ["demo", "swedenconnect"],
@@ -106,8 +108,9 @@ attributes:
 
 | Field                | Type           | Description                                                    |
 |----------------------|----------------|----------------------------------------------------------------|
-| `name#sv`            | string \| null | Swedish organization name.                                     |
-| `name#en`            | string \| null | English organization name.                                     |
+| `legal_name`         | string         | The organization's legal name, as registered at Bolagsverket. Always present, and what to read to identify the organization. |
+| `name#sv`            | string \| null | Optional Swedish display name.                                 |
+| `name#en`            | string \| null | Optional English display name.                                 |
 | `attached_functions` | string[]       | Function identifiers attached to this organization.            |
 | `contact`            | object         | Object with `email` and `phone`, each string or null. Always present. |
 | `contact.email`      | string \| null | Contact email address.                                         |

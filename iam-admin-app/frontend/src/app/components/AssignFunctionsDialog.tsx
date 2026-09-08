@@ -4,6 +4,7 @@ import { Button } from '@/app/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/app/components/ui/dialog';
 import { Checkbox } from '@/app/components/ui/checkbox';
 import { useLanguage } from '@/app/contexts/LanguageContext';
+import { resolveOrgName } from '@/utils';
 
 interface AssignFunctionsDialogProps {
   open: boolean;
@@ -25,9 +26,7 @@ export function AssignFunctionsDialog({
   const { t, language } = useLanguage();
   const [selectedFunctionIds, setSelectedFunctionIds] = useState<string[]>([]);
 
-  const getOrgName = (org: Organization) => {
-    return language === 'sv' ? org.nameSv : org.nameEn;
-  };
+  const getOrgName = (org: Organization) => resolveOrgName(org, language);
 
   const alreadyAttachedIds = new Set(
     organization
