@@ -129,8 +129,8 @@ The starter supports two authority modes controlled by `iam.security.function`:
 
 ### Managed clients
 
-A managed client is a Keycloak client carrying `iam_admin_managed=true` (or listed in
-`iam.admin.authz-client-ids`). `client_functions` is the complete list of functions it receives
+A managed client is a Keycloak client carrying `iam_admin_managed=true`, and that attribute is
+the only thing that makes it managed. `client_functions` is the complete list of functions it receives
 artifacts for — an empty or absent attribute means **no** functions, never all of them. Functions are optional when
 registering a client; one with none is inert until they are assigned.
 
@@ -279,7 +279,6 @@ iam:
     admin-api-base: https://.../admin/realms/orgiam
     theme: digg
     theme-dir:                 # Optional external theme directory
-    authz-client-ids: []       # Fallback list of managed client IDs
     pnr-userids: false         # Use personal identity number as Keycloak username
     allow-function-removal: false
     allow-org-rights: true

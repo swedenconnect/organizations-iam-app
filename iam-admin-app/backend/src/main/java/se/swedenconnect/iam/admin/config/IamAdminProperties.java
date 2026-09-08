@@ -19,8 +19,6 @@ import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-import java.util.List;
-
 /**
  * Configuration properties for the IAM Admin application.
  *
@@ -71,16 +69,6 @@ public class IamAdminProperties {
   @Getter
   @Setter
   private String themeDir;
-
-  /**
-   * Optional fallback list of client IDs to include as managed clients, in addition to
-   * any clients discovered dynamically via the {@code iam_admin_managed} Keycloak client
-   * attribute. Use this as a safety net for clients that have not yet had the attribute
-   * set. The final managed set is the union of both sources.
-   */
-  @Getter
-  @Setter
-  private List<String> authzClientIds;
 
   /**
    * When {@code true}, the personal identity number (12 digits) is used as the Keycloak

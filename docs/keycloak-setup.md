@@ -504,8 +504,8 @@ names are the contract between creation and removal:
 ### 2.10. Managed Clients and Reconciliation
 
 A **managed client** is a client the IAM admin application maintains the scopes, policies
-and permissions for. A client is managed when it carries the attribute
-`iam_admin_managed=true`, or when its client ID is listed in `iam.admin.authz-client-ids`.
+and permissions for. A client is managed when, and only when, it carries the attribute
+`iam_admin_managed=true`.
 
 A client plays one or both of two **roles**, which are independent and set per client under
 the **Services** tab:

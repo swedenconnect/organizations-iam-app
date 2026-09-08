@@ -28,10 +28,10 @@ import java.util.stream.Collectors;
 /**
  * A KeyCloak client managed by the IAM Admin application.
  *
- * <p>A client is managed when it carries the attribute {@code iam_admin_managed=true}, or when it
- * is listed in {@code iam.admin.authz-client-ids}. Managed clients receive the OAuth2 client
- * scopes, Authorization Services scopes, group policies and scope permissions that correspond to
- * the org/function combinations they handle.</p>
+ * <p>A client is managed when, and only when, it carries the attribute
+ * {@code iam_admin_managed=true}. Managed clients receive the OAuth2 client scopes, Authorization
+ * Services scopes, group policies and scope permissions that correspond to the org/function
+ * combinations they handle.</p>
  *
  * <p>A client plays one or both of two roles, which are independent:</p>
  * <ul>
