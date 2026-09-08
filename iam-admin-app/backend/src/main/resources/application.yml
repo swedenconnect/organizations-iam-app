@@ -13,6 +13,12 @@ server:
 spring:
   application:
     name: iam-admin
+  messages:
+    basename: messages
+    encoding: UTF-8
+    # The default bundle is English. Without this, a server running with a Swedish system locale
+    # would resolve English requests to the Swedish bundle.
+    fallback-to-system-locale: false
   security:
     oauth2:
       client:

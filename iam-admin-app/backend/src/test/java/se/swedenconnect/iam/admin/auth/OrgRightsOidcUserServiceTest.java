@@ -24,15 +24,24 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
+import org.springframework.security.oauth2.client.registration.ClientRegistration;
+import org.springframework.security.oauth2.core.AuthorizationGrantType;
+import org.springframework.security.oauth2.core.OAuth2AccessToken;
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.security.oauth2.core.oidc.OidcIdToken;
 import se.swedenconnect.iam.commons.types.LocalizedString;
 import se.swedenconnect.iam.commons.types.OrganizationID;
 import se.swedenconnect.iam.security.claims.InsufficientRightsException;
 import se.swedenconnect.iam.security.claims.OrgRightsClaim;
 import se.swedenconnect.iam.security.claims.OrgRightsClaimParser;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -133,6 +142,56 @@ class OrgRightsOidcUserServiceTest {
   }
 
   // ---------------------------------------------------------------------------
+  // Session storage of the rejection reason
+  // ---------------------------------------------------------------------------
+
+  @Test
+  void loadUser_emptyClaim_storesNoOrganizationalRightsCode() {
+    final MockHttpSession session = new MockHttpSession();
+    when(request.getSession(false)).thenReturn(session);
+
+    assertThatThrownBy(() -> service.loadUser(userRequest(List.of())))
+        .isInstanceOf(OAuth2AuthenticationException.class);
+
+    assertThat(storedRejection(session))
+        .isEqualTo(new LoginRejection(LoginRejection.NO_ORGANIZATIONAL_RIGHTS, List.of()));
+  }
+
+  @Test
+  void loadUser_noAdminRight_storesCodeForTheSsoConstraints() {
+    final MockHttpSession session = new MockHttpSession();
+    session.setAttribute(OrgRightsOidcUserService.SSO_ORG_ATTR, "2021006883");
+    session.setAttribute(OrgRightsOidcUserService.SSO_FUNC_ATTR, "walletreg");
+    when(request.getSession(false)).thenReturn(session);
+
+    final List<Map<String, Object>> rawClaim = List.of(Map.of(
+        "organization_identifier", "2021006883",
+        "functions", List.of(Map.of("function", "walletreg", "right", "read"))));
+
+    assertThatThrownBy(() -> service.loadUser(userRequest(rawClaim)))
+        .isInstanceOf(OAuth2AuthenticationException.class);
+
+    assertThat(storedRejection(session)).isEqualTo(new LoginRejection(
+        LoginRejection.NO_ADMIN_RIGHT_FOR_FUNCTION_IN_ORGANIZATION, List.of("walletreg", "2021006883")));
+  }
+
+  @Test
+  void loadUser_noAdminRightAndNoConstraints_storesUnconstrainedCode() {
+    final MockHttpSession session = new MockHttpSession();
+    when(request.getSession(false)).thenReturn(session);
+
+    final List<Map<String, Object>> rawClaim = List.of(Map.of(
+        "organization_identifier", "2021006883",
+        "functions", List.of(Map.of("function", "walletreg", "right", "read"))));
+
+    assertThatThrownBy(() -> service.loadUser(userRequest(rawClaim)))
+        .isInstanceOf(OAuth2AuthenticationException.class);
+
+    assertThat(storedRejection(session))
+        .isEqualTo(new LoginRejection(LoginRejection.NO_ADMIN_RIGHT, List.of()));
+  }
+
+  // ---------------------------------------------------------------------------
   // buildAuthorities tests (delegated to OrgRightsClaimParser)
   // ---------------------------------------------------------------------------
 
@@ -177,6 +236,31 @@ class OrgRightsOidcUserServiceTest {
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
+
+  /** Builds an {@link OidcUserRequest} whose ID token carries the given raw {@code org_rights} claim. */
+  private static OidcUserRequest userRequest(final Object rawClaim) {
+    final Instant issuedAt = Instant.now();
+    final Instant expiresAt = issuedAt.plusSeconds(300);
+
+    final ClientRegistration registration = ClientRegistration.withRegistrationId("iam-admin")
+        .clientId("iam-admin")
+        .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+        .redirectUri("https://localhost/login/oauth2/code/iam-admin")
+        .authorizationUri("https://localhost/authorize")
+        .tokenUri("https://localhost/token")
+        .build();
+
+    final OidcIdToken idToken = new OidcIdToken("id-token", issuedAt, expiresAt,
+        Map.of("sub", "197001011234", "org_rights", rawClaim));
+
+    return new OidcUserRequest(registration,
+        new OAuth2AccessToken(OAuth2AccessToken.TokenType.BEARER, "access-token", issuedAt, expiresAt),
+        idToken);
+  }
+
+  private static Object storedRejection(final MockHttpSession session) {
+    return session.getAttribute(OrgRightsOidcUserService.AUTH_ERROR_ATTR);
+  }
 
   private static OrgRightsClaim.OrgEntry orgEntry(final String orgId,
       final OrgRightsClaim.FunctionEntry... functions) {
