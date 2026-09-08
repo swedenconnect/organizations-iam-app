@@ -7,27 +7,30 @@ import { Header } from '@/app/components/Header';
 import { Footer } from '@/app/components/Footer';
 import { useLanguage } from '@/app/contexts/LanguageContext';
 import { apiUrl } from '@/lib/api';
+import { AuthErrorPayload, resolveAuthErrorMessage } from '@/lib/authError';
 
 export function LoginForm() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const params = new URLSearchParams(window.location.search);
   const hasLoginError = params.has('loginError');
   const hasSessionExpired = params.has('sessionExpired');
-  const [errorDescription, setErrorDescription] = useState<string | null>(null);
+  // The whole payload is kept, not a finished sentence: the message is resolved on every render so
+  // switching language on the login page also switches the alert that is already on screen.
+  const [authError, setAuthError] = useState<AuthErrorPayload | null>(null);
 
   useEffect(() => {
     if (!hasLoginError) return;
     fetch(apiUrl('api/auth-error'))
-      .then((r) => (r.ok ? r.json() : {}))
-      .then((data: { description?: string }) => {
-        if (data.description) {
-          setErrorDescription(data.description);
-        }
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: unknown) => {
+        setAuthError(data as AuthErrorPayload | null);
       })
       .catch(() => {
         // ignore — generic message will be shown
       });
   }, [hasLoginError]);
+
+  const errorDescription = resolveAuthErrorMessage(authError, language);
 
   const handleLogin = () => {
     window.location.href = apiUrl('oauth2/authorization/iam-admin');
