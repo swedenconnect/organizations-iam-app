@@ -83,6 +83,12 @@
   `set-client-functions.sh`. Unscoped clients are flagged in the application and named in a warning
   on every reconciliation run.
 
+- **The `iam.admin.authz-client-ids` setting has been removed.** The attribute
+  `iam_admin_managed=true` is now the only thing that makes a Keycloak client managed. The setting
+  was a fallback from before clients could be registered from the admin application, and a client
+  listed in it was managed without anything in Keycloak saying so. A deployment that still sets the
+  property starts as before, and the property has no effect.
+
 - **Fixed: scope permissions were never removed when a function was detached or deleted.** Every
   function detach and function deletion left its scope permissions behind in Keycloak. Permissions
   orphaned by earlier releases are removed by a reconciliation run with pruning enabled.

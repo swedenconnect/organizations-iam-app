@@ -98,7 +98,6 @@ public class KeycloakAdminClient {
   private final OAuth2AuthorizedClientManager authorizedClientManager;
   private final String adminApiBase;
   private final boolean pnrUserids;
-  private final IamAdminProperties properties;
   private CacheToken cacheToken;
 
   public KeycloakAdminClient(
@@ -109,7 +108,6 @@ public class KeycloakAdminClient {
     this.authorizedClientManager = authorizedClientManager;
     this.adminApiBase = properties.getAdminApiBase();
     this.pnrUserids = properties.isPnrUserids();
-    this.properties = properties;
     this.restClient = restClientBuilder.build();
 
     log.debug("KeycloakAdminClient initialized — adminApiBase={}", this.adminApiBase);
@@ -1153,32 +1151,22 @@ public class KeycloakAdminClient {
   }
 
   /**
-   * Resolves the full set of managed Keycloak clients by combining two sources:
+   * Resolves the full set of managed Keycloak clients by paging through {@code GET /clients} and
+   * filtering the clients whose {@code attributes.iam_admin_managed} equals {@code "true"}.
    *
-   * <ol>
-   *   <li><strong>Dynamic discovery</strong> — pages through {@code GET /clients} and filters
-   *       clients whose {@code attributes.iam_admin_managed} equals {@code "true"}.</li>
-   *   <li><strong>Fallback config</strong> — the client IDs listed in
-   *       {@code IamAdminProperties.authzClientIds} (if any).</li>
-   * </ol>
-   *
-   * <p>The result is the union of both sources with duplicates eliminated. If the result is empty
-   * a WARN is logged.</p>
+   * <p>If the result is empty a WARN is logged.</p>
    *
    * <p>Each client carries the functions declared in its {@code client_functions} attribute. Use
    * {@link ManagedClientInfo#handles(String)} to decide whether a client should receive the
    * artifacts for a given function.</p>
    *
    * @return list of managed clients; never {@code null}
-   * @throws KeycloakAdminException if a fallback client ID cannot be resolved, or on any Keycloak
-   *     API error
+   * @throws KeycloakAdminException on any Keycloak API error
    */
   public @NonNull List<ManagedClientInfo> resolveIamAdminManagedClients() {
     final LinkedHashMap<String, ManagedClientInfo> result = new LinkedHashMap<>();
-    final List<Map<String, Object>> allClients = this.fetchAllClients();
 
-    // Source 1 — dynamic discovery via iam_admin_managed attribute
-    for (final Map<String, Object> client : allClients) {
+    for (final Map<String, Object> client : this.fetchAllClients()) {
       if ("true".equals(clientAttribute(client, "iam_admin_managed"))) {
         final ManagedClientInfo info = this.toManagedClientInfo(client);
         if (info != null && info.oidcClient()) {
@@ -1188,24 +1176,9 @@ public class KeycloakAdminClient {
     }
     log.debug("Managed clients discovered via iam_admin_managed attribute: {}", result.size());
 
-    // Source 2 — fallback config
-    final List<String> fallbackIds = this.properties.getAuthzClientIds();
-    if (fallbackIds != null && !fallbackIds.isEmpty()) {
-      log.debug("Resolving {} fallback authz-client-ids", fallbackIds.size());
-      for (final String clientId : fallbackIds) {
-        final ManagedClientInfo info = allClients.stream()
-            .filter(c -> clientId.equals(getString(c, "clientId")))
-            .map(this::toManagedClientInfo)
-            .filter(Objects::nonNull)
-            .findFirst()
-            .orElseThrow(() -> new KeycloakAdminException("Keycloak client not found: " + clientId));
-        result.putIfAbsent(info.uuid(), info);
-      }
-    }
-
     if (result.isEmpty()) {
-      log.warn("No managed Keycloak clients found (neither via iam_admin_managed attribute"
-          + " nor authz-client-ids) — no authz artifacts will be created/deleted");
+      log.warn("No managed Keycloak clients found (no client carries the iam_admin_managed"
+          + " attribute) — no authz artifacts will be created/deleted");
     }
 
     return new ArrayList<>(result.values());
