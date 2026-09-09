@@ -17,7 +17,7 @@
 # add-resource-server.sh
 #
 # Register a resource server (audience-only client) in Keycloak.
-# Resource servers are public clients with all grant flows disabled — they
+# Resource servers are public clients with all grant flows disabled, so they
 # exist only to represent an OAuth2 audience and carry a client_functions
 # attribute that the resource-aud plugin validates at token issuance time.
 #
@@ -156,7 +156,7 @@ TOKEN=$(get_token)
 echo "    Token obtained."
 
 # ---------------------------------------------------------------------------
-# Step 1 — Resolve or create client
+# Step 1: Resolve or create client
 # ---------------------------------------------------------------------------
 
 echo "==> Resolving client '${CLIENT_ID}'..."
@@ -203,7 +203,7 @@ print(clients[0]['id'] if clients else '')
 fi
 
 # ---------------------------------------------------------------------------
-# Step 2 — Sync settings (always runs — read-merge-write)
+# Step 2: Sync settings (always runs, read-merge-write)
 # ---------------------------------------------------------------------------
 
 echo "==> Syncing client settings..."

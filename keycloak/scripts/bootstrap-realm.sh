@@ -141,7 +141,7 @@ api_put() {
 }
 
 # ---------------------------------------------------------------------------
-# Step 0 — Authenticate
+# Step 0: Authenticate
 # ---------------------------------------------------------------------------
 
 echo ""
@@ -151,11 +151,11 @@ TOKEN=$(get_token)
 echo "    Token obtained."
 
 # ---------------------------------------------------------------------------
-# Step 0b — Pre-flight: check deployed provider JARs
+# Step 0b: Pre-flight: check deployed provider JARs
 # ---------------------------------------------------------------------------
 #
 # Checks for custom protocol mapper / executor providers in Keycloak's
-# server-info. Failures are warnings only — bootstrap continues so that
+# server-info. Failures are warnings only, so bootstrap continues and
 # all idempotent realm-level steps are not blocked by a missing JAR.
 
 echo "==> Pre-flight: checking deployed provider JARs..."
@@ -209,13 +209,13 @@ if [ "${PROVIDER_CHECK_OK}" = "false" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Step 1 — Create realm
+# Step 1: Create realm
 # ---------------------------------------------------------------------------
 
 echo "==> Creating realm '${REALM}'..."
 REALM_STATUS=$(api_get_status "${REALM_BASE}")
 if [ "${REALM_STATUS}" = "200" ]; then
-  echo "    Realm '${REALM}' already exists — skipping creation."
+  echo "    Realm '${REALM}' already exists, skipping creation."
 else
   REALM_BODY=$(python3 -c '
 import json, sys
@@ -234,7 +234,7 @@ print(json.dumps({
 fi
 
 # ---------------------------------------------------------------------------
-# Step 1b — Configure ACR-to-LoA mappings and Fine-Grained Admin Permissions
+# Step 1b: Configure ACR-to-LoA mappings and Fine-Grained Admin Permissions
 # ---------------------------------------------------------------------------
 
 echo "==> Configuring realm settings (ACR-to-LoA, admin permissions)..."
@@ -260,7 +260,7 @@ STATUS=$(api_put "${REALM_BASE}" "${UPDATED_REALM}")
 [ "${STATUS}" = "204" ] && echo "    Done." || echo "    WARNING: Unexpected HTTP status: ${STATUS}" >&2
 
 # ---------------------------------------------------------------------------
-# Step 2 — Top-level groups
+# Step 2: Top-level groups
 # ---------------------------------------------------------------------------
 
 echo "==> Creating top-level groups..."
@@ -272,7 +272,7 @@ print(' '.join(g.get('name','') for g in groups))
 
 for GROUP in orgs functions; do
   if echo "${EXISTING_GROUPS}" | grep -qw "${GROUP}"; then
-    echo "    Group '${GROUP}' already exists — skipping."
+    echo "    Group '${GROUP}' already exists, skipping."
   else
     STATUS=$(api_post "${REALM_BASE}/groups" "{\"name\":\"${GROUP}\"}")
     [ "${STATUS}" = "201" ] && echo "    Group '${GROUP}' created." || echo "    WARNING: Group '${GROUP}' status: ${STATUS}" >&2
@@ -280,13 +280,13 @@ for GROUP in orgs functions; do
 done
 
 # ---------------------------------------------------------------------------
-# Step 3 — Realm role: superuser
+# Step 3: Realm role: superuser
 # ---------------------------------------------------------------------------
 
 echo "==> Creating realm role 'superuser'..."
 ROLE_STATUS=$(api_get_status "${REALM_BASE}/roles/superuser")
 if [ "${ROLE_STATUS}" = "200" ]; then
-  echo "    Role 'superuser' already exists — skipping."
+  echo "    Role 'superuser' already exists, skipping."
 else
   STATUS=$(api_post "${REALM_BASE}/roles" \
     '{"name":"superuser","description":"Full access to all organizations, functions and users."}')
@@ -294,80 +294,116 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 4 — naturalPersonNumber client scope
+# Step 4: OIDC Sweden client scopes
 # ---------------------------------------------------------------------------
+#
+# The three scopes of the Swedish OIDC Claims Specification, each carrying the
+# protocol mapper that emits its claims into the ID token, the access token and the
+# UserInfo response. The oidc-sweden-claims-plugin JAR registers the mapper types and
+# nothing else, so creating the scopes is this script's job.
+#
+#   naturalPersonInfo   - given_name, family_name, middle_name, name, birthdate
+#   naturalPersonNumber - personal identity number and coordination number claims
+#   naturalPersonOrgId  - orgAffiliation, orgName, orgNumber, orgUnit
 
-PNR_SCOPE="https://id.oidc.se/scope/naturalPersonNumber"
-echo "==> Creating client scope '${PNR_SCOPE}'..."
+echo "==> Creating the OIDC Sweden client scopes..."
 
 ALL_SCOPES=$(api_get "${REALM_BASE}/client-scopes")
-PNR_SCOPE_ID=$(echo "${ALL_SCOPES}" | python3 -c "
-import sys, json
-scopes = json.load(sys.stdin)
-nxt = next((s['id'] for s in scopes if s.get('name') == '${PNR_SCOPE}'), '')
-print(nxt)
-" 2>/dev/null || echo "")
 
-if [ -n "${PNR_SCOPE_ID}" ]; then
-  echo "    Client scope already exists (ID: ${PNR_SCOPE_ID}) — skipping creation."
-else
-  STATUS=$(api_post "${REALM_BASE}/client-scopes" \
-    "$(python3 -c '
+scope_id_of() {
+  local scope_name="$1"
+  echo "${ALL_SCOPES}" | SCOPE_NAME="${scope_name}" python3 -c "
+import os, sys, json
+scopes = json.load(sys.stdin)
+name = os.environ['SCOPE_NAME']
+print(next((s['id'] for s in scopes if s.get('name') == name), ''))
+" 2>/dev/null || echo ""
+}
+
+# name|description|mapper provider id|mapper instance name
+OIDC_SWEDEN_SCOPES="\
+https://id.oidc.se/scope/naturalPersonInfo|Natural person information (given_name, family_name, middle_name, name, birthdate)|natural-person-info-mapper|natural-person-info-mapper
+https://id.oidc.se/scope/naturalPersonNumber|Swedish personal identity number or coordination number|oidc-sweden-claims-mapper|oidc-sweden-claims-mapper
+https://id.oidc.se/scope/naturalPersonOrgId|Swedish organizational identity (orgAffiliation, orgName, orgNumber, orgUnit)|oidc-sweden-claims-mapper|oidc-sweden-claims-mapper"
+
+echo "${OIDC_SWEDEN_SCOPES}" | while IFS='|' read -r SCOPE_NAME SCOPE_DESC MAPPER_PROVIDER MAPPER_NAME; do
+  [ -z "${SCOPE_NAME}" ] && continue
+
+  SCOPE_ID=$(scope_id_of "${SCOPE_NAME}")
+
+  if [ -n "${SCOPE_ID}" ]; then
+    echo "    Client scope '${SCOPE_NAME}' already exists, skipping creation."
+  else
+    SCOPE_BODY=$(python3 -c '
 import json, sys
 print(json.dumps({
   "name": sys.argv[1],
+  "description": sys.argv[2],
   "protocol": "openid-connect",
   "attributes": {
     "include.in.token.scope": "true",
     "display.on.consent.screen": "true",
   }
 }))
-' "${PNR_SCOPE}")")
-  if [ "${STATUS}" = "201" ]; then
-    echo "    Client scope created."
-    # Re-fetch to get the ID
-    ALL_SCOPES=$(api_get "${REALM_BASE}/client-scopes")
-    PNR_SCOPE_ID=$(echo "${ALL_SCOPES}" | python3 -c "
-import sys, json
-scopes = json.load(sys.stdin)
-nxt = next((s['id'] for s in scopes if s.get('name') == '${PNR_SCOPE}'), '')
-print(nxt)
-" 2>/dev/null || echo "")
-  else
-    echo "    WARNING: Unexpected HTTP status: ${STATUS}" >&2
+' "${SCOPE_NAME}" "${SCOPE_DESC}")
+    STATUS=$(api_post "${REALM_BASE}/client-scopes" "${SCOPE_BODY}")
+    if [ "${STATUS}" = "201" ]; then
+      echo "    Client scope '${SCOPE_NAME}' created."
+      ALL_SCOPES=$(api_get "${REALM_BASE}/client-scopes")
+      SCOPE_ID=$(scope_id_of "${SCOPE_NAME}")
+    else
+      echo "    WARNING: Unexpected HTTP status creating '${SCOPE_NAME}': ${STATUS}" >&2
+    fi
   fi
-fi
 
-# Add oidc-sweden-claims-mapper to the scope
-if [ -n "${PNR_SCOPE_ID}" ]; then
-  echo "==> Adding oidc-sweden-claims-mapper to scope '${PNR_SCOPE}'..."
-  EXISTING_MAPPER=$(api_get "${REALM_BASE}/client-scopes/${PNR_SCOPE_ID}/protocol-mappers/models" | python3 -c "
-import sys, json
+  # Attach the mapper. A scope without it emits no OIDC Sweden claim at all.
+  if [ -n "${SCOPE_ID}" ]; then
+    EXISTING_MAPPER=$(api_get "${REALM_BASE}/client-scopes/${SCOPE_ID}/protocol-mappers/models" \
+      | MAPPER_PROVIDER="${MAPPER_PROVIDER}" python3 -c "
+import os, sys, json
 mappers = json.load(sys.stdin)
-print('yes' if any(m.get('name') == 'oidc-sweden-claims-mapper' for m in mappers) else 'no')
+provider = os.environ['MAPPER_PROVIDER']
+print('yes' if any(m.get('protocolMapper') == provider for m in mappers) else 'no')
 " 2>/dev/null || echo "no")
 
-  if [ "${EXISTING_MAPPER}" = "yes" ]; then
-    echo "    Mapper already exists — skipping."
-  else
-    STATUS=$(api_post "${REALM_BASE}/client-scopes/${PNR_SCOPE_ID}/protocol-mappers/models" \
-      '{"name":"oidc-sweden-claims-mapper","protocol":"openid-connect","protocolMapper":"oidc-sweden-claims-mapper","consentRequired":false,"config":{"id.token.claim":"true","access.token.claim":"true","userinfo.token.claim":"true"}}')
-    case "${STATUS}" in
-      201) echo "    Mapper added." ;;
-      400|404)
-        echo ""
-        echo "    WARNING: Could not add 'oidc-sweden-claims-mapper' (HTTP ${STATUS})."
-        echo "             Ensure the oidc-sweden-claims-plugin JAR is deployed and"
-        echo "             Keycloak has been rebuilt (kc.sh build)."
-        echo ""
-        ;;
-      *) echo "    WARNING: Unexpected HTTP status: ${STATUS}" >&2 ;;
-    esac
+    if [ "${EXISTING_MAPPER}" = "yes" ]; then
+      echo "      Mapper '${MAPPER_PROVIDER}' already present, skipping."
+    else
+      MAPPER_BODY=$(python3 -c '
+import json, sys
+print(json.dumps({
+  "name": sys.argv[1],
+  "protocol": "openid-connect",
+  "protocolMapper": sys.argv[2],
+  "consentRequired": False,
+  "config": {
+    "id.token.claim": "true",
+    "access.token.claim": "true",
+    "userinfo.token.claim": "true",
+  }
+}))
+' "${MAPPER_NAME}" "${MAPPER_PROVIDER}")
+      STATUS=$(api_post "${REALM_BASE}/client-scopes/${SCOPE_ID}/protocol-mappers/models" "${MAPPER_BODY}")
+      case "${STATUS}" in
+        201) echo "      Mapper '${MAPPER_PROVIDER}' added." ;;
+        400|404)
+          echo ""
+          echo "      WARNING: Could not add '${MAPPER_PROVIDER}' (HTTP ${STATUS})."
+          echo "               Ensure the oidc-sweden-claims-plugin JAR is deployed and"
+          echo "               Keycloak has been rebuilt (kc.sh build)."
+          echo ""
+          ;;
+        *) echo "      WARNING: Unexpected HTTP status: ${STATUS}" >&2 ;;
+      esac
+    fi
   fi
-fi
+done
+
+# The loop above runs in a subshell, so re-read the scope list for the steps that follow.
+ALL_SCOPES=$(api_get "${REALM_BASE}/client-scopes")
 
 # ---------------------------------------------------------------------------
-# Step 5 — phone client scope (built-in — create only if missing)
+# Step 5: phone client scope (built-in, created only if missing)
 # ---------------------------------------------------------------------------
 
 echo "==> Checking phone client scope..."
@@ -379,9 +415,9 @@ print(nxt)
 " 2>/dev/null || echo "")
 
 if [ -n "${PHONE_SCOPE_ID}" ]; then
-  echo "    Built-in 'phone' scope already exists — skipping."
+  echo "    Built-in 'phone' scope already exists, skipping."
 else
-  echo "    Built-in 'phone' scope not found — creating..."
+  echo "    Built-in 'phone' scope not found, creating..."
   STATUS=$(api_post "${REALM_BASE}/client-scopes" \
     '{"name":"phone","protocol":"openid-connect","attributes":{"include.in.token.scope":"true","display.on.consent.screen":"false"}}')
   if [ "${STATUS}" = "201" ]; then
@@ -406,49 +442,118 @@ print(nxt)
 fi
 
 # ---------------------------------------------------------------------------
-# Step 6 — personalIdentityNumber user profile attribute
+# Step 6: OIDC Sweden user profile groups and attributes
 # ---------------------------------------------------------------------------
+#
+# The two attribute groups and ten attributes of the Swedish OIDC Claims
+# Specification, as the oidc-sweden-claims-plugin defines them. The plugin registers
+# nothing in a realm, so declaring them is this script's job. Without a declaration
+# Keycloak drops the attribute when a user is written, since the realm sets no
+# unmanaged attribute policy.
+#
+# Groups are written before the attributes that reference them, and only what is
+# missing is added: an attribute already present keeps its definition exactly as it
+# stands. A realm bootstrapped by an earlier version of this script therefore keeps
+# its `personalIdentityNumber` definition, including the scope selector that version
+# put on it. That selector has no counterpart in the specification; remove it by hand
+# under Realm settings -> User profile if the attribute should follow the definition
+# below.
 
-echo "==> Configuring personalIdentityNumber user profile attribute..."
+echo "==> Configuring the OIDC Sweden user profile groups and attributes..."
+
 PROFILE_JSON=$(api_get "${REALM_BASE}/users/profile")
 
-ATTR_EXISTS=$(echo "${PROFILE_JSON}" | python3 -c "
-import sys, json
-profile = json.load(sys.stdin)
-attrs = profile.get('attributes', [])
-print('yes' if any(a.get('name') == 'personalIdentityNumber' for a in attrs) else 'no')
-" 2>/dev/null || echo "no")
+UPDATED_PROFILE=$(PROFILE_JSON="${PROFILE_JSON}" python3 -c "
+import os, json, sys
 
-if [ "${ATTR_EXISTS}" = "yes" ]; then
-  echo "    Attribute 'personalIdentityNumber' already exists — skipping."
-else
-  UPDATED_PROFILE=$(PROFILE_JSON="${PROFILE_JSON}" python3 -c "
-import os, json
 profile = json.loads(os.environ['PROFILE_JSON'])
-if 'attributes' not in profile:
-    profile['attributes'] = []
-profile['attributes'].append({
-    'name': 'personalIdentityNumber',
-    'displayName': 'Personal Identity Number',
-    'validations': {},
-    'annotations': {},
-    'permissions': {
-        'view': ['admin', 'user'],
-        'edit': ['admin']
+
+groups = [
+    {
+        'name': 'oidc-sweden-natural-person',
+        'displayHeader': 'OIDC Sweden: Natural Person',
+        'displayDescription': 'Swedish personal identity number and coordination number '
+                              'attributes per the Swedish OIDC Claims Specification.',
+        'annotations': {},
     },
-    'multivalued': False,
-    'selector': {
-        'scopes': ['https://id.oidc.se/scope/naturalPersonNumber']
+    {
+        'name': 'oidc-sweden-org-id',
+        'displayHeader': 'OIDC Sweden: Organisational Identity',
+        'displayDescription': 'Swedish organisational identity attributes per the Swedish '
+                              'OIDC Claims Specification.',
+        'annotations': {},
+    },
+]
+
+# name, display name, group. middleName and birthdate deliberately have no group.
+attributes = [
+    ('middleName', 'Middle Name', None),
+    ('birthdate', 'Date of Birth', None),
+    ('personalIdentityNumber', 'Personal Identity Number', 'oidc-sweden-natural-person'),
+    ('coordinationNumber', 'Coordination Number', 'oidc-sweden-natural-person'),
+    ('coordinationNumberLevel', 'Coordination Number Level', 'oidc-sweden-natural-person'),
+    ('previousCoordinationNumber', 'Previous Coordination Number', 'oidc-sweden-natural-person'),
+    ('orgAffiliation', 'Organizational Affiliation', 'oidc-sweden-org-id'),
+    ('orgName', 'Organization Name', 'oidc-sweden-org-id'),
+    ('orgNumber', 'Organization Number', 'oidc-sweden-org-id'),
+    ('orgUnit', 'Organizational Unit', 'oidc-sweden-org-id'),
+]
+
+existing_groups = profile.setdefault('groups', [])
+existing_attributes = profile.setdefault('attributes', [])
+
+group_names = {g.get('name') for g in existing_groups}
+attribute_names = {a.get('name') for a in existing_attributes}
+
+added = []
+for group in groups:
+    if group['name'] in group_names:
+        continue
+    existing_groups.append(group)
+    added.append('group ' + group['name'])
+
+for name, display_name, group in attributes:
+    if name in attribute_names:
+        continue
+    attribute = {
+        'name': name,
+        'displayName': display_name,
+        'multivalued': False,
+        'permissions': {'view': ['admin', 'user'], 'edit': ['admin']},
+        'validations': {},
+        'annotations': {},
     }
-})
-print(json.dumps(profile))
+    if group is not None:
+        attribute['group'] = group
+    existing_attributes.append(attribute)
+    added.append('attribute ' + name)
+
+print(json.dumps({'added': added, 'profile': profile}))
 ")
-  STATUS=$(api_put "${REALM_BASE}/users/profile" "${UPDATED_PROFILE}")
-  [ "${STATUS}" = "200" ] && echo "    Attribute 'personalIdentityNumber' added." || echo "    WARNING: Unexpected HTTP status: ${STATUS}" >&2
+
+ADDED=$(echo "${UPDATED_PROFILE}" | python3 -c "
+import sys, json
+print('\n'.join(json.load(sys.stdin)['added']))
+" 2>/dev/null || echo "")
+
+if [ -z "${ADDED}" ]; then
+  echo "    All OIDC Sweden groups and attributes already present, nothing written."
+else
+  echo "${ADDED}" | while read -r ITEM; do
+    [ -n "${ITEM}" ] && echo "    Adding ${ITEM}."
+  done
+  PROFILE_BODY=$(echo "${UPDATED_PROFILE}" | python3 -c "
+import sys, json
+print(json.dumps(json.load(sys.stdin)['profile']))
+")
+  STATUS=$(api_put "${REALM_BASE}/users/profile" "${PROFILE_BODY}")
+  [ "${STATUS}" = "200" ] \
+    && echo "    User profile configuration updated." \
+    || echo "    WARNING: Unexpected HTTP status: ${STATUS}" >&2
 fi
 
 # ---------------------------------------------------------------------------
-# Step 7 — Client Policy: resource-function-executor
+# Step 7: Client Policy: resource-function-executor
 # ---------------------------------------------------------------------------
 #
 # Creates a Client Policy profile containing the resource-function-executor,
@@ -466,7 +571,7 @@ print('yes' if any(p.get('name') == 'resource-function-profile' for p in profile
 " 2>/dev/null || echo "no")
 
 if [ "${PROFILE_EXISTS}" = "yes" ]; then
-  echo "    Client Policy profile 'resource-function-profile' already exists — skipping."
+  echo "    Client Policy profile 'resource-function-profile' already exists, skipping."
 else
   UPDATED_PROFILES=$(PROFILES_JSON="${EXISTING_PROFILES_JSON}" python3 -c "
 import os, json
@@ -507,7 +612,7 @@ print('yes' if any(p.get('name') == 'resource-function-policy' for p in policies
 " 2>/dev/null || echo "no")
 
 if [ "${POLICY_EXISTS}" = "yes" ]; then
-  echo "    Client Policy 'resource-function-policy' already exists — skipping."
+  echo "    Client Policy 'resource-function-policy' already exists, skipping."
 else
   UPDATED_POLICIES=$(POLICIES_JSON="${EXISTING_POLICIES_JSON}" python3 -c "
 import os, json

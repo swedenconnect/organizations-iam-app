@@ -122,16 +122,6 @@ services:
       JAVA_OPTS: "-Djava.net.preferIPv4Stack=true -Dorg.apache.xml.security.ignoreLineBreaks=true -Djavax.net.ssl.trustStore=/opt/common/trust.jks -Djavax.net.ssl.trustStorePassword=secret"
       JAVA_TOOL_OPTIONS: "-Djava.net.preferIPv4Stack=true -Dorg.apache.xml.security.ignoreLineBreaks=true -Djavax.net.ssl.trustStore=/opt/common/trust.jks -Djavax.net.ssl.trustStorePassword=secret"
 
-  keycloak-setup:
-    image: keycloak/keycloak:26.5.7
-    networks:
-      - swedenconnect-local
-    volumes:
-      - ./config/keycloak/scripts:/scripts
-    entrypoint: [""]
-    profiles:
-      - setup
-
   keycloak:
     image: keycloak/keycloak:26.5.7
     depends_on:

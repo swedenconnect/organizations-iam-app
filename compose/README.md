@@ -7,7 +7,13 @@ Docker compose scripts for starting the Sweden Connect Organizations and Users I
 
 ## Prerequisites
 
-The following prerequisites are needed for running the scrips:
+The following prerequisites are needed for running the scripts:
+
+- Docker and Docker Compose.
+- `curl` and `python3` on the host. The Keycloak scripts under
+  `compose/keycloak-scripts/` run on the host and call the Keycloak Admin REST API, rather
+  than running inside a container.
+- Java and Maven, for building the service images and the Keycloak provider JARs.
 
 ### Hosts File
 
@@ -37,7 +43,7 @@ Three of the services in the compose file are built from this repository rather 
 
 Run this before the first `docker compose up`, and again whenever Java or TypeScript source changes. The script is safe to re-run.
 
-The Keycloak provider JARs are a separate step, handled by `compose/keycloak-scripts/install-keycloak-plugins.sh`, see [Bootstrap of Keycloak](#bootstrap-of-keycloak) below. Build the service images first, then install the provider JARs, then start the environment.
+The Keycloak provider JARs are a separate step, handled by `compose/keycloak-scripts/install-keycloak-plugins.sh`, which builds them and installs them from the [distribution ZIP](../keycloak/README.md#plugin-distribution); see [Bootstrap of Keycloak](#bootstrap-of-keycloak) below. Build the service images first, then install the provider JARs, then start the environment.
 
 ### Access to GitHub's Docker Registry
 
@@ -67,23 +73,26 @@ The admin login for the test instance is:
 - User: `admin`
 - Password: `keycloak`
 
-#### Step 1 — Install Keycloak provider JARs
+#### Step 1: Install Keycloak provider JARs
 
-The Keycloak instance requires three provider JARs to be present in `compose/config/keycloak/spi/` before it is started. Run the install script from anywhere in the repository:
+The Keycloak instance requires the provider JARs to be present in `compose/config/keycloak/spi/` before it is started. Run the install script from anywhere in the repository. It builds the plugin modules and unpacks the [distribution ZIP](../keycloak/README.md#plugin-distribution) the build produced, so the directory ends up holding exactly the providers of the current build:
 
 ```bash
 ./compose/keycloak-scripts/install-keycloak-plugins.sh
 ```
 
-The script builds the two local plugins (`org-rights-mapper` and
-`scope-org-identifier-mapper`) silently using Maven, downloads
-`oidc-sweden-claims-plugin` from Maven Central, and copies all three JARs into
-`compose/config/keycloak/spi/`. Re-run this script whenever any plugin is updated.
+The script builds the Keycloak plugin modules with Maven, which produces the distribution ZIP,
+and copies the JARs from that ZIP into `compose/config/keycloak/spi/`. The external
+`oidc-sweden-claims-plugin` is one of them, resolved as a dependency of the distribution module
+rather than downloaded by the script. A failed build stops the script, so the SPI directory is
+never filled from an older build. Re-run the script whenever a plugin changes, and restart
+Keycloak afterwards to load the new JARs. See
+[Provider JARs](../keycloak/README.md#provider-jars) for the full provider set.
 
 *The local plugin directory defaults to `keycloak/` at the repository root. Override by
 setting `KEY_CLOAK_PLUGIN_DIR` if your checkout layout differs.*
 
-#### Step 2 — Start the Keycloak service
+#### Step 2: Start the Keycloak service
 
 Start at least the `keycloak` service (other services may be brought up at the same time):
 
@@ -99,13 +108,7 @@ docker compose -f compose/docker-compose.yml up -d keycloak
 
 Wait for Keycloak to finish its startup before proceeding (in another shell if not started as a daemon).
 
-#### Step 3 — Bootstrap the realm
-
-In order to get the OIDC Sweden user profile attributes and groups present in the new realm (that we are about to create) we need to do the following:
-
-- Login to the Keycloak UI as an administrator (https://local.dev.swedenconnect.se:17000).
-
-- Register the event listener in `master`: In the Keycloak Admin Console go to the `master` realm → **Realm settings → Events → Event listeners** and add `oidc-sweden-event-listener`. New realms will then be configured automatically on creation without requiring a restart.
+#### Step 3: Bootstrap the realm
 
 Create the realm with all required base configuration:
 
@@ -117,12 +120,14 @@ Create the realm with all required base configuration:
     --display-name "Organizations and Users IAM"
 ```
 
-This creates the realm, groups, roles, client scopes and user profile attributes. The
-script is idempotent — safe to re-run. See
+This creates the realm, top-level groups, roles, the OIDC Sweden client scopes with their
+protocol mappers, and the OIDC Sweden user profile groups and attributes. The
+`oidc-sweden-claims-plugin` JAR only registers the protocol mapper types, so everything a
+realm needs is put there by this script. The script is idempotent and safe to re-run. See
 [compose/keycloak-scripts/README.md](keycloak-scripts/README.md) for full option
 reference.
 
-#### Step 4 — Create the initial admin user
+#### Step 4: Create the initial admin user
 
 Create the first user with the `superuser` role so that the IAM admin application can
 be accessed:
@@ -139,7 +144,7 @@ be accessed:
 Next, log in to the Keycloak Admin Console at https://local.dev.swedenconnect.se:17000 and set any desired name and other attributes manually under
 **Users → diggadmin → Details**.
 
-#### Step 5 — Register clients
+#### Step 5: Register clients
 
 Register the IAM admin application client:
 
@@ -162,8 +167,13 @@ so the application does not need to be running during registration.
 to mark them as IAM-admin-managed. See
 [compose/keycloak-scripts/README.md](keycloak-scripts/README.md) for details.*
 
-See [compose/keycloak-scripts/README.md](keycloak-scripts/README.md) for all available
-options and additional examples.
+The scripts under `compose/keycloak-scripts/` are wrappers over the single implementation in
+`keycloak/scripts/`: they add the compose Keycloak URL and its CA certificate
+(`compose/config/common/tls.crt`) and pass everything else through. Use them here for the
+shorter command line, and call `keycloak/scripts/*.sh` directly against any other Keycloak.
+See [compose/keycloak-scripts/README.md](keycloak-scripts/README.md) for the prerequisites
+and [keycloak/scripts/README.md](../keycloak/scripts/README.md) for every option each script
+takes.
 
 ## Services
 

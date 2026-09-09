@@ -2,12 +2,18 @@
 
 # Keycloak Admin Scripts
 
-Standalone scripts for configuring a Keycloak server via the Admin REST API.
-No Docker, no `kcadm`, and no running containers required — only `curl` and `python3`.
+Scripts for configuring a Keycloak server via the Admin REST API. No Docker, no `kcadm`, and
+no running containers required, only `curl` and `python3`.
 
-These scripts are the standalone equivalent of the `compose/keycloak-scripts/` wrappers.
-They target any reachable Keycloak instance directly, making them suitable for both
-local development and remote or production deployments.
+This is the single implementation of each of these scripts. They talk to any reachable
+Keycloak, so the same scripts serve the local Docker Compose environment, a shared test
+server, and a production installation.
+
+For the compose environment there are wrappers in
+[`compose/keycloak-scripts/`](../../compose/keycloak-scripts/README.md) that call these
+scripts with the local URL and CA certificate already filled in. They are a shorthand,
+nothing more; anything the wrappers can do can be done by calling these scripts with
+`--url` and `--cacert`.
 
 All scripts are idempotent and safe to re-run.
 
@@ -19,17 +25,19 @@ All scripts are idempotent and safe to re-run.
 2. [**Common Options**](#common-options)
 3. [**Scripts**](#scripts)
 
-   3.1. [`bootstrap-realm.sh`](#bootstrap-realm) — Full realm bootstrap
+   3.1. [`bootstrap-realm.sh`](#bootstrap-realm): Full realm bootstrap
 
-   3.2. [`create-admin-user.sh`](#create-admin-user) — Create the initial superuser
+   3.2. [`create-admin-user.sh`](#create-admin-user): Create the initial superuser
 
-   3.3. [`add-oidc-client.sh`](#add-oidc-client) — Register an OAuth/OIDC client
+   3.3. [`add-oidc-client.sh`](#add-oidc-client): Register an OAuth/OIDC client
 
-   3.4. [`add-resource-server.sh`](#add-resource-server) — Register a resource server
+   3.4. [`add-resource-server.sh`](#add-resource-server): Register a resource server
 
-   3.5. [`set-client-functions.sh`](#set-client-functions) — Set `client_functions` on an existing client
+   3.5. [`set-client-functions.sh`](#set-client-functions): Set `client_functions` on an existing client
 
-   3.6. [`set-iam-admin-managed.sh`](#set-iam-admin-managed) — Mark a client as IAM-admin-managed
+   3.6. [`set-iam-admin-managed.sh`](#set-iam-admin-managed): Mark a client as IAM-admin-managed
+
+   3.7. [`get-keycloak-plugins.sh`](#get-keycloak-plugins): Fetch the provider JARs for a version
 
 4. [**Typical Setup Sequence**](#typical-setup-sequence)
 
@@ -45,23 +53,25 @@ All scripts are idempotent and safe to re-run.
 | Keycloak 26.x running | Scripts target the Admin REST API v2 (no legacy `/auth` path by default) |
 | Keycloak provider JARs deployed | `bootstrap-realm.sh` will warn if any required JAR is missing; see below |
 
-**Required provider JARs** — must be built from this repository and deployed to
-Keycloak's providers directory before running `bootstrap-realm.sh`:
+**Required provider JARs**: see
+[Provider JARs](../README.md#provider-jars) for the full list: which provider type each JAR
+registers, and whether it is built from this repository or fetched from Maven Central. Most
+are built here; `oidc-sweden-claims-plugin` is an external artifact at a pinned version.
 
-| Provider type | JAR |
-|---|---|
-| `oidc-sweden-claims-mapper` | `oidc-sweden-claims-plugin-*.jar` |
-| `org-rights-mapper` | `org-rights-mapper-*.jar` |
-| `scope-org-identifier-mapper` | `scope-org-identifier-mapper-*.jar` |
-| `resource-audience-mapper` | `resource-aud-plugin-*.jar` |
+These scripts configure any reachable Keycloak, so they cannot deploy the providers
+themselves. Before running `bootstrap-realm.sh`, the JARs must be in that server's
+`providers/` directory and Keycloak must have been rebuilt (`kc.sh build`) and restarted. A
+provider that has not been built into the distribution is invisible to Keycloak, however the
+JAR got there. See
+[Deploying to Keycloak](../README.md#deploying-to-keycloak) for the steps.
 
-The JARs are published to the project's artifact repository and should be fetched from
-there and placed in Keycloak's `providers/` directory. After deployment, Keycloak must
-be rebuilt (`kc.sh build`) for the new providers to be recognized.
+To obtain the JARs for a given version of this project, use
+[`get-keycloak-plugins.sh`](#get-keycloak-plugins), which fetches the distribution ZIP and
+unpacks it.
 
 The scripts will proceed even when JARs are missing, but affected mappers and Client Policy
 executors will not be fully configured until the JARs are deployed and Keycloak has been
-rebuilt.
+rebuilt. `bootstrap-realm.sh` warns for each provider type it cannot find, and continues.
 
 ---
 
@@ -80,7 +90,7 @@ for interactively.
 | `--username <user>` | No | `admin` | Master realm admin username |
 | `--password <pass>` | Yes | prompt (silent) | Master realm admin password |
 | `--cacert <file>` | No | *(system CA)* | CA certificate file for TLS verification |
-| `--insecure` | No | off | Skip TLS verification — for local development only |
+| `--insecure` | No | off | Skip TLS verification, for local development only |
 
 ---
 
@@ -98,13 +108,26 @@ system, as described in `docs/keycloak-setup.md` sections 2.1–2.5 and 2.8b.
 - The realm (login settings, ACR-to-LoA mappings, Fine-Grained Admin Permissions)
 - Top-level groups: `orgs` and `functions`
 - Realm role: `superuser`
-- User profile attribute: `personalIdentityNumber`
-- Client scope: `https://id.oidc.se/scope/naturalPersonNumber` with the OIDC Sweden mapper
+- Client scopes, each with its protocol mapper emitting into the ID token, the access token
+  and the UserInfo response:
+    - `https://id.oidc.se/scope/naturalPersonInfo` (`natural-person-info-mapper`)
+    - `https://id.oidc.se/scope/naturalPersonNumber` (`oidc-sweden-claims-mapper`)
+    - `https://id.oidc.se/scope/naturalPersonOrgId` (`oidc-sweden-claims-mapper`)
+- User profile attribute groups: `oidc-sweden-natural-person` and `oidc-sweden-org-id`
+- User profile attributes: `middleName`, `birthdate`, `personalIdentityNumber`,
+  `coordinationNumber`, `coordinationNumberLevel`, `previousCoordinationNumber`,
+  `orgAffiliation`, `orgName`, `orgNumber` and `orgUnit`
 - Client scope: `phone` (built-in; created if missing, with `phone_number` mapper)
 - Client Policy profile: `resource-function-profile` (contains the `resource-function-executor`)
 - Client Policy: `resource-function-policy` (applies the profile to all confidential clients)
 
-Does **not** create clients or users. All steps are idempotent — safe to re-run.
+The `oidc-sweden-claims-plugin` JAR registers the two protocol mapper types and nothing
+else, so the scopes, attribute groups and attributes above are all created by this script.
+Only what is missing is added: an attribute already present keeps its definition, so a realm
+bootstrapped by an earlier version of the script keeps the scope selector that version put
+on `personalIdentityNumber`.
+
+Does **not** create clients or users. All steps are idempotent and safe to re-run.
 
 As a pre-flight step the script checks that the required provider JARs are deployed and
 recognized by Keycloak. Missing providers are reported as warnings; the script continues
@@ -133,7 +156,7 @@ so that all realm-level steps are not blocked by an undeployed JAR.
     --display-name "Organizations and Users IAM"
 ```
 
-**Example — local development with self-signed certificate:**
+**Example, the local compose Keycloak with its self-signed certificate:**
 
 ```bash
 ./keycloak/scripts/bootstrap-realm.sh \
@@ -141,8 +164,12 @@ so that all realm-level steps are not blocked by an undeployed JAR.
     --realm orgiam \
     --username admin \
     --password keycloak \
-    --cacert compose/config/keycloak/certs/ca.crt
+    --cacert compose/config/common/tls.crt
 ```
+
+`compose/config/common/tls.crt` is the certificate the compose Keycloak serves. The wrapper
+`./compose/keycloak-scripts/bootstrap-realm.sh` runs exactly this command, so the two are
+interchangeable.
 
 ---
 
@@ -200,7 +227,8 @@ downstream APIs on behalf of users.
 - The `org-rights-mapper` protocol mapper (ID token and/or access token, configurable)
 - The `scope-org-identifier-mapper` on the access token
 - The `resource-audience-mapper` on the access token
-- Optional client scopes: `https://id.oidc.se/scope/naturalPersonNumber` and `phone`
+- Optional client scopes: `https://id.oidc.se/scope/naturalPersonNumber`,
+  `https://id.oidc.se/scope/naturalPersonOrgId` and `phone`
 - Service account with `realm-management` roles (if `--service-account` is passed)
 
 A re-run against an existing client overwrites `redirectUris`, the `iam_admin_managed`
@@ -210,7 +238,7 @@ written when the invocation supplies one (see below); otherwise a root URL alrea
 client is left untouched.
 
 `{org}:{function}:{right}` scopes and their Authorization Services policies are **not**
-created by this script — they are managed automatically by the IAM admin application when
+created by this script. They are managed by the IAM admin application when
 functions are attached to organizations.
 
 **Prerequisites:**
@@ -231,7 +259,7 @@ functions are attached to organizations.
 
 | Option | Required | Default | Description |
 |---|---|---|---|
-| `--client-id <id>` | Yes | prompt | OAuth2 `client_id` — typically the application's base URL |
+| `--client-id <id>` | Yes | prompt | OAuth2 `client_id`, typically the application's base URL |
 | `--name <name>` | No | | Display name shown in the Keycloak admin console |
 | `--redirect-uri <pattern>` | Yes | prompt | Redirect URI pattern. May be repeated (see note below). |
 | `--root-url <url>` | No | prompt when a redirect URI is a path | Client root URL. Written only when supplied (see note below). |
@@ -242,7 +270,7 @@ functions are attached to organizations.
 
 > **Multiple redirect URIs:** `--redirect-uri` may be repeated to register more than one
 > allowed redirect URI pattern. This is necessary when the application uses different
-> callback base paths for OIDC login and OAuth2 API flows — for example
+> callback base paths for OIDC login and OAuth2 API flows, for example
 > `/login/oauth2/code/*` for OIDC and `/callback/oauth2/code/*` for OAuth2 client flows.
 > A plain OIDC relying party typically needs only a single `--redirect-uri`.
 
@@ -255,7 +283,7 @@ functions are attached to organizations.
 > whatever the client already has stays as it is. `--root-url` is always honoured without a
 > prompt, whatever form the redirect URIs take.
 
-**Example — standard OIDC/OAuth client (complete redirect URI, no root URL involved):**
+**Example: standard OIDC/OAuth client (complete redirect URI, no root URL involved):**
 
 ```bash
 ./keycloak/scripts/add-oidc-client.sh \
@@ -268,7 +296,7 @@ functions are attached to organizations.
     --redirect-uri 'https://my-app.example.com/login/oauth2/code/*'
 ```
 
-**Example — redirect URI given as a path (root URL supplied so nothing is prompted for):**
+**Example: redirect URI given as a path (root URL supplied so nothing is prompted for):**
 
 ```bash
 ./keycloak/scripts/add-oidc-client.sh \
@@ -282,7 +310,7 @@ functions are attached to organizations.
     --root-url https://my-app.example.com
 ```
 
-**Example — IAM admin application (needs service account for Keycloak Admin API access):**
+**Example: IAM admin application (needs service account for Keycloak Admin API access):**
 
 ```bash
 ./keycloak/scripts/add-oidc-client.sh \
@@ -296,7 +324,7 @@ functions are attached to organizations.
     --service-account
 ```
 
-**Example — client where `org_rights` is only needed in the ID token (not the access token):**
+**Example: client where `org_rights` is only needed in the ID token (not the access token):**
 
 ```bash
 ./keycloak/scripts/add-oidc-client.sh \
@@ -334,7 +362,7 @@ account, no Authorization Services, and no protocol mappers.
 
 | Option | Required | Description |
 |---|---|---|
-| `--client-id <id>` | Yes | OAuth2 `client_id` for the resource server — typically its base URL |
+| `--client-id <id>` | Yes | OAuth2 `client_id` for the resource server, typically its base URL |
 | `--name <name>` | No | Display name shown in the Keycloak admin console |
 | `--functions <list>` | No | Comma-separated list of functions to set as the `client_functions` attribute (e.g. `demo,walletreg`). If omitted, the resource server is treated as function-universal. |
 
@@ -371,8 +399,9 @@ The attribute is a comma-separated list of function identifiers. The `resource-a
 validates at token issuance time that the function extracted from the requested scope
 matches one of the listed functions. Setting the attribute to an empty string effectively
 removes the restriction and makes the resource server function-universal.
-> **Note:** The IAM admin application can set `client_functions` directly — the **Functions**
-> field on a managed client in the **Services** tab — and reconciles the client afterwards, so
+> **Note:** The IAM admin application can set `client_functions` directly, through the
+> **Functions** field on a managed client in the **Services** tab, and reconciles the client
+> afterwards, so
 > the artifacts for the newly declared functions are created without running this script. The
 > script remains the route for bootstrap and non-interactive provisioning, and for resource
 > servers, which the admin application does not manage.
@@ -415,7 +444,7 @@ Authorization Services policies and permissions to be created or deleted when a 
 is attached to or detached from an organization.
 
 Apply this to every **OAuth client** that may request `{org}:{function}:{right}` scopes
-on behalf of users — typically OIDC relying parties and OAuth clients that call downstream
+on behalf of users, typically OIDC relying parties and OAuth clients that call downstream
 APIs. Do **not** apply it to passive resource servers, which only receive and validate
 access tokens but never request them.
 
@@ -448,6 +477,59 @@ access tokens but never request them.
 
 ---
 
+<a name="get-keycloak-plugins"></a>
+### 3.7. get-keycloak-plugins.sh
+
+Fetches the Keycloak provider JARs for a given version of this project and unpacks them into a
+directory, ready to be copied to a Keycloak host.
+
+The JARs come from the distribution ZIP,
+`se.swedenconnect.iam.keycloak:keycloak-plugin-distribution:<version>:zip:plugins`, which
+defines the provider set of that release. See
+[The distribution ZIP](../README.md#plugin-distribution).
+
+Unlike every other script here, this one does not need a Keycloak and never talks to one. It
+needs `mvn` and `unzip`.
+
+**Where the ZIP comes from:**
+
+| Version | Source |
+|---|---|
+| A release, for example `0.9.3` | Maven Central, or the local Maven repository if it is already cached there |
+| A snapshot, for example `0.9.3-SNAPSHOT` | The local Maven repository only, since snapshots of this project are never published |
+
+Given a snapshot that is not in the local Maven repository, the script stops and says so: the
+answer is to build and install the project first, with `mvn -DskipTests install`.
+
+**Usage:**
+
+```bash
+./keycloak/scripts/get-keycloak-plugins.sh [OPTIONS]
+```
+
+**Options:**
+
+| Option | Required | Description |
+|---|---|---|
+| `--version <version>` | Yes | Version of this project to fetch, for example `0.9.3` or `0.9.3-SNAPSHOT` |
+| `--output-dir <dir>` | Yes | Directory to unpack the JARs into. Created if missing |
+
+Both are prompted for when missing, as with the other scripts.
+
+**Example:**
+
+```bash
+./keycloak/scripts/get-keycloak-plugins.sh \
+    --version 0.9.3 \
+    --output-dir ./keycloak-plugins
+```
+
+The script finishes by stating what has to happen next on the Keycloak host: copy the JARs
+into `providers/`, run `kc.sh build`, and restart Keycloak. Nothing it does affects a running
+Keycloak by itself.
+
+---
+
 <a name="typical-setup-sequence"></a>
 ## 4. Typical Setup Sequence
 
@@ -455,7 +537,7 @@ The following sequence sets up a complete environment from scratch. All scripts 
 the same Keycloak instance; replace `https://keycloak.example.com` and credentials with
 your actual values.
 
-**Step 1 — Bootstrap the realm:**
+**Step 1: Bootstrap the realm:**
 
 ```bash
 ./keycloak/scripts/bootstrap-realm.sh \
@@ -466,7 +548,7 @@ your actual values.
     --display-name "Organizations and Users IAM"
 ```
 
-**Step 2 — Create the initial superuser account:**
+**Step 2: Create the initial superuser account:**
 
 ```bash
 ./keycloak/scripts/create-admin-user.sh \
@@ -478,7 +560,7 @@ your actual values.
     --new-password changeme
 ```
 
-**Step 3 — Register the IAM admin application client:**
+**Step 3: Register the IAM admin application client:**
 
 ```bash
 ./keycloak/scripts/add-oidc-client.sh \
@@ -492,7 +574,7 @@ your actual values.
     --service-account
 ```
 
-**Step 4 — Register any additional OIDC/OAuth clients:**
+**Step 4: Register any additional OIDC/OAuth clients:**
 
 ```bash
 ./keycloak/scripts/add-oidc-client.sh \
@@ -506,7 +588,7 @@ your actual values.
     --no-org-rights-access-token
 ```
 
-**Step 5 — Register any resource servers:**
+**Step 5: Register any resource servers:**
 
 ```bash
 ./keycloak/scripts/add-resource-server.sh \
