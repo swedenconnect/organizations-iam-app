@@ -3,7 +3,7 @@
  * Handles all user-related data operations.
  */
 
-import type { User, UserOrganizationRole, UserPage } from '@/types';
+import type { CreateUserInput, User, UserOrganizationRole, UserPage } from '@/types';
 import { saveToStorage, STORAGE_KEYS } from './storageService';
 import { apiUrl, apiFetch } from '@/lib/api';
 
@@ -32,35 +32,54 @@ export class LastAdminError extends Error {
 }
 
 /**
- * Thrown when POST /api/users returns 409 because the personal identity number is already
- * registered. The existing user's Keycloak ID is included when the backend provides it.
+ * Thrown when POST /api/users returns 409 because an identity given for the new user, the
+ * personal identity number or the organizational affiliation, is already registered. The
+ * existing user's Keycloak ID is included when the backend provides it, so the caller can
+ * offer that user instead.
  */
-export class DuplicatePinError extends Error {
+export class DuplicateIdentityError extends Error {
   constructor(public readonly existingUserId: string | undefined) {
-    super('DUPLICATE_PERSONAL_IDENTITY_NUMBER');
-    this.name = 'DuplicatePinError';
+    super('DUPLICATE_IDENTITY');
+    this.name = 'DuplicateIdentityError';
+  }
+}
+
+/**
+ * Thrown when POST /api/users returns 409 because the chosen user ID is already taken. There is
+ * no existing user to offer here — the administrator must pick another ID.
+ */
+export class UserIdTakenError extends Error {
+  constructor() {
+    super('USER_ID_TAKEN');
+    this.name = 'UserIdTakenError';
   }
 }
 
 /**
  * Create a new user
  */
-export async function createUser(user: Omit<User, 'id'>): Promise<User> {
+export async function createUser(user: CreateUserInput): Promise<User> {
   const response = await apiFetch(apiUrl('api/users'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       name: user.name,
       email: user.email,
-      personalIdentityNumber: user.personalIdentityNumber.replace(/-/g, ''),
+      userId: user.userId ?? null,
+      personalIdentityNumber: user.personalIdentityNumber?.replace(/-/g, '') ?? null,
+      orgAffiliation: user.orgAffiliation ?? null,
       phoneNumber: user.phoneNumber ?? null,
+      temporaryPassword: user.temporaryPassword ?? null,
     }),
   });
 
   if (response.status === 409) {
     const body = await response.json().catch(() => ({}));
+    if (body?.reason === 'USER_ID_TAKEN') {
+      throw new UserIdTakenError();
+    }
     const existingUserId: string | undefined = body?.existingUserId;
-    throw new DuplicatePinError(existingUserId);
+    throw new DuplicateIdentityError(existingUserId);
   }
   if (!response.ok) {
     throw new Error(`Failed to create user: ${response.status}`);
@@ -72,6 +91,7 @@ export async function createUser(user: Omit<User, 'id'>): Promise<User> {
     name: data.name,
     email: data.email ?? '',
     personalIdentityNumber: data.personalIdentityNumber ?? '',
+    orgAffiliation: data.orgAffiliation || undefined,
     phoneNumber: data.phoneNumber ?? undefined,
     superuser: false,
     rights: [],
@@ -99,6 +119,7 @@ export async function updateUser(id: string, user: Partial<User>): Promise<User>
     name: data.name,
     email: data.email ?? '',
     personalIdentityNumber: data.personalIdentityNumber ?? '',
+    orgAffiliation: data.orgAffiliation || undefined,
     phoneNumber: data.phoneNumber || undefined,
     superuser: user.superuser ?? false,
     rights: user.rights ?? [],
@@ -127,6 +148,7 @@ export async function getUserById(id: string): Promise<User | null> {
     name: data.name,
     email: data.email ?? '',
     personalIdentityNumber: data.personalIdentityNumber ?? '',
+    orgAffiliation: data.orgAffiliation || undefined,
     phoneNumber: data.phoneNumber || undefined,
     superuser: false,
     rights: [],

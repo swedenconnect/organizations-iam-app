@@ -15,11 +15,27 @@ export interface Organization {
 export interface User {
   id: string;
   personalIdentityNumber: string;
+  /** Organizational affiliation on the format userID@organization-number. */
+  orgAffiliation?: string;
   name: string;
   email: string;
   phoneNumber?: string;
   superuser?: boolean;
   rights?: UserRightData[];
+}
+
+/** The values POST /api/users accepts. Which of them the backend honours is decided by the
+ *  iam.admin.user-registration settings delivered on the session. */
+export interface CreateUserInput {
+  name: string;
+  email: string;
+  /** The Keycloak user ID (username) to assign. Only honoured when allowSelectUserId is set. */
+  userId?: string;
+  personalIdentityNumber?: string;
+  orgAffiliation?: string;
+  phoneNumber?: string;
+  /** Initial password that the user must change at first login. */
+  temporaryPassword?: string;
 }
 
 export interface FunctionType {
@@ -93,6 +109,7 @@ export interface UserData {
   lastName: string | null;
   email: string | null;
   personalIdentityNumber: string | null;
+  orgAffiliation?: string | null;
   phoneNumber?: string | null;
   superuser: boolean;
   rights: UserRightData[];
@@ -150,6 +167,17 @@ export interface ReconciliationReport {
   errors: string[];
 }
 
+/** The iam.admin.user-registration settings, telling the create-user forms what to render. */
+export interface UserRegistrationSettings {
+  allowSelectUserId: boolean;
+  allowTemporaryPassword: boolean;
+  eidAttributeRequired: boolean;
+  personalNumberEnabled: boolean;
+  hsaIdEnabled: boolean;
+  orgAffiliationEnabled: boolean;
+  efosIdEnabled: boolean;
+}
+
 export interface AdminSessionData {
   superuser: boolean;
   functionConstraint: string | null;
@@ -157,6 +185,7 @@ export interface AdminSessionData {
   allowFunctionRemoval: boolean;
   allowOrgRights: boolean;
   allowAdminAssigningAdmin: boolean;
+  userRegistration: UserRegistrationSettings;
   functions: FunctionData[];
   orgRights: UserOrgRight[];
   adminOrgIdentifiers: string[];

@@ -96,12 +96,32 @@ for the source definition.
 | `iam.admin.admin-api-base` | Base URL of the Keycloak Admin REST API for the configured realm, e.g. `https://keycloak.example.com/admin/realms/orgiam`. | `String` | - |
 | `iam.admin.theme` | UI theme / white-label profile. Controls which CSS variables and logo assets are served under `/theme/`. See [IAM Admin Themes](iam-admin-themes.md). | `String` | `digg` |
 | `iam.admin.theme-dir` | Optional filesystem path to an external theme directory. When set, static theme assets and `footer.json` are served from this directory instead of the classpath, enabling theme changes without rebuilding the JAR. | `String` | - |
-| `iam.admin.pnr-userids` | When `true`, the personal identity number (12 digits) is used as the Keycloak username for newly created users instead of a random UUID. Useful during local development to allow username/password login. | `Boolean` | `false` |
+| `iam.admin.pnr-userids` | **Deprecated**. Use `iam.admin.user-registration.allow-select-user-id` instead. | `Boolean` | `false` |
 | `iam.admin.allow-function-removal` | When `true`, superusers are permitted to permanently delete a function definition and all its Keycloak artifacts (group, org sub-groups, client scopes, authorization policies and permissions). | `Boolean` | `false` |
 | `iam.admin.allow-org-rights` | When `true`, users may be assigned rights at the organization level, implicitly covering all functions. When `false`, only function-level assignments are permitted. Existing org-level memberships remain visible and removable. | `Boolean` | `true` |
 | `iam.admin.allow-admin-assigning-admin` | When `false`, a user who is not a superuser cannot grant, remove or downgrade the `admin` right, at either the organization level or the organization/function level. Only `read` and `write` are available to such a caller. When `true`, an admin may manage the `admin` right within the scope they administer. Superusers are never affected. | `Boolean` | `false` |
 | `iam.admin.client-reconciliation.enabled` | When `true`, managed clients are reconciled against the org/function topology on a schedule. Reconciliation also runs whenever a client is created or updated, and whenever a function is attached to or detached from an organization, so the schedule only exists to repair drift. | `Boolean` | `false` |
 | `iam.admin.client-reconciliation.cron` | Cron expression controlling how often scheduled reconciliation runs. Only used when reconciliation is enabled. | `String` | `0 */15 * * * *` |
+| `iam.admin.user-registration.*` | Settings controlling how users are registered in the system. See [User Registration Settings](#user-registration-settings). | See below. | - |
+
+<a name="user-registration-settings"></a>
+### User Registration Settings
+
+The settings under `iam.admin.user-registration` are used to control how users are created/registered in the system.
+The following properties are available:
+
+| Property | Description | Type | Default value |
+| :--- | :--- | :--- | :--- |
+| `allow-select-user-id` | When `true`, the administrator assigns the Keycloak user ID for the user being created. Any unused ID is permitted, including a personal identity number. When `false`, a random UUID is used and no field is shown. Maninly intended for testing environments. | `Boolean` | `false` |
+| `allow-temporary-password` | When `true`, the administrator may set an initial password, which Keycloak then requires the user to change at first login. Only meaningful together with `allow-select-user-id`. Username and password logins should normally not be used in production. | `Boolean` | `false` |
+| `eid-attribute-required` | When `true`, at least one of the enabled eID attributes must be given for a new user. | `Boolean` | `true` |
+| `personal-number-enabled` | When `true`, a "Personal identity number" field is offered when a user is registered. This means that the user is expected to login using his or her Swedish eID. | `Boolean` | `true` |
+| `hsa-id-enabled` | When `true`, an "HSA-ID" field is offered when a user is registered. This means that the user is expected to login using his or her SITHS eID. | `Boolean` | `false` |
+| `org-affiliation-enabled` | When `true`, an "Organizational affiliation" field is offered when a user is registered. The value is on the format `userID@organization-number`, where the organization number is 10 digits. Enables user login with an Organizational eID according to Sweden Connect. | `Boolean` | `false` |
+| `efos-id-enabled` | When `true`, an "EFOS-ID" field is offered when a user is registered. This means that the user is expected to login using his or her EFOS eID. | `Boolean` | `false` |
+
+> **Note:** At least one eID attribute must be enabled when `eid-attribute-required` is `true`.
+> The application refuses to start otherwise.
 
 <a name="example"></a>
 ## Example Configuration
@@ -191,10 +211,15 @@ iam:
     realm: orgiam
     admin-api-base: https://local.dev.swedenconnect.se:17000/admin/realms/orgiam
     theme: digg
-    pnr-userids: true
     allow-function-removal: true
     allow-org-rights: true
     allow-admin-assigning-admin: false
+    user-registration:
+      allow-select-user-id: true
+      allow-temporary-password: true
+      eid-attribute-required: true
+      personal-number-enabled: true
+      org-affiliation-enabled: true
     client-reconciliation:
       enabled: false
       cron: "0 */15 * * * *"

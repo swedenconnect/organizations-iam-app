@@ -8,6 +8,15 @@
 
 **Date:** 
 
+- **Installing the Keycloak providers is now a single step.** The provider JARs are published
+  as one distribution archive, and the Keycloak scripts fetch and install it for you. See
+  [Keycloak Plugins and Scripts](https://github.com/swedenconnect/organizations-iam-app/blob/main/keycloak/README.md)
+  and the [Keycloak Scripts README](https://github.com/swedenconnect/organizations-iam-app/blob/main/keycloak/scripts/README.md).
+
+- **User registration is now configurable.** The new `iam.admin.user-registration` settings
+  control which identity fields the Create user dialogue offers and what is written to
+  Keycloak. See [Configuration](iam-admin-configuration.md).
+
 - **An admin can no longer create further admins.** The new
   `iam.admin.allow-admin-assigning-admin` setting, which defaults to `false`, restricts a caller
   who is not a superuser to the `read` and `write` rights. Such a caller can neither grant nor

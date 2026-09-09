@@ -23,6 +23,7 @@ import org.springframework.boot.context.properties.source.MapConfigurationProper
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Tests the binding of {@link IamAdminProperties}.
@@ -48,5 +49,86 @@ class IamAdminPropertiesBindingTest {
 
     assertThat(properties.getAdminApiBase())
         .isEqualTo("https://keycloak.example.com/admin/realms/orgiam");
+  }
+
+  /** Without any user-registration settings, the defaults apply. */
+  @Test
+  void userRegistration_defaults() throws Exception {
+    final IamAdminProperties properties = bind(Map.of(
+        "iam.admin.admin-api-base", "https://keycloak.example.com/admin/realms/orgiam"));
+    properties.afterPropertiesSet();
+
+    final IamAdminProperties.UserRegistration settings = properties.getUserRegistration();
+    assertThat(settings.isAllowSelectUserId()).isFalse();
+    assertThat(settings.isAllowTemporaryPassword()).isFalse();
+    assertThat(settings.isEidAttributeRequired()).isTrue();
+    assertThat(settings.isPersonalNumberEnabled()).isTrue();
+    assertThat(settings.isHsaIdEnabled()).isFalse();
+    assertThat(settings.isOrgAffiliationEnabled()).isFalse();
+    assertThat(settings.isEfosIdEnabled()).isFalse();
+  }
+
+  /** Every setting in the block binds. */
+  @Test
+  void userRegistration_bindsAllSettings() throws Exception {
+    final IamAdminProperties properties = bind(Map.ofEntries(
+        Map.entry("iam.admin.user-registration.allow-select-user-id", "true"),
+        Map.entry("iam.admin.user-registration.allow-temporary-password", "true"),
+        Map.entry("iam.admin.user-registration.eid-attribute-required", "false"),
+        Map.entry("iam.admin.user-registration.personal-number-enabled", "false"),
+        Map.entry("iam.admin.user-registration.hsa-id-enabled", "true"),
+        Map.entry("iam.admin.user-registration.org-affiliation-enabled", "true"),
+        Map.entry("iam.admin.user-registration.efos-id-enabled", "true")));
+    properties.afterPropertiesSet();
+
+    final IamAdminProperties.UserRegistration settings = properties.getUserRegistration();
+    assertThat(settings.isAllowSelectUserId()).isTrue();
+    assertThat(settings.isAllowTemporaryPassword()).isTrue();
+    assertThat(settings.isEidAttributeRequired()).isFalse();
+    assertThat(settings.isPersonalNumberEnabled()).isFalse();
+    assertThat(settings.isHsaIdEnabled()).isTrue();
+    assertThat(settings.isOrgAffiliationEnabled()).isTrue();
+    assertThat(settings.isEfosIdEnabled()).isTrue();
+  }
+
+  /** A temporary password without a selectable user ID is turned off rather than honoured. */
+  @Test
+  void userRegistration_temporaryPasswordWithoutSelectableUserId_isTurnedOff() throws Exception {
+    final IamAdminProperties properties = bind(Map.of(
+        "iam.admin.user-registration.allow-temporary-password", "true"));
+    properties.afterPropertiesSet();
+
+    assertThat(properties.getUserRegistration().isAllowTemporaryPassword()).isFalse();
+  }
+
+  /** Requiring an eID attribute while enabling none is a configuration error. */
+  @Test
+  void userRegistration_requiredButNoAttributeEnabled_fails() {
+    final IamAdminProperties properties = bind(Map.of(
+        "iam.admin.user-registration.eid-attribute-required", "true",
+        "iam.admin.user-registration.personal-number-enabled", "false"));
+
+    assertThatThrownBy(properties::afterPropertiesSet)
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("eid-attribute-required");
+  }
+
+  /**
+   * The deprecated {@code pnr-userids} still works: it turns on the setting that replaced it, and
+   * has no other effect.
+   */
+  @Test
+  void deprecatedPnrUserids_mapsOntoAllowSelectUserId() throws Exception {
+    final IamAdminProperties properties = bind(Map.of("iam.admin.pnr-userids", "true"));
+    properties.afterPropertiesSet();
+
+    assertThat(properties.isPnrUserids()).isTrue();
+    assertThat(properties.getUserRegistration().isAllowSelectUserId()).isTrue();
+    assertThat(properties.getUserRegistration().isPersonalNumberEnabled()).isTrue();
+  }
+
+  private static IamAdminProperties bind(final Map<String, String> values) {
+    final ConfigurationPropertySource source = new MapConfigurationPropertySource(values);
+    return new Binder(source).bind("iam.admin", IamAdminProperties.class).get();
   }
 }
