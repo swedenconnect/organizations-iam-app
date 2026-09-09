@@ -60,6 +60,7 @@ The scripts can be run from any directory. They resolve the repository root them
 | `add-resource-server.sh` | A public client with all flows disabled, marked `iam_admin_resource_server`, optionally carrying `client_functions` |
 | `set-client-functions.sh` | The `client_functions` attribute on an existing client |
 | `set-iam-admin-managed.sh` | The `iam_admin_managed=true` attribute on an existing client |
+| `set-iam-admin-resource-server.sh` | The `iam_admin_resource_server=true` attribute on an existing client, leaving everything else about it alone |
 
 Each one is idempotent and safe to re-run. What a re-run changes, and which options are
 required, is documented per script in

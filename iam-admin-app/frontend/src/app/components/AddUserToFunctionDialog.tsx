@@ -82,10 +82,20 @@ export function AddUserToFunctionDialog({
 
   const getOrgName = (org: Organization) => resolveOrgName(org, language);
 
+  // The person added to a function nobody holds a right for within this organization is the one who
+  // will administer it, so the role list opens on `admin` there instead of on `write`. Rights held
+  // at the organization level are a different scope and do not count. The preselection is a
+  // starting value only, and it is never made when the admin right is not offered at all.
+  const functionHasRightsHolders = organization && func
+    ? userRoles.some((r) => r.organizationId === organization.id && r.functionId === func.id)
+    : false;
+
+  const defaultRole = canAssignAdmin && !functionHasRightsHolders ? 'admin' : 'write';
+
   useEffect(() => {
     if (!open) {
       setActiveTab('select');
-      setSelectedRole('write');
+      setSelectedRole(defaultRole);
       setSearchTerm('');
       setSelectedUserId('');
       setNewName('');
@@ -98,12 +108,16 @@ export function AddUserToFunctionDialog({
       setDuplicateUser(null);
       setExternalDuplicateUserId(null);
     }
-  }, [open]);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // When the dialog opens, jump straight to "create" if there is nobody to select
+  // Every time the dialog opens: preselect the role for the scope as it stands now, and jump
+  // straight to "create" if there is nobody to select
   useEffect(() => {
-    if (open && availableUsers.length === 0) {
-      setActiveTab('create');
+    if (open) {
+      setSelectedRole(defaultRole);
+      if (availableUsers.length === 0) {
+        setActiveTab('create');
+      }
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
