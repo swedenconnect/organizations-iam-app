@@ -60,6 +60,7 @@ Key scripts:
 - `add-resource-server.sh` — Registers a resource server
 - `set-client-functions.sh` — Assigns function identifiers to a resource server
 - `set-iam-admin-managed.sh` — Marks a client as IAM-admin-managed
+- `set-iam-admin-resource-server.sh` — Marks an existing client as a resource server
 - `install-keycloak-plugins.sh` — Builds and installs Keycloak provider JARs
 
 ---
@@ -526,11 +527,17 @@ the OIDC client role on an existing resource server adds the protocol mappers an
 optional scopes it did not have; disabling it turns Authorization Services off, which makes
 Keycloak discard that client's policies and permissions.
 
+Each marker has a script that sets it on an existing client and changes nothing else:
+`set-iam-admin-managed.sh` sets `iam_admin_managed=true`, and
+`set-iam-admin-resource-server.sh` sets `iam_admin_resource_server=true`. Because the two
+roles are independent, either script may be run against a client already holding the other
+marker, leaving it with both.
+
 A resource server registered with `add-resource-server.sh` carries the marker as well, so
 scripted and application-registered resource servers are indistinguishable. Resource
 servers registered before this attribute existed are invisible to the application until the
-attribute is set on them — re-running `add-resource-server.sh` against an existing client
-sets it.
+attribute is set on them. `set-iam-admin-resource-server.sh` sets it without touching
+anything else about the client.
 
 Managed clients can be registered from the IAM admin application itself (superusers only,
 under the **Services** tab), or with `add-oidc-client.sh` followed by

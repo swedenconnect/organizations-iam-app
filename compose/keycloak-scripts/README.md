@@ -137,6 +137,53 @@ Run the script once for each client that should be managed by the IAM admin appl
 
 ---
 
+## set-iam-admin-resource-server.sh
+
+Sets the custom client attribute `iam_admin_resource_server=true` on a Keycloak client, and
+changes nothing else about it.
+
+The IAM admin application uses this attribute to discover which clients may be named in the
+OAuth2 `resource` parameter and therefore appear in the `aud` claim. A resource server holds
+no Authorization Services artifacts of its own.
+
+The two roles are independent, so this script leaves `iam_admin_managed` as it is. Running it
+against a managed OIDC client produces a client holding both markers, which is a supported
+state. It does not touch `client_functions` either; that remains `set-client-functions.sh`.
+
+The client must already exist. Creating one remains `add-resource-server.sh`, which also
+forces the client into the audience-only shape.
+
+**Usage:**
+
+```bash
+./compose/keycloak-scripts/set-iam-admin-resource-server.sh \
+    --realm <realm> \
+    --client-id <clientId> \
+    --username <username> \
+    --password <password>
+```
+
+**Options:**
+
+| Option        | Required | Description                                           |
+|---------------|----------|-------------------------------------------------------|
+| `--realm`     | Yes      | Keycloak realm name                                   |
+| `--client-id` | Yes      | The OAuth2 `client_id` string (not the Keycloak UUID) |
+| `--username`  | Yes      | Keycloak admin username                               |
+| `--password`  | Yes      | Keycloak admin password                               |
+
+**Example:**
+
+```bash
+./compose/keycloak-scripts/set-iam-admin-resource-server.sh \
+    --realm orgiam \
+    --client-id https://api.example.com \
+    --username admin \
+    --password secret
+```
+
+---
+
 ## add-oidc-client.sh
 
 Registers an OAuth/OIDC client in a Keycloak realm, as described in
@@ -274,6 +321,20 @@ The client is created with all flows disabled, client authentication off, no ser
 account, no Authorization Services, and no protocol mappers.
 
 All steps are idempotent — safe to re-run against an existing client.
+
+> **This is not a way to add the resource server role to an existing client.** Against a
+> client that already exists this wrapper skips creation, so it leaves the client's settings
+> alone, but it also never sets `iam_admin_resource_server=true`. The client therefore does
+> not appear in the Services tab as a resource server. Use
+> `set-iam-admin-resource-server.sh`, documented above, instead: it sets the marker and
+> changes nothing else.
+>
+> The standalone `keycloak/scripts/add-resource-server.sh` behaves differently and is
+> destructive here: it always applies the resource server shape, so run against a client that
+> is already an OIDC client it sets `publicClient=true` and turns off the standard flow, the
+> service account and Authorization Services, stripping what makes that client work. To build
+> a client that holds both roles, see
+> [Registering a Client, Section 4.4](../../docs/registering-a-client.md#a-client-with-both-roles).
 
 **Prerequisites:**
 

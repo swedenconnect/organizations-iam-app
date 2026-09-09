@@ -36,6 +36,8 @@
 
    4.3. [A Client Registered by Other Means](#a-client-registered-by-other-means)
 
+   4.4. [A Client With Both Roles](#a-client-with-both-roles)
+
 5. [**Route C: The REST API**](#route-c-the-rest-api)
 
 6. [**Verifying the Result**](#verifying-the-result)
@@ -160,6 +162,9 @@ Tick both; the form then shows what the client ID means in each capacity.
 
 The client takes the OIDC client shape, confidential, `client-jwt`, standard flow, Authorization Services, and carries
 both marker attributes.
+
+By script, the same client is [Section 4.4](#a-client-with-both-roles), where the order the
+scripts are run in decides whether the result works at all.
 
 <a name="save-and-what-happens-next"></a>
 
@@ -324,12 +329,21 @@ account and no protocol mappers. Its `client_functions` is what the `resource-au
 validates the requested `resource` against. It is not a list of artifacts to create, and
 a resource server is never reconciled.
 
+> **Do not run this script against a client that is already an OIDC client.** It applies
+> that same shape to an existing client, which strips exactly what makes an OIDC client
+> work. To give an existing client the resource server role, use
+> [Section 4.3](#a-client-registered-by-other-means); to build a client that holds both
+> roles, use [Section 4.4](#a-client-with-both-roles).
+
 <a name="a-client-registered-by-other-means"></a>
 
 ### 4.3. A Client Registered by Other Means
 
-A client that already exists in Keycloak, registered by hand or by another tool, becomes
-managed by setting the marker:
+A client that already exists in Keycloak, registered by hand or by another tool, takes on a
+role by having that role's marker set. Each marker has its own script, and neither script
+changes anything else about the client.
+
+To give it the **OIDC client** role (`iam_admin_managed=true`):
 
 ```bash
 ./keycloak/scripts/set-iam-admin-managed.sh \
@@ -340,9 +354,110 @@ managed by setting the marker:
     --client-id https://my-app.example.com
 ```
 
-It then appears in the **Services** tab, and is reconciled from that point on. Clients
-registered before these attributes existed are invisible to the application until the
-marker is set.
+To give it the **resource server** role (`iam_admin_resource_server=true`):
+
+```bash
+./keycloak/scripts/set-iam-admin-resource-server.sh \
+    --url https://keycloak.example.com \
+    --realm orgiam \
+    --username admin \
+    --password keycloak \
+    --client-id https://api.example.com
+```
+
+The two roles are independent, so a client that should hold both takes both scripts, in
+either order. Neither creates a client: the client ID has to resolve to one that already
+exists.
+
+It then appears in the **Services** tab, and an OIDC client is reconciled from that point
+on. Clients registered before these attributes existed are invisible to the application
+until the marker is set.
+
+<a name="a-client-with-both-roles"></a>
+
+### 4.4. A Client With Both Roles
+
+A service that answers requests *and* calls another service onwards holds both roles. This
+is uncommon; most clients hold one role and are covered by 4.1 or 4.2. The same client
+built through the GUI is [Section 3.4](#clients-with-both-roles).
+
+> **Never run `add-resource-server.sh` against a client that is already an OIDC client.**
+> Its sync step always runs, whether it created the client or found one, and that step
+> unconditionally sets `publicClient=true` and turns off the standard flow, the implicit
+> flow, direct access grants, the service account and Authorization Services. Against an
+> OIDC client it strips exactly what makes that client work, and Keycloak discards the
+> client's policies and permissions along with Authorization Services. If this has already
+> happened, see [Troubleshooting](#troubleshooting).
+
+The order that works is to create the client in the OIDC client shape first, then add the
+second marker to it.
+
+**Step 1. Create the client as an OIDC client.** `add-oidc-client.sh` gives it the
+confidential, `client-jwt`, standard flow, Authorization Services shape and sets
+`iam_admin_managed=true`:
+
+```bash
+./keycloak/scripts/add-oidc-client.sh \
+    --url https://keycloak.example.com \
+    --realm orgiam \
+    --username admin \
+    --password keycloak \
+    --client-id https://my-service.example.com \
+    --name "My Service" \
+    --redirect-uri 'https://my-service.example.com/login/oauth2/code/*'
+```
+
+**Step 2. Add the resource server marker.** `set-iam-admin-resource-server.sh` sets
+`iam_admin_resource_server=true` and changes nothing else, so everything step 1 configured
+survives:
+
+```bash
+./keycloak/scripts/set-iam-admin-resource-server.sh \
+    --url https://keycloak.example.com \
+    --realm orgiam \
+    --username admin \
+    --password keycloak \
+    --client-id https://my-service.example.com
+```
+
+**Step 3. Declare the functions it handles:**
+
+```bash
+./keycloak/scripts/set-client-functions.sh \
+    --url https://keycloak.example.com \
+    --realm orgiam \
+    --username admin \
+    --password keycloak \
+    --client-id https://my-service.example.com \
+    --functions demo
+```
+
+**Step 4. Create the artifacts.** As in 4.1, the scripts do not create scopes, policies or
+permissions. Trigger a run from the **Services** tab, or:
+
+```bash
+curl -X POST https://iam.example.com/api/clients/reconcile
+```
+
+**Why the reverse order does not work either.** Running `add-resource-server.sh` first and
+`add-oidc-client.sh` afterwards does not undo the damage. `add-oidc-client.sh` writes
+`publicClient` only into the body it creates a *new* client with; its configure step, which
+is what runs against a client that already exists, leaves the field alone. So against a
+client `add-resource-server.sh` has made public it sets `clientAuthenticatorType=client-jwt`
+and turns Authorization Services back on, but leaves `publicClient=true`. That is not a
+working combination: a public client performs no client authentication, so the `client-jwt`
+setting has nothing to act on. There is no order in which the two `add-` scripts compose.
+
+**One `client_functions`, read two ways.** A client holding both roles has a single
+`client_functions` attribute, and both roles read that same list:
+
+- As an **OIDC client**, it is the complete list of functions the client receives scopes,
+  policies and permissions for.
+- As a **resource server**, it is the list of functions the `resource-aud-plugin` validates
+  a requested `resource` against.
+
+There is one list, not one per role, so a function has to be in it for either purpose to
+work. Setting it is `set-client-functions.sh` in both capacities.
 
 ---
 
@@ -454,8 +569,22 @@ It is superuser-only. Check the account's `org_rights` claim; see the
 
 **A client registered outside the application does not appear.**
 It is missing `iam_admin_managed=true` (OIDC client) or `iam_admin_resource_server=true`
-(resource server). Set the marker with `set-iam-admin-managed.sh`, or re-run
-`add-resource-server.sh` against it.
+(resource server). Set the marker with `set-iam-admin-managed.sh` or
+`set-iam-admin-resource-server.sh`.
+
+**A working client broke after `add-resource-server.sh` was run against it.**
+Logins fail, token requests fail, or the client no longer looks like a managed client. That
+script's sync step always runs, and it set `publicClient=true` and turned off the standard
+flow, the implicit flow, direct access grants, the service account and Authorization
+Services on the client. Keycloak discards a client's policies and permissions when
+Authorization Services is turned off, so those are gone as well, and if the run passed
+`--functions` it also overwrote `client_functions`. Re-running `add-oidc-client.sh` does not
+fix it, because that script does not write `publicClient` on an existing client. Restore the
+settings by hand in the Keycloak admin console, under **Clients → your client → Settings**
+and **Capability config**: client authentication on, `Signed JWT` as the authenticator,
+standard flow on, Authorization Services on, and the service account back on if the client
+had one. Then reconcile to recreate the artifacts, and check `client_functions`. Use
+[Section 4.4](#a-client-with-both-roles) for the order that would have avoided this.
 
 ---
 

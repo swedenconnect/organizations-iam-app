@@ -159,7 +159,8 @@ Keycloak at this point. Keycloak only fetches it when the first token request is
 so the application does not need to be running during registration.
 
 *For clients registered outside of `add-oidc-client.sh`, use `set-iam-admin-managed.sh`
-to mark them as IAM-admin-managed. See
+to mark them as IAM-admin-managed, and `set-iam-admin-resource-server.sh` to mark them as
+resource servers. The two roles are independent, so a client may be given both. See
 [compose/keycloak-scripts/README.md](keycloak-scripts/README.md) for details.*
 
 See [compose/keycloak-scripts/README.md](keycloak-scripts/README.md) for all available
