@@ -16,7 +16,51 @@ interface ClientFormProps {
   onSave: (client: ManagedClientInput) => void;
 }
 
-type JwksMode = 'uri' | 'inline';
+export type JwksMode = 'uri' | 'inline';
+
+/** What the form holds, before it is shaped into the payload the API takes. */
+export interface ClientFormValues {
+  clientId: string;
+  name: string;
+  oidcClient: boolean;
+  resourceServer: boolean;
+  functions: string[];
+  redirectUris: string[];
+  jwksMode: JwksMode;
+  jwksUri: string;
+  jwksString: string;
+  orgRightsIdToken: boolean;
+  orgRightsAccessToken: boolean;
+}
+
+/** Drops the blank entries the repeated redirect URI inputs leave behind. */
+export function cleanRedirectUris(redirectUris: string[]): string[] {
+  return redirectUris.map((uri) => uri.trim()).filter((uri) => uri.length > 0);
+}
+
+/**
+ * Shapes the form's values into the payload the API takes.
+ *
+ * The display name is sent whatever roles are selected. A resource server carries one too, and it
+ * is what identifies the client in the Keycloak admin console and in the client list. Redirect
+ * URIs, client keys and the token settings belong to the OIDC client role, and are left out
+ * without it.
+ */
+export function clientPayload(values: ClientFormValues): ManagedClientInput {
+  const { oidcClient } = values;
+  return {
+    clientId: values.clientId.trim(),
+    name: values.name.trim(),
+    oidcClient,
+    resourceServer: values.resourceServer,
+    functions: values.functions,
+    redirectUris: oidcClient ? cleanRedirectUris(values.redirectUris) : [],
+    jwksUri: oidcClient && values.jwksMode === 'uri' ? values.jwksUri.trim() : null,
+    jwksString: oidcClient && values.jwksMode === 'inline' ? values.jwksString.trim() : null,
+    orgRightsIdToken: !oidcClient || values.orgRightsIdToken,
+    orgRightsAccessToken: !oidcClient || values.orgRightsAccessToken,
+  };
+}
 
 export function ClientForm({ client, functions, isOpen, onClose, onSave }: ClientFormProps) {
   const { t, language } = useLanguage();
@@ -108,7 +152,7 @@ export function ClientForm({ client, functions, isOpen, onClose, onSave }: Clien
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const errors: Record<string, string> = {};
-    const uris = redirectUris.map((uri) => uri.trim()).filter((uri) => uri.length > 0);
+    const uris = cleanRedirectUris(redirectUris);
 
     if (!client && !clientId.trim()) {
       errors.clientId = t('validation.required');
@@ -141,18 +185,19 @@ export function ClientForm({ client, functions, isOpen, onClose, onSave }: Clien
     }
     setFieldErrors({});
 
-    onSave({
-      clientId: client ? client.clientId : clientId.trim(),
-      name: name.trim(),
+    onSave(clientPayload({
+      clientId: client ? client.clientId : clientId,
+      name,
       oidcClient,
       resourceServer,
       functions: selectedFunctions,
-      redirectUris: oidcClient ? uris : [],
-      jwksUri: oidcClient && jwksMode === 'uri' ? jwksUri.trim() : null,
-      jwksString: oidcClient && jwksMode === 'inline' ? jwksString.trim() : null,
-      orgRightsIdToken: !oidcClient || orgRightsIdToken,
-      orgRightsAccessToken: !oidcClient || orgRightsAccessToken,
-    });
+      redirectUris,
+      jwksMode,
+      jwksUri,
+      jwksString,
+      orgRightsIdToken,
+      orgRightsAccessToken,
+    }));
   };
 
   return (
@@ -221,13 +266,12 @@ export function ClientForm({ client, functions, isOpen, onClose, onSave }: Clien
             {fieldErrors.clientId && <p className="text-xs text-red-500">{fieldErrors.clientId}</p>}
           </div>
 
-          {/* Display name — OIDC client only */}
-          {oidcClient && (
-            <div className="space-y-2">
-              <Label htmlFor="clientName">{t('clients.name')}</Label>
-              <Input id="clientName" value={name} onChange={(e) => setName(e.target.value)} />
-            </div>
-          )}
+          {/* Display name. Optional, and shown for every role: a resource server carries one too,
+              and it is what identifies the client in the Keycloak admin console */}
+          <div className="space-y-2">
+            <Label htmlFor="clientName">{t('clients.name')}</Label>
+            <Input id="clientName" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
 
           {/* Redirect URIs — OIDC client only */}
           {oidcClient && (

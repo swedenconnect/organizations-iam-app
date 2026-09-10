@@ -41,11 +41,13 @@ consulted along the way.
 
 7. [**Giving the Demo Application the demo function**](#giving-the-demo-application-the-demo-function)
 
-8. [**Starting the Demo Application and the Demo Service**](#starting-the-demo-application-and-the-demo-service)
+8. [**Registering the demo clients in the IAM admin application**](#registering-the-demo-clients-in-the-iam-admin-application)
 
-9. [**Using the demo**](#using-the-demo)
+9. [**Starting the Demo Application and the Demo Service**](#starting-the-demo-application-and-the-demo-service)
 
-10. [**Running the demo applications from source**](#running-the-demo-applications-from-source)
+10. [**Using the demo**](#using-the-demo)
+
+11. [**Running the demo applications from source**](#running-the-demo-applications-from-source)
 
 ---
 
@@ -290,7 +292,12 @@ Section 3.4 (`diggadmin`). Go to **Functions**, create a function with the ident
 and give it the Swedish name `Demo` and the English name `Demo`.
 
 Only the function is created at this point. Organizations, attaching the function to an
-organization and granting rights come later, in Section 9, once the clients are in place.
+organization and granting rights come later, in Section 10, once the clients are in place.
+
+The two demo clients can now be registered, in either of two ways: with the scripts, which is
+Sections 5 to 7, or in the IAM admin application you are already logged in to, which is
+Section 8. The result is the same client either way, so follow one route or the other, not both,
+and continue at Section 9 afterwards.
 
 ---
 
@@ -373,8 +380,77 @@ The function has to exist already, which it does, since it was created in Sectio
 
 ---
 
+<a name="registering-the-demo-clients-in-the-iam-admin-application"></a>
+## 8. Registering the demo clients in the IAM admin application
+
+This section is the alternative to Sections 5 to 7. Both demo clients can be registered from the
+IAM admin application instead, in the **Services** tab, without leaving the browser you logged in
+to in Section 4. Follow either those three sections or this one, and continue at Section 9.
+
+The values below are the ones the scripts give, so the registered client is the same either way.
+For what each field means and the rules it follows, see
+[Registering a Client](registering-a-client.md), Section 3.
+
+### The Demo Service
+
+Go to the **Services** tab and click **Add Client**:
+
+- **Client Roles**: **Resource Server** only. The Demo Service never requests a token of its own.
+- **Client ID**: `https://local.dev.swedenconnect.se:16995`
+- **Display Name**: `Demo Service`
+- **Functions**: `Demo`
+
+![Registering the Demo Service](images/clients/demo-service.png)
+
+Selecting `Demo` is what restricts the Demo Service to that function, the same thing
+`--functions demo` does in Section 5. A resource server needs nothing further, which is why the
+form asks for no redirect URIs, no client keys and no token settings.
+
+**Add Client** saves it.
+
+### The Demo Application
+
+Click **Add Client** again:
+
+- **Client Roles**: **OIDC Client** only.
+- **Client ID**: `https://local.dev.swedenconnect.se:16990`
+- **Display Name**: `Demo App`
+- **Redirect URIs**: `https://local.dev.swedenconnect.se:16990/login/oauth2/code/*` and
+  `https://local.dev.swedenconnect.se:16990/callback/oauth2/code/*`. Use **Add redirect URI** for
+  the second one.
+- **Functions**: `Demo`
+
+![Registering the Demo Application, the upper half of the form](images/clients/demo-app1.png)
+
+The rest of the form is further down, below what the screenshot above reaches:
+
+- **Client Keys (JWKS)**: **JWKS URI**, `https://local.dev.swedenconnect.se:16990/jwks`. The
+  application serves its public key there, and Keycloak fetches it at the first token request, so
+  the application does not need to be running now.
+- **Token Settings**: leave **org_rights in the ID token** ticked, and untick
+  **org_rights in the access token**.
+
+![Registering the Demo Application, the lower half of the form](images/clients/demo-app2.png)
+
+**Add Client** saves it.
+
+Why the Demo Application needs both redirect URIs, and why `org_rights` is left out of its access
+token, is explained in Section 6.
+
+### What differs from the script route
+
+- The form takes redirect URIs as complete URIs only, which is why the two patterns are written
+  out under the client ID here, rather than as the paths `add-oidc-client.sh` accepts in
+  Section 6.
+- The function is selected in the form, on both clients, so there is no counterpart to Section 7.
+- The Demo Application declares `demo` from the moment it is saved, so its scopes are created when
+  `demo` is later attached to an organization, as with the script route. No reconciliation step is
+  needed either way.
+
+---
+
 <a name="starting-the-demo-application-and-the-demo-service"></a>
-## 8. Starting the Demo Application and the Demo Service
+## 9. Starting the Demo Application and the Demo Service
 
 Start the two demo containers:
 
@@ -389,7 +465,7 @@ out.
 ---
 
 <a name="using-the-demo"></a>
-## 9. Using the demo
+## 10. Using the demo
 
 ### Preparing an organization
 
@@ -403,8 +479,8 @@ superuser:
    admin application creates the three Keycloak scopes `{orgId}:demo:read`, `{orgId}:demo:write`
    and `{orgId}:demo:admin` together with their Authorization Services policies, on every client
    holding the OIDC client role that handles `demo`. The Demo Application already declares
-   `demo` from Section 7, so its scopes are created at this point and no reconciliation step is
-   needed.
+   `demo`, from Section 7 or Section 8, so its scopes are created at this point and no
+   reconciliation step is needed.
 
 3. Go to **Users** and select or create the user who will log in to the demo. Grant that user a
    right on `demo` for the organization, for example `write`.
@@ -432,7 +508,7 @@ https://local.dev.swedenconnect.se:17005.
 ---
 
 <a name="running-the-demo-applications-from-source"></a>
-## 10. Running the demo applications from source
+## 11. Running the demo applications from source
 
 The containers are the way the demo is run. When working on the demo code itself, the two
 applications can instead be started from source with the `local` Spring profile, which enables
