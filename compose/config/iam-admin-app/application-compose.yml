@@ -54,8 +54,8 @@ iam:
     allow-org-rights: true
     allow-admin-assigning-admin: false
     user-registration:
-      allow-select-user-id: false
-      allow-temporary-password: false
+      allow-select-user-id: true
+      allow-temporary-password: true
       eid-attribute-required: true
       personal-number-enabled: true
       org-affiliation-enabled: false
