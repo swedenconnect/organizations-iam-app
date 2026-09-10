@@ -6,7 +6,7 @@
 
 ### Version 0.9.3
 
-**Date:** 
+**Date:** 2026-09-10
 
 - **Installing the Keycloak providers is now a single step.** The provider JARs are published
   as one distribution archive, and the Keycloak scripts fetch and install it for you. See
