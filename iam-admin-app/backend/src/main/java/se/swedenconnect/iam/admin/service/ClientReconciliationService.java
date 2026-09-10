@@ -47,7 +47,8 @@ import java.util.Set;
  * (artifact creation performs no rollback), and manual edits in the KeyCloak admin console.</p>
  *
  * <p>A client handles exactly the functions it declares; declaring none means it receives
- * nothing.</p>
+ * nothing. The exception is a client marked as handling all functions: it receives artifacts for
+ * every org/function pair in the topology, and never has any of them pruned.</p>
  *
  * <p>Pruning is opt-in. With pruning enabled, artifacts belonging to org/function combinations the
  * client no longer handles are removed as well; without it, narrowing a client's
@@ -142,6 +143,49 @@ public class ClientReconciliationService {
       }
     }
     return new ReconciliationPlan(List.copyOf(ensure), List.copyOf(remove));
+  }
+
+  /**
+   * Reports, per client, how many artifacts a reconciliation run would create, without creating
+   * anything.
+   *
+   * <p>Drift is normal after a client's markers or functions are changed outside the application,
+   * because setting {@code client_functions} or {@code iam_admin_all_functions} decides what a
+   * client <em>should</em> hold and creates nothing. Until a run happens the client holds no
+   * scopes, policies, permissions or optional client scope bindings for the affected
+   * organizations, and no user can obtain an org-scoped token from it. Surfacing the count lets
+   * the Services tab say so rather than showing a client that looks correctly configured.</p>
+   *
+   * <p>Removals are deliberately not counted. They are not a reason to warn: a client that holds
+   * more than it should still works.</p>
+   *
+   * @return client_id to the number of artifacts missing, for every OIDC client with at least one
+   *     missing artifact; never {@code null}
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  public @NonNull Map<String, Integer> detectDrift() {
+    final List<ManagedClientInfo> clients = this.keycloakAdminClient.resolveIamAdminManagedClients();
+    final Map<String, Set<String>> topology = this.keycloakAdminClient.fetchOrgFunctionTopology();
+    final ReconciliationPlan plan = plan(clients, topology);
+
+    final Map<String, String> realmScopeIds = this.keycloakAdminClient.fetchRealmClientScopeIds();
+    final Map<String, ClientArtifactState> states = new LinkedHashMap<>();
+    final Map<String, Integer> drift = new LinkedHashMap<>();
+
+    for (final ReconciliationTarget target : plan.ensure()) {
+      final ClientArtifactState state = states.computeIfAbsent(
+          target.clientUuid(), this.keycloakAdminClient::fetchClientArtifactState);
+      final int missing = KeycloakAdminClient.countMissingFunctionArtifacts(
+          target.orgIdentifier(), target.functionId(), realmScopeIds, state);
+      if (missing > 0) {
+        drift.merge(target.clientId(), missing, Integer::sum);
+      }
+    }
+
+    if (!drift.isEmpty()) {
+      log.debug("Clients with missing artifacts: {}", drift);
+    }
+    return drift;
   }
 
   /**

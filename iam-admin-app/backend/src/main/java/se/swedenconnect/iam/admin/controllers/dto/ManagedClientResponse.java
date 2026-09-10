@@ -31,6 +31,9 @@ import java.util.Set;
  * @param clientId the OAuth2 client_id
  * @param name the display name, or {@code null}
  * @param functions the functions the client handles
+ * @param allFunctions whether the client handles every function in the realm, including the ones
+ *     not created yet; set by script only, and it makes {@code functions} a snapshot rather than
+ *     the limit
  * @param redirectUris the client's redirect URIs
  * @param jwksUri the JWKS URI, or {@code null} if the client uses an inline JWK Set
  * @param jwksString the inline JWK Set, or {@code null} if the client uses a JWKS URI
@@ -48,6 +51,7 @@ public record ManagedClientResponse(
     @NonNull String clientId,
     @Nullable String name,
     @NonNull Set<String> functions,
+    boolean allFunctions,
     @NonNull List<String> redirectUris,
     @Nullable String jwksUri,
     @Nullable String jwksString,

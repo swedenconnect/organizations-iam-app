@@ -105,9 +105,38 @@ class ClientReconciliationPlanTest {
     assertEquals(3, plan.ensure().size());
   }
 
+  @Test
+  @DisplayName("An all-functions client is planned for every org/function pair in the topology")
+  void allFunctionsClientCoversTheWholeTopology() {
+    final ReconciliationPlan plan = ClientReconciliationService.plan(
+        List.of(client("iam-admin", Set.of("demo"), true)), TOPOLOGY);
+
+    assertEquals(Set.of(
+            target("iam-admin", "SE5561234567", "demo"),
+            target("iam-admin", "SE5561234567", "walletreg"),
+            target("iam-admin", "SE5569876543", "demo")),
+        Set.copyOf(plan.ensure()));
+    assertTrue(plan.remove().isEmpty());
+  }
+
+  @Test
+  @DisplayName("An all-functions client loses nothing, even with an empty client_functions")
+  void allFunctionsClientIsNeverPruned() {
+    final ReconciliationPlan plan = ClientReconciliationService.plan(
+        List.of(client("iam-admin", Set.of(), true)), TOPOLOGY);
+
+    assertEquals(3, plan.ensure().size());
+    assertTrue(plan.remove().isEmpty());
+  }
+
   private static ManagedClientInfo client(final String name, final Set<String> functions) {
+    return client(name, functions, false);
+  }
+
+  private static ManagedClientInfo client(
+      final String name, final Set<String> functions, final boolean allFunctions) {
     return new ManagedClientInfo("uuid-" + name, "https://" + name + ".example.se", name,
-        true, false, functions,
+        true, false, functions, allFunctions,
         List.of("https://" + name + ".example.se/login/oauth2/code/orgiam"),
         "https://" + name + ".example.se/jwks", null, false, true, true, true);
   }

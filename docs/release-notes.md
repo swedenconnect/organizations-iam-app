@@ -17,6 +17,35 @@
   control which identity fields the Create user dialogue offers and what is written to
   Keycloak. See [Configuration](iam-admin-configuration.md).
 
+- **The client role attributes are split.** `iam_admin_managed=true` now means only that the
+  application administers a client. The roles it plays are separate: `iam_admin_oidc_client=true`
+  (requests tokens, is reconciled) and `iam_admin_resource_server=true` (may be named in the
+  OAuth2 `resource` parameter). Both may be set on one client.
+
+  **No migration needed.** Where `iam_admin_oidc_client` is absent, `iam_admin_managed` is read
+  with its old meaning, so existing clients keep their roles. A client is migrated the next time
+  it is written. `add-oidc-client.sh`, `set-iam-admin-managed.sh` and `add-resource-server.sh` set
+  the new attributes.
+
+- **Registering a resource-server-only client from the application no longer fails** with `500`
+  *"Client '...' is not managed after creation"*. The same fault hit an update that turned the
+  OIDC client role off. A client created before the fix exists in Keycloak despite the error and
+  needs no repair.
+
+- **New `add-iam-admin-app.sh` registers the admin application as OIDC client and resource
+  server for every function.** Registered with `add-oidc-client.sh` it had no `client_functions`,
+  so it received no scopes, policies or permissions, and was not marked a resource server. The
+  script sets `iam_admin_all_functions=true`, which covers functions that do not exist yet: such a
+  client receives artifacts for every function and never has any pruned, and creating a function
+  appends it. The **Services** tab shows an **All functions** pill and a disabled function picker.
+
+  **Upgrading:** re-run `add-iam-admin-app.sh` against the existing admin application client. It
+  is idempotent.
+
+- **New `add-function.sh` appends a function to a registered service**, where
+  `set-client-functions.sh` replaces the whole `client_functions` list. An OIDC client needs
+  `POST /api/clients/reconcile` afterwards; a resource server needs nothing further.
+
 - **An admin can no longer create further admins.** The new
   `iam.admin.allow-admin-assigning-admin` setting, which defaults to `false`, restricts a caller
   who is not a superuser to the `read` and `write` rights. Such a caller can neither grant nor
@@ -93,7 +122,7 @@
   on every reconciliation run.
 
 - **The `iam.admin.authz-client-ids` setting has been removed.** The attribute
-  `iam_admin_managed=true` is now the only thing that makes a Keycloak client managed. The setting
+  `iam_admin_oidc_client=true` is now the only thing that makes a Keycloak client managed. The setting
   was a fallback from before clients could be registered from the admin application, and a client
   listed in it was managed without anything in Keycloak saying so. A deployment that still sets the
   property starts as before, and the property has no effect.

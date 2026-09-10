@@ -29,17 +29,21 @@ All scripts are idempotent and safe to re-run.
 
    3.2. [`create-admin-user.sh`](#create-admin-user): Create the initial superuser
 
-   3.3. [`add-oidc-client.sh`](#add-oidc-client): Register an OAuth/OIDC client
+   3.3. [`add-iam-admin-app.sh`](#add-iam-admin-app): Register the IAM admin application
 
-   3.4. [`add-resource-server.sh`](#add-resource-server): Register a resource server
+   3.4. [`add-oidc-client.sh`](#add-oidc-client): Register an OAuth/OIDC client
 
-   3.5. [`set-client-functions.sh`](#set-client-functions): Set `client_functions` on an existing client
+   3.5. [`add-resource-server.sh`](#add-resource-server): Register a resource server
 
-   3.6. [`set-iam-admin-managed.sh`](#set-iam-admin-managed): Mark a client as IAM-admin-managed
+   3.6. [`add-function.sh`](#add-function): Add a function to an existing client
 
-   3.7. [`set-iam-admin-resource-server.sh`](#set-iam-admin-resource-server): Mark a client as a resource server
+   3.7. [`set-client-functions.sh`](#set-client-functions): Set `client_functions` on an existing client
 
-   3.8. [`get-keycloak-plugins.sh`](#get-keycloak-plugins): Fetch the provider JARs for a version
+   3.8. [`set-iam-admin-managed.sh`](#set-iam-admin-managed): Mark a client as IAM-admin-managed
+
+   3.9. [`set-iam-admin-resource-server.sh`](#set-iam-admin-resource-server): Mark a client as a resource server
+
+   3.10. [`get-keycloak-plugins.sh`](#get-keycloak-plugins): Fetch the provider JARs for a version
 
 4. [**Typical Setup Sequence**](#typical-setup-sequence)
 
@@ -216,8 +220,71 @@ Re-running the script against an existing user resets the password to the suppli
 
 ---
 
+<a name="add-iam-admin-app"></a>
+### 3.3. add-iam-admin-app.sh
+
+Registers the IAM Admin application. Use this rather than `add-oidc-client.sh`, which gives
+the application only one of the three roles it needs.
+
+The IAM Admin application is not an ordinary OIDC client:
+
+| Role | Marker | What it means |
+|---|---|---|
+| OIDC client | `iam_admin_oidc_client=true` | It logs administrators in and obtains org-scoped tokens |
+| Resource server | `iam_admin_resource_server=true` | It exposes `/iam-api`, and other clients name it in the OAuth2 `resource` parameter |
+| All functions | `iam_admin_all_functions=true` | Its API serves every function, including the ones not created yet |
+
+The script delegates the OIDC client registration to `add-oidc-client.sh` and then sets the
+other two markers, seeding `client_functions` with every function that exists at the time.
+
+The application appends each new function to `client_functions` as it is created. See
+[Keycloak Setup](../../docs/keycloak-setup.md#managed-clients-and-reconciliation) for why both
+the marker and the attribute are kept.
+
+A service account with `realm-management` roles is always created. The application administers
+the realm through the Keycloak Admin API and cannot work without one, so there is no flag to
+turn it off.
+
+All steps are idempotent. Re-run the script to bring an application registered with
+`add-oidc-client.sh` alone up to the full three-role shape.
+
+**Prerequisites:**
+
+The realm must already be bootstrapped (`bootstrap-realm.sh`), because the script reads the
+`/functions` group to seed the attribute.
+
+**Usage:**
+
+```bash
+./keycloak/scripts/add-iam-admin-app.sh [OPTIONS]
+```
+
+**Additional options:**
+
+| Option | Required | Description |
+|---|---|---|
+| `--client-id <id>` | Yes | OAuth2 `client_id`, the application's base URL |
+| `--name <name>` | No | Display name in the Keycloak admin UI (default: `IAM Admin`) |
+| `--redirect-uri <pattern>` | No | Redirect URI pattern, repeatable (default: `/login/oauth2/code/*`) |
+| `--root-url <url>` | No | Client root URL (default: the client ID) |
+| `--jwks-url <url>` | No | JWKS endpoint URL (default: `<client-id>/jwks`) |
+
+**Example:**
+
+```bash
+./keycloak/scripts/add-iam-admin-app.sh \
+    --url https://keycloak.example.com \
+    --realm orgiam \
+    --username admin \
+    --password keycloak \
+    --client-id https://iam.example.com \
+    --name "IAM Admin Application"
+```
+
+---
+
 <a name="add-oidc-client"></a>
-### 3.3. add-oidc-client.sh
+### 3.4. add-oidc-client.sh
 
 Registers an OAuth/OIDC client in the target realm. An OIDC client is an application that
 authenticates users via the authorization code flow and/or obtains access tokens to call
@@ -233,8 +300,8 @@ downstream APIs on behalf of users.
   `https://id.oidc.se/scope/naturalPersonOrgId` and `phone`
 - Service account with `realm-management` roles (if `--service-account` is passed)
 
-A re-run against an existing client overwrites `redirectUris`, the `iam_admin_managed`
-attribute, and the JWKS URL with the values from the current invocation. Redirect URI
+A re-run against an existing client overwrites `redirectUris`, the iam-admin marker
+attributes, and the JWKS URL with the values from the current invocation. Redirect URI
 patterns added manually in the Keycloak UI will be removed on re-run. `rootUrl` is only
 written when the invocation supplies one (see below); otherwise a root URL already on the
 client is left untouched.
@@ -342,7 +409,7 @@ functions are attached to organizations.
 ---
 
 <a name="add-resource-server"></a>
-### 3.4. add-resource-server.sh
+### 3.5. add-resource-server.sh
 
 Registers a passive OAuth resource server in the target realm. A resource server is an
 API that receives and validates Bearer access tokens but never initiates authentication
@@ -404,8 +471,67 @@ the listed functions. If the attribute is absent or empty, any function is accep
 
 ---
 
+<a name="add-function"></a>
+### 3.6. add-function.sh
+
+Adds one or more functions to the `client_functions` attribute of an existing client, keeping
+the functions it already declares.
+
+This is the difference from `set-client-functions.sh`, which replaces the whole list. Use this
+script when a service that is already registered gains a function: the functions it had are
+kept, and only the new ones are appended.
+
+Every function given must already exist as a group under `/functions` in the realm; the script
+refuses one that does not, rather than writing a value that would never match anything. Create
+the function in the IAM Admin application first.
+
+A client marked `iam_admin_all_functions=true` already handles every function, so the script
+reports that and makes no change.
+
+All steps are idempotent. A function the client already declares is left alone.
+
+**Usage:**
+
+```bash
+./keycloak/scripts/add-function.sh [OPTIONS]
+```
+
+**Additional options:**
+
+| Option | Required | Description |
+|---|---|---|
+| `--client-id <id>` | Yes | OAuth2 `client_id` of the target client |
+| `--function <function>` | Yes* | Function to add; repeatable |
+| `--functions <list>` | Yes* | Comma-separated list of functions to add |
+
+\* At least one of `--function` and `--functions` is required. The two may be combined, and the
+lists are merged.
+
+**Example:**
+
+```bash
+./keycloak/scripts/add-function.sh \
+    --url https://keycloak.example.com \
+    --realm orgiam \
+    --username admin \
+    --password keycloak \
+    --client-id https://my-app.example.com \
+    --function walletreg
+```
+
+**After running:** an OIDC client needs the scopes, policies and permissions for the new
+functions. Trigger the reconciliation:
+
+```bash
+curl -X POST https://iam.example.com/api/clients/reconcile
+```
+
+A resource server holds no artifacts and needs no reconciliation.
+
+---
+
 <a name="set-client-functions"></a>
-### 3.5. set-client-functions.sh
+### 3.7. set-client-functions.sh
 
 Sets the `client_functions` attribute on an existing Keycloak client. Use this when the
 resource server was registered without the `--functions` option (e.g. via
@@ -451,22 +577,24 @@ removes the restriction and makes the resource server function-universal.
 ---
 
 <a name="set-iam-admin-managed"></a>
-### 3.6. set-iam-admin-managed.sh
+### 3.8. set-iam-admin-managed.sh
 
-Sets the `iam_admin_managed=true` custom attribute on an existing Keycloak client.
+Hands an existing Keycloak client the OIDC client role, by setting `iam_admin_managed=true`
+(the IAM admin application administers this client) and `iam_admin_oidc_client=true` (it plays
+the OIDC client role).
 
-The IAM admin application uses this attribute to discover which clients require
-Authorization Services policies and permissions to be created or deleted when a function
-is attached to or detached from an organization.
+The application uses the role attribute to discover which clients require Authorization
+Services policies and permissions to be created or deleted when a function is attached to or
+detached from an organization.
 
 Apply this to every **OAuth client** that may request `{org}:{function}:{right}` scopes
 on behalf of users, typically OIDC relying parties and OAuth clients that call downstream
 APIs. Do **not** apply it to passive resource servers, which only receive and validate
 access tokens but never request them.
 
-> **Note:** `add-oidc-client.sh` sets `iam_admin_managed=true` automatically. This script
-> is only needed for clients that were registered without `add-oidc-client.sh`, or for
-> updating clients registered by other means.
+> **Note:** `add-oidc-client.sh` sets both attributes automatically. This script is only
+> needed for clients that were registered without `add-oidc-client.sh`, or for updating clients
+> registered by other means.
 
 **Usage:**
 
@@ -494,7 +622,7 @@ access tokens but never request them.
 ---
 
 <a name="set-iam-admin-resource-server"></a>
-### 3.7. set-iam-admin-resource-server.sh
+### 3.9. set-iam-admin-resource-server.sh
 
 Sets the `iam_admin_resource_server=true` custom attribute on an existing Keycloak client,
 and changes nothing else about it.
@@ -538,7 +666,7 @@ state. It does not touch `client_functions` either; that remains `set-client-fun
 ---
 
 <a name="get-keycloak-plugins"></a>
-### 3.8. get-keycloak-plugins.sh
+### 3.10. get-keycloak-plugins.sh
 
 Fetches the Keycloak provider JARs for a given version of this project and unpacks them into a
 directory, ready to be copied to a Keycloak host.
@@ -620,19 +748,21 @@ your actual values.
     --new-password changeme
 ```
 
-**Step 3: Register the IAM admin application client:**
+**Step 3: Register the IAM admin application:**
 
 ```bash
-./keycloak/scripts/add-oidc-client.sh \
+./keycloak/scripts/add-iam-admin-app.sh \
     --url https://keycloak.example.com \
     --realm orgiam \
     --username admin \
     --password keycloak \
     --client-id https://iam.example.com \
-    --name "IAM Admin Application" \
-    --redirect-uri 'https://iam.example.com/login/oauth2/code/*' \
-    --service-account
+    --name "IAM Admin Application"
 ```
+
+Not `add-oidc-client.sh`: the admin application is an OIDC client, a resource server, and a
+client handling all functions, and only `add-iam-admin-app.sh` sets all three markers. See
+[3.3](#add-iam-admin-app).
 
 **Step 4: Register any additional OIDC/OAuth clients:**
 
@@ -660,6 +790,23 @@ your actual values.
     --name "My API" \
     --functions demo
 ```
+
+**Step 6: Give a client a function it gained later:**
+
+```bash
+./keycloak/scripts/add-function.sh \
+    --url https://keycloak.example.com \
+    --realm orgiam \
+    --username admin \
+    --password keycloak \
+    --client-id https://my-app.example.com \
+    --function walletreg
+```
+
+The function must exist first, so this step comes after the function has been created in the
+IAM admin application. Follow it with `POST /api/clients/reconcile` for an OIDC client; a
+resource server needs nothing further. Use `set-client-functions.sh` instead when the whole
+list is to be replaced rather than added to.
 
 Organizations and functions are created and managed by the IAM admin application after
 it starts up. See [docs/keycloak-setup.md](../../docs/keycloak-setup.md) for the full

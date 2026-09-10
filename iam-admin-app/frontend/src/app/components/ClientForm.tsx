@@ -65,6 +65,11 @@ export function ClientForm({ client, functions, isOpen, onClose, onSave }: Clien
   const getFunctionLabel = (func: FunctionType): string =>
     (language === 'sv' ? func.nameSv : func.nameEn) || func.name;
 
+  // A client marked as handling all functions is registered by script, and the server maintains
+  // its function list as functions are created. There is nothing here to pick, and whatever the
+  // form sent would be ignored.
+  const allFunctions = client?.allFunctions ?? false;
+
   const toggleFunction = (functionId: string) => {
     setSelectedFunctions((current) =>
       current.includes(functionId)
@@ -263,30 +268,34 @@ export function ClientForm({ client, functions, isOpen, onClose, onSave }: Clien
           </div>
           )}
 
-          {/* Functions */}
+          {/* Functions. A client marked as handling all functions has its list maintained by the
+              server as functions are created, so there is nothing here to pick */}
           <div className="space-y-2">
             <Label>{t('clients.functions')}</Label>
             <div className="flex flex-wrap gap-2">
               {functions.map((func) => {
-                const selected = selectedFunctions.includes(func.id);
+                const selected = allFunctions || selectedFunctions.includes(func.id);
                 return (
                   <button
                     type="button"
                     key={func.id}
                     onClick={() => toggleFunction(func.id)}
                     aria-pressed={selected}
+                    disabled={allFunctions}
                     className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${
                       selected
                         ? 'bg-primary text-primary-foreground border-primary'
                         : 'bg-white border-gray-200 hover:bg-gray-50'
-                    }`}
+                    } ${allFunctions ? 'opacity-60 cursor-not-allowed' : ''}`}
                   >
                     {getFunctionLabel(func)}
                   </button>
                 );
               })}
             </div>
-            <p className="text-xs text-gray-500">{t('clients.functionsHint')}</p>
+            <p className="text-xs text-gray-500">
+              {allFunctions ? t('clients.allFunctionsHint') : t('clients.functionsHint')}
+            </p>
           </div>
 
           {/* Client keys — OIDC client only */}

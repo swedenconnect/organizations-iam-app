@@ -141,7 +141,8 @@ After registration, run `set-iam-admin-managed.sh` against the client:
     --password keycloak
 ```
 
-This sets the `iam_admin_managed=true` attribute on the client. The IAM admin application
+This sets `iam_admin_managed=true` (the application administers this client) and
+`iam_admin_oidc_client=true` (it plays the OIDC client role) on the client. The IAM admin application
 uses this attribute to discover which clients require Authorization Services policies when
 a function is attached to or detached from an organization. Without it, the client will
 never receive the org-scoped scopes it needs to call downstream APIs.
@@ -150,12 +151,26 @@ never receive the org-scoped scopes it needs to call downstream APIs.
 
 A superuser can register the same client from the IAM admin application's **Services** tab,
 without shell access to the Keycloak host. The application creates the client with the same
-settings the script applies, sets `iam_admin_managed=true`, and reconciles the client
+settings the script applies, sets the same markers, and reconciles the client
 immediately.
 
 Either way, declare which functions the client handles by setting `client_functions`, either via
 the **Functions** field in the admin application, or with `set-client-functions.sh`. A
 client scoped to `demo` receives scopes only for organizations that have `demo` attached.
+
+To give a client a function it did not have at registration time, use `add-function.sh`, which
+appends to `client_functions` rather than replacing it:
+
+```bash
+./compose/keycloak-scripts/add-function.sh \
+    --realm orgiam \
+    --username admin \
+    --password keycloak \
+    --client-id https://my-app.example.com \
+    --function walletreg
+```
+
+The function has to exist first. Create it in the admin application's **Functions** tab.
 
 **If the realm already has functions attached to organizations**, a newly registered client
 starts out without the corresponding scopes, policies and permissions. Reconcile it to
@@ -422,7 +437,7 @@ no token is issued.
 ### 3.1. Keycloak Registration
 
 Use the same `add-oidc-client.sh` and `set-iam-admin-managed.sh` commands described in
-Section 2.1. The `iam_admin_managed` attribute is required: it tells the IAM admin
+Section 2.1. The `iam_admin_oidc_client` attribute is required: it tells the IAM admin
 application to create the org-scoped Keycloak scopes and their Authorization Services
 policies when a function is attached to an organization. Without these policies, Keycloak
 will deny any token request for a `{orgId}:{function}:{right}` scope regardless of the
@@ -759,6 +774,11 @@ parameter. If the function is not supported, the token request is rejected with 
 `invalid_target` error (RFC 8707). If `--functions` is omitted, the resource server is
 treated as function-universal and accepts all functions.
 
+That fallback applies only while the attribute is unset. A resource server serving every
+function, including the ones not created yet, carries `iam_admin_all_functions=true` instead,
+as the IAM admin application itself does. See
+[Registering a Client](registering-a-client.md#clients-handling-all-functions).
+
 Do not run `set-iam-admin-managed.sh` for resource servers. They never request scopes and
 do not need Authorization Services policies.
 
@@ -1033,7 +1053,7 @@ Log in to the IAM admin application at `https://local.dev.swedenconnect.se:17005
 3. On the organization's detail page, click **Attach function** and select `demo`. The IAM
    admin application will automatically create the three Keycloak scopes
    (`{orgId}:demo:read`, `{orgId}:demo:write`, `{orgId}:demo:admin`) and their
-   Authorization Services policies on all `iam_admin_managed` clients, including
+   Authorization Services policies on all clients holding the OIDC client role, including
    `https://local.dev.swedenconnect.se:16990`.
 
 4. Navigate to **Users** and select or create the user who will log in to the demo. Assign

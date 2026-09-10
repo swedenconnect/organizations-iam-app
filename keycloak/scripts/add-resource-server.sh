@@ -226,6 +226,12 @@ if name:
 
 if not client.get('attributes'):
     client['attributes'] = {}
+# iam_admin_managed says the IAM Admin application administers this Keycloak client, whichever
+# role it plays, so it goes on a resource server too. The explicit 'false' on
+# iam_admin_oidc_client matters: an absent value means a client written before that attribute
+# existed, and for those the application reads iam_admin_managed as the OIDC client role.
+client['attributes']['iam_admin_managed'] = 'true'
+client['attributes']['iam_admin_oidc_client'] = 'false'
 client['attributes']['iam_admin_resource_server'] = 'true'
 
 if functions:

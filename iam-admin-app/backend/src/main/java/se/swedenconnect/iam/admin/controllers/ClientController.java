@@ -31,6 +31,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import se.swedenconnect.iam.admin.controllers.dto.ClientDriftResponse;
 import se.swedenconnect.iam.admin.controllers.dto.CreateManagedClientRequest;
 import se.swedenconnect.iam.admin.controllers.dto.ManagedClientResponse;
 import se.swedenconnect.iam.admin.controllers.dto.ReconciliationReportResponse;
@@ -48,6 +49,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.text.ParseException;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -313,6 +315,38 @@ public class ClientController {
   }
 
   /**
+   * Reports which clients are missing KeyCloak artifacts, and how many.
+   *
+   * <p>Read-only: it creates nothing. Setting a client's functions or markers outside the
+   * application decides what it should hold without creating anything, so a client can look
+   * correctly configured while holding no scopes at all. This is what lets the Services tab say a
+   * reconciliation is still needed.</p>
+   *
+   * @param request the HTTP servlet request
+   * @return 200 with the affected clients; 403 if not superuser; 500 on Keycloak error
+   */
+  @GetMapping(value = "/clients/drift", produces = MediaType.APPLICATION_JSON_VALUE)
+  public ResponseEntity<?> getDrift(final HttpServletRequest request) {
+
+    if (!isSuperuser(request)) {
+      log.info("GET /api/clients/drift — rejected: caller is not a superuser");
+      return ResponseEntity.status(403).build();
+    }
+
+    try {
+      final Map<String, Integer> drift = this.reconciliationService.detectDrift();
+      if (!drift.isEmpty()) {
+        log.info("GET /api/clients/drift — {} client(s) missing artifacts: {}", drift.size(), drift);
+      }
+      return ResponseEntity.ok(new ClientDriftResponse(drift));
+    }
+    catch (final KeycloakAdminException e) {
+      log.error("GET /api/clients/drift — Keycloak error: {}", e.getMessage(), e);
+      return ResponseEntity.status(500).body(e.getMessage());
+    }
+  }
+
+  /**
    * Reconciles a single managed client against the current org/function topology.
    *
    * @param id the Keycloak UUID of the client
@@ -534,7 +568,7 @@ public class ClientController {
   private static @NonNull ManagedClientResponse toResponse(final @NonNull ManagedClientInfo client) {
     return new ManagedClientResponse(
         client.uuid(), client.oidcClient(), client.resourceServer(), client.clientId(),
-        client.name(), client.functions(), client.redirectUris(),
+        client.name(), client.functions(), client.allFunctions(), client.redirectUris(),
         client.jwksUri(), client.jwksString(), client.serviceAccount(),
         client.orgRightsIdToken(), client.orgRightsAccessToken(), client.enabled());
   }
