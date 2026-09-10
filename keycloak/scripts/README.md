@@ -791,7 +791,7 @@ client handling all functions, and only `add-iam-admin-app.sh` sets all three ma
     --functions demo
 ```
 
-**Step 6 — Give a client a function it gained later:**
+**Step 6: Give a client a function it gained later:**
 
 ```bash
 ./keycloak/scripts/add-function.sh \

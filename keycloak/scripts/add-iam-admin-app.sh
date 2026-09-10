@@ -146,7 +146,7 @@ done
 [ "${ROOT_URL_SET}" = "false" ] && ROOT_URL="${CLIENT_ID}"
 
 # ---------------------------------------------------------------------------
-# Step 1 — Register the OIDC client
+# Step 1: Register the OIDC client
 # ---------------------------------------------------------------------------
 
 DELEGATE=("${SCRIPT_DIR}/add-oidc-client.sh"
@@ -224,7 +224,7 @@ print(clients[0]['id'] if clients else '')
 echo "    Found (UUID: ${CLIENT_UUID})."
 
 # ---------------------------------------------------------------------------
-# Step 2 — Collect every function that exists
+# Step 2: Collect every function that exists
 # ---------------------------------------------------------------------------
 
 echo "==> Collecting the functions defined in realm '${REALM}'..."
@@ -255,7 +255,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 3 — Set the resource server and all-functions markers
+# Step 3: Set the resource server and all-functions markers
 # ---------------------------------------------------------------------------
 
 echo "==> Setting the resource server and all-functions markers..."

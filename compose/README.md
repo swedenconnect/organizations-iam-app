@@ -153,9 +153,7 @@ rather than `add-oidc-client.sh`, which gives only the first. See
 roles mean.
 
 ```bash
-./keycloak/scripts/add-iam-admin-app.sh \
-    --url https://local.dev.swedenconnect.se:17000 \
-    --cacert compose/config/common/tls.crt \
+./compose/keycloak-scripts/add-iam-admin-app.sh \
     --realm orgiam \
     --username admin \
     --password keycloak \
@@ -192,9 +190,7 @@ To give a client a function it did not have at registration time, use `add-funct
 appends to `client_functions` rather than replacing it:
 
 ```bash
-./keycloak/scripts/add-function.sh \
-    --url https://local.dev.swedenconnect.se:17000 \
-    --cacert compose/config/common/tls.crt \
+./compose/keycloak-scripts/add-function.sh \
     --realm orgiam \
     --username admin \
     --password keycloak \

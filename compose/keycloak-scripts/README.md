@@ -56,10 +56,12 @@ The scripts can be run from any directory. They resolve the repository root them
 |---|---|
 | `bootstrap-realm.sh` | The realm with its top-level groups, the `superuser` role, the OIDC Sweden client scopes and their mappers, the OIDC Sweden user profile groups and attributes, and the resource function client policy |
 | `create-admin-user.sh` | A user with the `superuser` realm role and a password |
+| `add-iam-admin-app.sh` | The IAM admin application, marked `iam_admin_oidc_client`, `iam_admin_resource_server` and `iam_admin_all_functions`, with a service account holding `realm-management` roles, and `client_functions` seeded from every function in the realm |
 | `add-oidc-client.sh` | An OIDC or OAuth client with `private_key_jwt` authentication, Authorization Services, the IAM protocol mappers and the optional client scopes |
 | `add-resource-server.sh` | A public client with all flows disabled, marked `iam_admin_resource_server`, optionally carrying `client_functions` |
+| `add-function.sh` | The `client_functions` attribute on an existing client, with the given functions added to the ones it already declares |
 | `set-client-functions.sh` | The `client_functions` attribute on an existing client |
-| `set-iam-admin-managed.sh` | The `iam_admin_managed=true` attribute on an existing client |
+| `set-iam-admin-managed.sh` | The `iam_admin_managed=true` and `iam_admin_oidc_client=true` attributes on an existing client, giving it the OIDC client role |
 | `set-iam-admin-resource-server.sh` | The `iam_admin_resource_server=true` attribute on an existing client, leaving everything else about it alone |
 
 Each one is idempotent and safe to re-run. What a re-run changes, and which options are
@@ -88,15 +90,15 @@ docker compose -f compose/docker-compose.yml up -d keycloak
     --new-username diggadmin \
     --new-password changeme
 
-# 4. Register the IAM admin application client
-./compose/keycloak-scripts/add-oidc-client.sh \
+# 4. Register the IAM admin application. Not add-oidc-client.sh: the application is an OIDC
+#    client, a resource server and a client handling all functions, and only this script
+#    sets all three markers
+./compose/keycloak-scripts/add-iam-admin-app.sh \
     --realm orgiam \
     --username admin \
     --password keycloak \
     --client-id https://local.dev.swedenconnect.se:17005 \
-    --name "IAM Admin Application" \
-    --redirect-uri '/login/oauth2/code/*' \
-    --service-account
+    --name "IAM Admin Application"
 
 # 5. Register a resource server, and the client that calls it
 ./compose/keycloak-scripts/add-resource-server.sh \
@@ -114,6 +116,15 @@ docker compose -f compose/docker-compose.yml up -d keycloak
     --client-id https://local.dev.swedenconnect.se:16990 \
     --name "Demo App" \
     --redirect-uri '/login/oauth2/code/*'
+
+# 6. Give a client a function it gained after registration. The function must already exist,
+#    so create it in the IAM admin application first
+./compose/keycloak-scripts/add-function.sh \
+    --realm orgiam \
+    --username admin \
+    --password keycloak \
+    --client-id https://local.dev.swedenconnect.se:16990 \
+    --function walletreg
 ```
 
 `{org}:{function}:{right}` scopes and their Authorization Services policies are not created

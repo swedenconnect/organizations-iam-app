@@ -162,8 +162,7 @@ To give a client a function it did not have at registration time, use `add-funct
 appends to `client_functions` rather than replacing it:
 
 ```bash
-./keycloak/scripts/add-function.sh \
-    --url https://keycloak.example.com \
+./compose/keycloak-scripts/add-function.sh \
     --realm orgiam \
     --username admin \
     --password keycloak \

@@ -154,7 +154,7 @@ urlencode() {
 }
 
 # ---------------------------------------------------------------------------
-# Step 1 — Authenticate
+# Step 1: Authenticate
 # ---------------------------------------------------------------------------
 
 echo ""
@@ -164,7 +164,7 @@ TOKEN=$(get_token)
 echo "    Token obtained."
 
 # ---------------------------------------------------------------------------
-# Step 2 — Resolve the client
+# Step 2: Resolve the client
 # ---------------------------------------------------------------------------
 
 echo "==> Looking up client '${CLIENT_ID}'..."
@@ -179,7 +179,7 @@ print(clients[0]['id'] if clients else '')
 echo "    Found (UUID: ${CLIENT_UUID})."
 
 # ---------------------------------------------------------------------------
-# Step 3 — Check that every function exists
+# Step 3: Check that every function exists
 # ---------------------------------------------------------------------------
 #
 # A function that does not exist would be written into client_functions and then
@@ -220,7 +220,7 @@ fi
 echo "    All functions exist."
 
 # ---------------------------------------------------------------------------
-# Step 4 — Merge into client_functions
+# Step 4: Merge into client_functions
 # ---------------------------------------------------------------------------
 
 CURRENT=$(api_get "/${REALM}/clients/${CLIENT_UUID}")
