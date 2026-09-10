@@ -4,6 +4,12 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) ![Maven Central](https://img.shields.io/maven-central/v/se.swedenconnect.iam/iam-parent.svg)
 
+### Version 0.9.4
+
+**Date:** _not yet released_
+
+- **Keycloak version was updated.** Keycloak plugins and the local environment now uses Keycloak v26.7.3. 
+
 ### Version 0.9.3
 
 **Date:** 2026-09-10

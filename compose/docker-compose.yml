@@ -123,7 +123,7 @@ services:
       JAVA_TOOL_OPTIONS: "-Djava.net.preferIPv4Stack=true -Dorg.apache.xml.security.ignoreLineBreaks=true -Djavax.net.ssl.trustStore=/opt/common/trust.jks -Djavax.net.ssl.trustStorePassword=secret"
 
   keycloak:
-    image: keycloak/keycloak:26.5.7
+    image: keycloak/keycloak:26.7.3
     depends_on:
       postgres:
         condition: service_healthy
