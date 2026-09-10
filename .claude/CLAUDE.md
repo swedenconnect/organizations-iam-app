@@ -146,13 +146,38 @@ removes a service account: create passes `false`, update passes the client's exi
 through, and delete refuses a client holding one with a `409`. The GUI shows it as a pill and
 disables the delete button.
 
-A client carries two independent roles. `iam_admin_managed=true` is the **OIDC client** role:
-it requests tokens, takes the confidential/`client-jwt`/authz-services shape, and is
-reconciled. `iam_admin_resource_server=true` is the **resource server** role: it may be named
-in the OAuth2 `resource` parameter, needs no client settings of its own, and holds no
-artifacts. Both may be set on one client. `resolveIamAdminManagedClients()` returns clients
-holding the OIDC client role; `resolveAdministeredClients()` returns everything administered.
+`iam_admin_all_functions=true` marks a client that handles **every** function, including the
+ones not created yet. It is script-only (`add-iam-admin-app.sh`), and the IAM Admin App
+itself is what it exists for: its `/iam-api` is a resource server for every function.
+`ManagedClientInfo.handles()` returns true for everything on such a client, so
+reconciliation covers every org/function pair and prunes none. Its `client_functions` is
+*also* kept materialized: `resource-aud-plugin` reads the raw attribute inside Keycloak and
+cannot see the marker. `FunctionController.createFunction` appends each new function via
+`KeycloakAdminClient.materializeAllFunctions`; a failure there is a WARN, not a failed
+request. `writeClientSettings` leaves `client_functions` alone on a marked client, so an
+edit through the form or the API cannot clobber it.
+
+In Keycloak everything registered is a **client**, whichever role it plays, so the markers
+separate administration from role:
+
+- `iam_admin_managed=true` says the app **administers** this client. Set on every client the
+  app administers, resource servers included. It says nothing about role.
+- `iam_admin_oidc_client=true` is the **OIDC client** role: requests tokens, takes the
+  confidential/`client-jwt`/authz-services shape, is reconciled.
+- `iam_admin_resource_server=true` is the **resource server** role: may be named in the OAuth2
+  `resource` parameter, needs no client settings, holds no artifacts.
+
+Both roles may be set on one client. `resolveIamAdminManagedClients()` returns clients holding
+the OIDC client role; `resolveAdministeredClients()` returns everything administered.
 `ManagedClientInfo.reconcilable()` is the check to use before reconciling.
+
+`iam_admin_managed` used to carry the OIDC client role itself, so `resolveOidcClientRole()`
+falls back to it when `iam_admin_oidc_client` is **absent**. The role attribute is therefore
+always written explicitly, `"true"` or `"false"`, never removed: absence is what identifies an
+unmigrated client. The fallback ignores `iam_admin_resource_server` on purpose, because a
+legacy client carrying both markers was an OIDC client and a resource server, and reading the
+resource server marker as evidence against the OIDC role would strip it of every artifact.
+`ClientRoleResolutionTest` pins every legacy and current combination.
 
 `ClientReconciliationService` creates whatever a managed client is missing — realm client
 scopes, authz scopes, `policy-{org}-{func}-{level}`, `permission-{org}-{func}-{level}`, and

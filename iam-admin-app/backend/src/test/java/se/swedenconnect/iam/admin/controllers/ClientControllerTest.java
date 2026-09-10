@@ -525,22 +525,22 @@ class ClientControllerTest {
 
   private static ManagedClientInfo managedClient() {
     return new ManagedClientInfo(CLIENT_UUID, CLIENT_ID, "Demo", true, false,
-        Set.of("demo"), List.of(REDIRECT_URI), JWKS_URI, null, false, true, true, true);
+        Set.of("demo"), false, List.of(REDIRECT_URI), JWKS_URI, null, false, true, true, true);
   }
 
   private static ManagedClientInfo serviceAccountClient() {
     return new ManagedClientInfo(CLIENT_UUID, CLIENT_ID, "Demo", true, false,
-        Set.of("demo"), List.of(REDIRECT_URI), JWKS_URI, null, true, true, true, true);
+        Set.of("demo"), false, List.of(REDIRECT_URI), JWKS_URI, null, true, true, true, true);
   }
 
   private static ManagedClientInfo dualRoleClient() {
     return new ManagedClientInfo(CLIENT_UUID, CLIENT_ID, "Demo", true, true,
-        Set.of("demo"), List.of(REDIRECT_URI), JWKS_URI, null, false, true, true, true);
+        Set.of("demo"), false, List.of(REDIRECT_URI), JWKS_URI, null, false, true, true, true);
   }
 
   private static ManagedClientInfo resourceServer() {
     return new ManagedClientInfo(SERVICE_UUID, SERVICE_ID, "Registry", false, true,
-        Set.of("demo"), List.of(), null, null, false, true, true, true);
+        Set.of("demo"), false, List.of(), null, null, false, true, true, true);
   }
 
   private static CreateManagedClientRequest validCreateRequest() {

@@ -144,24 +144,65 @@ be accessed:
 Next, log in to the Keycloak Admin Console at https://local.dev.swedenconnect.se:17000 and set any desired name and other attributes manually under
 **Users → diggadmin → Details**.
 
-#### Step 5: Register clients
+#### Step 5: Register the IAM admin application
 
-Register the IAM admin application client:
+The IAM admin application is an OIDC client, a resource server for its `/iam-api` endpoints,
+and a client handling every function. `add-iam-admin-app.sh` registers all three roles; use it
+rather than `add-oidc-client.sh`, which gives only the first. See
+[Registering a Client](../docs/registering-a-client.md#the-iam-admin-application) for what the
+roles mean.
+
+```bash
+./keycloak/scripts/add-iam-admin-app.sh \
+    --url https://local.dev.swedenconnect.se:17000 \
+    --cacert compose/config/common/tls.crt \
+    --realm orgiam \
+    --username admin \
+    --password keycloak \
+    --client-id https://local.dev.swedenconnect.se:17005 \
+    --name "IAM Admin"
+```
+
+The redirect URI defaults to `/login/oauth2/code/*` and the root URL to the client ID, so
+neither needs to be given. The JWKS URL defaults to
+`https://local.dev.swedenconnect.se:17005/jwks` and is registered in Keycloak at this point.
+Keycloak only fetches it when the first token request is made, so the application does not need
+to be running during registration. A service account with `realm-management` roles is always
+created, because the application administers the realm through the Keycloak Admin API.
+
+The script is idempotent. Re-run it to bring an application registered with
+`add-oidc-client.sh` alone up to the full shape.
+
+#### Step 6: Register the remaining clients
+
+Ordinary applications are registered with `add-oidc-client.sh`, and resource servers with
+`add-resource-server.sh`:
 
 ```bash
 ./compose/keycloak-scripts/add-oidc-client.sh \
     --realm orgiam \
     --username admin \
     --password keycloak \
-    --client-id https://local.dev.swedenconnect.se:17005 \
-    --name "IAM Admin" \
-    --redirect-uri '/login/oauth2/code/*' \
-    --service-account
+    --client-id https://local.dev.swedenconnect.se:16990 \
+    --name "Demo Application" \
+    --redirect-uri '/login/oauth2/code/*'
 ```
 
-The JWKS URL defaults to `https://local.dev.swedenconnect.se:17005/jwks` and is registered in
-Keycloak at this point. Keycloak only fetches it when the first token request is made,
-so the application does not need to be running during registration.
+To give a client a function it did not have at registration time, use `add-function.sh`, which
+appends to `client_functions` rather than replacing it:
+
+```bash
+./keycloak/scripts/add-function.sh \
+    --url https://local.dev.swedenconnect.se:17000 \
+    --cacert compose/config/common/tls.crt \
+    --realm orgiam \
+    --username admin \
+    --password keycloak \
+    --client-id https://local.dev.swedenconnect.se:16990 \
+    --function walletreg
+```
+
+The function must already exist. Create it in the IAM admin application first.
 
 *For clients registered outside of `add-oidc-client.sh`, use `set-iam-admin-managed.sh`
 to mark them as IAM-admin-managed, and `set-iam-admin-resource-server.sh` to mark them as

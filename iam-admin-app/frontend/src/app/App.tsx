@@ -43,6 +43,7 @@ import {
   removeUserFromFunction,
   removeAllUserRoles,
   getClients,
+  getClientDrift,
   createClient,
   updateClient,
   deleteClient,
@@ -101,6 +102,9 @@ function AppContent() {
   const [organizationFunctions, setOrganizationFunctions] = useState<OrganizationFunction[]>([]);
 
   const [clients, setClients] = useState<ManagedClient[]>([]);
+  // client_id -> number of Keycloak artifacts a reconciliation would create. Non-empty means
+  // the markers say what a client should hold but nothing has created it yet.
+  const [clientDrift, setClientDrift] = useState<Record<string, number>>({});
   const [selectedClient, setSelectedClient] = useState<ManagedClient | null>(null);
   const [isClientFormOpen, setIsClientFormOpen] = useState(false);
   const [allowFunctionRemoval, setAllowFunctionRemoval] = useState(false);
@@ -688,6 +692,17 @@ function AppContent() {
       console.error('Error loading clients:', error);
       showError(t('error.title.operationFailed'), t('clients.error.load'));
     }
+    await loadClientDrift();
+  };
+
+  // Drift is advisory: a failure here must not stop the Services tab from rendering.
+  const loadClientDrift = async () => {
+    try {
+      setClientDrift(await getClientDrift());
+    } catch (error) {
+      console.error('Error loading client drift:', error);
+      setClientDrift({});
+    }
   };
 
   const handleOpenClients = async () => {
@@ -765,6 +780,7 @@ function AppContent() {
   const handleReconcileAllClients = async () => {
     try {
       reportReconciliation(await reconcileAllClients());
+      await loadClientDrift();
     } catch (error) {
       console.error('Error reconciling clients:', error);
       showError(t('error.title.operationFailed'), t('clients.error.reconcile'));
@@ -961,9 +977,17 @@ function AppContent() {
                 </div>
               </div>
 
+              {Object.keys(clientDrift).length > 0 && (
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                  <p className="font-medium">{t('clients.driftBannerTitle')}</p>
+                  <p className="mt-1">{t('clients.driftBannerBody')}</p>
+                </div>
+              )}
+
               <ClientList
                 clients={clients}
                 functions={functions}
+                drift={clientDrift}
                 onEdit={handleEditClient}
                 onDelete={handleDeleteClient}
               />

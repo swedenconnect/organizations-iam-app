@@ -138,6 +138,9 @@ export interface ManagedClient {
   clientId: string;
   name: string | null;
   functions: string[];
+  // Set by script only. The client handles every function in the realm, including the ones not
+  // created yet, so `functions` is a snapshot of what exists rather than the limit.
+  allFunctions: boolean;
   redirectUris: string[];
   jwksUri: string | null;
   jwksString: string | null;

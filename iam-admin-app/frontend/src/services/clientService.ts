@@ -41,6 +41,21 @@ export async function getClients(): Promise<ManagedClient[]> {
 }
 
 /**
+ * Report which clients are missing Keycloak artifacts, and how many.
+ *
+ * Read-only. Setting a client's functions or markers outside the application decides what it
+ * should hold without creating anything, so a client can look correctly configured while holding
+ * no scopes at all. A non-empty result means a reconciliation has not been run yet.
+ */
+export async function getClientDrift(): Promise<Record<string, number>> {
+  const response = await apiFetch(apiUrl('api/clients/drift'));
+  if (response.status === 403) throw new Error('FORBIDDEN');
+  if (!response.ok) throw new Error('FETCH_DRIFT_FAILED');
+  const body = await response.json();
+  return body.missingByClientId ?? {};
+}
+
+/**
  * Register a new managed client. The backend reconciles it before returning.
  */
 export async function createClient(client: ManagedClientInput): Promise<ManagedClient> {

@@ -52,6 +52,18 @@ import java.util.stream.Collectors;
  * one function; only clients provisioned outside the application can end up unscoped, and
  * {@link #unscoped()} reports that.</p>
  *
+ * <p>The one exception is the {@code allFunctions} marker, set by the
+ * {@code iam_admin_all_functions=true} attribute. A client carrying it handles every function in
+ * the realm, including the ones not created yet, so its declared list is never the limit. The
+ * marker exists for the IAM Admin application itself, whose API is a resource server for every
+ * function. It is set by script only, never through the application's own client API.</p>
+ *
+ * <p>A marked client still keeps {@code client_functions} materialized to the concrete list of
+ * functions that exist, because {@code resource-aud-plugin} runs inside KeyCloak and validates the
+ * OAuth2 {@code resource} parameter against that raw attribute, where the marker is not visible to
+ * it. The marker is what this application acts on; the materialized list is what KeyCloak acts
+ * on.</p>
+ *
  * @author Felix Hellman
  */
 public record ManagedClientInfo(
@@ -61,6 +73,7 @@ public record ManagedClientInfo(
     boolean oidcClient,
     boolean resourceServer,
     @NonNull Set<String> functions,
+    boolean allFunctions,
     @NonNull List<String> redirectUris,
     @Nullable String jwksUri,
     @Nullable String jwksString,
@@ -92,11 +105,16 @@ public record ManagedClientInfo(
    * Tells whether this client handles the given function, i.e. whether it should receive the
    * KeyCloak artifacts created when the function is attached to an organization.
    *
+   * <p>A client carrying the {@code allFunctions} marker handles every function, whether or not it
+   * appears in the declared list. The declared list can lag behind — a function created while the
+   * application could not reach KeyCloak is never written to it — and reconciliation must still
+   * cover the function.</p>
+   *
    * @param functionId the function identifier
    * @return {@code true} if the client handles the function
    */
   public boolean handles(final @NonNull String functionId) {
-    return this.functions.contains(functionId);
+    return this.allFunctions || this.functions.contains(functionId);
   }
 
   /**
@@ -114,9 +132,12 @@ public record ManagedClientInfo(
    * Tells whether this client declares no functions at all, and therefore receives no scopes,
    * policies or permissions for any organization.
    *
+   * <p>A client carrying the {@code allFunctions} marker is never unscoped, even before any
+   * function exists: it handles whatever the realm comes to hold.</p>
+   *
    * @return {@code true} if the client declares no functions
    */
   public boolean unscoped() {
-    return this.functions.isEmpty();
+    return !this.allFunctions && this.functions.isEmpty();
   }
 }

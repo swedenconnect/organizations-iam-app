@@ -19,6 +19,8 @@ import { useLanguage } from '@/app/contexts/LanguageContext';
 interface ClientListProps {
   clients: ManagedClient[];
   functions: FunctionType[];
+  /** client_id -> artifacts a reconciliation would create. Absent or 0 means fully provisioned. */
+  drift?: Record<string, number>;
   onEdit: (client: ManagedClient) => void;
   onDelete: (id: string) => void;
 }
@@ -26,6 +28,7 @@ interface ClientListProps {
 export function ClientList({
   clients,
   functions,
+  drift,
   onEdit,
   onDelete,
 }: ClientListProps) {
@@ -91,6 +94,25 @@ export function ClientList({
                       {t('clients.badgeServiceAccount')}
                     </span>
                   )}
+                  {client.allFunctions && (
+                    <span
+                      className="px-2 py-0.5 rounded-full text-xs shrink-0 border border-sky-300 bg-sky-50 text-sky-800"
+                      title={t('clients.badgeAllFunctionsHint')}
+                    >
+                      {t('clients.badgeAllFunctions')}
+                    </span>
+                  )}
+                  {(drift?.[client.clientId] ?? 0) > 0 && (
+                    <span
+                      className="px-2 py-0.5 rounded-full text-xs shrink-0 border border-amber-400 bg-amber-100 text-amber-900"
+                      title={t('clients.driftHint')}
+                    >
+                      {t('clients.driftBadge').replace(
+                        '{missing}',
+                        String(drift?.[client.clientId] ?? 0)
+                      )}
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-gray-500 mt-1 break-all">{client.clientId}</p>
               </div>
@@ -129,7 +151,9 @@ export function ClientList({
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
                 {client.oidcClient ? t('clients.functions') : t('services.functions')}
               </p>
-              {client.functions.length === 0 ? (
+              {client.allFunctions ? (
+                <p className="text-gray-600 mt-1">{t('clients.allFunctionsNote')}</p>
+              ) : client.functions.length === 0 ? (
                 <p className="text-amber-700 mt-1">{t('clients.unscoped')}</p>
               ) : (
                 <div className="flex flex-wrap gap-2 mt-1">

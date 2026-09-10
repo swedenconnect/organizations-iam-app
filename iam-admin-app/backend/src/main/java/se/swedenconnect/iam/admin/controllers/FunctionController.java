@@ -42,6 +42,8 @@ import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
 import se.swedenconnect.iam.admin.keycloak.model.FunctionInfo;
 import se.swedenconnect.iam.admin.keycloak.model.OrganizationInfo;
 
+import org.jspecify.annotations.NonNull;
+
 import java.util.List;
 
 /**
@@ -192,9 +194,45 @@ public class FunctionController {
       return ResponseEntity.status(500).body(e.getMessage());
     }
 
+    this.materializeOnAllFunctionsClients(name);
+
     log.info("POST /api/functions — function '{}' created successfully", name);
     return ResponseEntity.status(201).body(
         new FunctionResponse(name, req.nameSv(), req.nameEn(), req.descriptionSv(), req.descriptionEn()));
+  }
+
+  /**
+   * Writes a newly created function into the {@code client_functions} attribute of every client
+   * marked as handling all functions.
+   *
+   * <p>Such a client, the IAM Admin application itself among them, is a resource server for every
+   * function including the ones not yet created. This application reads the marker directly, but
+   * {@code resource-aud-plugin} runs inside Keycloak and validates the OAuth2 {@code resource}
+   * parameter against the raw attribute, so the attribute has to name the function too.</p>
+   *
+   * <p>No reconciliation follows. Artifacts belong to org/function pairs, and a function that has
+   * just been created is attached to no organization yet; the artifacts are created when it is
+   * attached.</p>
+   *
+   * <p>A failure here does not fail the request. The function exists, and the attribute is repaired
+   * by the next run of {@code add-function.sh} or by re-creating nothing at all — the marker, not
+   * the attribute, is what this application acts on.</p>
+   *
+   * @param functionId the identifier of the function just created
+   */
+  private void materializeOnAllFunctionsClients(final @NonNull String functionId) {
+    try {
+      final List<String> updated = this.keycloakAdminClient.materializeAllFunctions(functionId);
+      if (!updated.isEmpty()) {
+        log.info("Function '{}' added to client_functions of all-functions clients: {}",
+            functionId, updated);
+      }
+    }
+    catch (final KeycloakAdminException e) {
+      log.warn("Function '{}' was created but could not be added to the client_functions of the"
+          + " all-functions clients: {}. Run add-function.sh for those clients.",
+          functionId, e.getMessage());
+    }
   }
 
   /**

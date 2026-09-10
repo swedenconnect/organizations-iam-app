@@ -83,6 +83,36 @@ public class KeycloakAdminClient {
   private static final String SERVICE_ACCOUNT_ATTRIBUTE = "iam_admin_service_account";
 
   /**
+   * Marks a client as administered by this application, in either role. In Keycloak everything
+   * registered is a "client", so this says nothing about what the client does;
+   * {@link #OIDC_CLIENT_ATTRIBUTE} and {@link #RESOURCE_SERVER_ATTRIBUTE} carry the roles.
+   */
+  private static final String MANAGED_ATTRIBUTE = "iam_admin_managed";
+
+  /**
+   * The OIDC client role: logs users in, requests org-scoped tokens, and holds the artifacts
+   * reconciliation creates. See {@link #resolveOidcClientRole} for why it is never removed.
+   */
+  private static final String OIDC_CLIENT_ATTRIBUTE = "iam_admin_oidc_client";
+
+  /**
+   * The resource server role: may be named in the OAuth2 {@code resource} parameter, putting the
+   * client in the {@code aud} claim. Needs no client settings and holds no artifacts.
+   */
+  private static final String RESOURCE_SERVER_ATTRIBUTE = "iam_admin_resource_server";
+
+  /** Lists the functions a client handles. Comma-separated, and the complete list. */
+  private static final String CLIENT_FUNCTIONS_ATTRIBUTE = "client_functions";
+
+  /**
+   * Marks a client as handling every function in the realm, including the ones not created yet.
+   * Set by script only. The client's {@link #CLIENT_FUNCTIONS_ATTRIBUTE} is kept materialized to
+   * the functions that exist, because {@code resource-aud-plugin} reads that attribute inside
+   * Keycloak and cannot see this marker.
+   */
+  private static final String ALL_FUNCTIONS_ATTRIBUTE = "iam_admin_all_functions";
+
+  /**
    * Organization group attribute holding the legal name, as registered at Bolagsverket. Untagged,
    * because a legal name is not a localized value. Always written on create.
    */
@@ -1149,34 +1179,35 @@ public class KeycloakAdminClient {
   }
 
   /**
-   * Resolves the full set of managed Keycloak clients by paging through {@code GET /clients} and
-   * filtering the clients whose {@code attributes.iam_admin_managed} equals {@code "true"}.
+   * Resolves the clients that play the OIDC client role, i.e. the ones reconciliation applies to.
    *
-   * <p>If the result is empty a WARN is logged.</p>
+   * <p>Pages through {@code GET /clients} and keeps the administered clients whose OIDC client
+   * role is set, as resolved by {@link #resolveOidcClientRole}. If the result is empty a WARN is
+   * logged.</p>
    *
    * <p>Each client carries the functions declared in its {@code client_functions} attribute. Use
    * {@link ManagedClientInfo#handles(String)} to decide whether a client should receive the
    * artifacts for a given function.</p>
    *
-   * @return list of managed clients; never {@code null}
+   * @return list of OIDC clients; never {@code null}
    * @throws KeycloakAdminException on any Keycloak API error
    */
   public @NonNull List<ManagedClientInfo> resolveIamAdminManagedClients() {
     final LinkedHashMap<String, ManagedClientInfo> result = new LinkedHashMap<>();
 
     for (final Map<String, Object> client : this.fetchAllClients()) {
-      if ("true".equals(clientAttribute(client, "iam_admin_managed"))) {
+      if (administered(client) && resolveOidcClientRole(client)) {
         final ManagedClientInfo info = this.toManagedClientInfo(client);
-        if (info != null && info.oidcClient()) {
+        if (info != null) {
           result.put(info.uuid(), info);
         }
       }
     }
-    log.debug("Managed clients discovered via iam_admin_managed attribute: {}", result.size());
+    log.debug("OIDC clients discovered via the iam-admin role markers: {}", result.size());
 
     if (result.isEmpty()) {
-      log.warn("No managed Keycloak clients found (no client carries the iam_admin_managed"
-          + " attribute) — no authz artifacts will be created/deleted");
+      log.warn("No Keycloak clients holding the OIDC client role found (no client carries the"
+          + " iam-admin role markers) — no authz artifacts will be created/deleted");
     }
 
     return new ArrayList<>(result.values());
@@ -1196,27 +1227,89 @@ public class KeycloakAdminClient {
   public @NonNull List<ManagedClientInfo> resolveResourceServers() {
     final List<ManagedClientInfo> result = new ArrayList<>();
     for (final Map<String, Object> client : this.fetchAllClients()) {
-      if ("true".equals(clientAttribute(client, "iam_admin_resource_server"))) {
+      if (resolveResourceServerRole(client)) {
         final ManagedClientInfo info = this.toManagedClientInfo(client);
         if (info != null) {
           result.add(info);
         }
       }
     }
-    log.debug("Resource servers discovered via iam_admin_resource_server attribute: {}", result.size());
+    log.debug("Resource servers discovered via {}: {}", RESOURCE_SERVER_ATTRIBUTE, result.size());
     return result;
   }
 
   /**
-   * Resolves everything the application administers: the managed clients and the resource servers.
+   * Writes a newly created function into the {@code client_functions} attribute of every client
+   * that handles all functions.
    *
-   * @return the administered clients; never {@code null}
+   * <p>A client marked {@code iam_admin_all_functions=true} handles every function whether or not
+   * the attribute names it, and this application reads the marker directly. Keycloak does not:
+   * {@code resource-aud-plugin} validates the OAuth2 {@code resource} parameter against the raw
+   * {@code client_functions} attribute and knows nothing of the marker. The attribute is therefore
+   * kept materialized, so that a token request naming such a client as its resource is accepted for
+   * the new function.</p>
+   *
+   * <p>Idempotent: a function already present on a client leaves that client untouched.</p>
+   *
+   * @param functionId the function identifier
+   * @return the {@code client_id}s the function was written to; never {@code null}
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  public @NonNull List<String> materializeAllFunctions(final @NonNull String functionId) {
+    final List<String> updated = new ArrayList<>();
+
+    for (final Map<String, Object> client : this.fetchAllClients()) {
+      if (!"true".equals(clientAttribute(client, ALL_FUNCTIONS_ATTRIBUTE))) {
+        continue;
+      }
+      final String uuid = getString(client, "id");
+      final String clientId = getString(client, "clientId");
+      if (uuid == null || clientId == null) {
+        log.debug("Skipping Keycloak client representation without id or clientId");
+        continue;
+      }
+
+      final Set<String> functions = new LinkedHashSet<>(
+          ManagedClientInfo.parseFunctions(clientAttribute(client, CLIENT_FUNCTIONS_ATTRIBUTE)));
+      if (!functions.add(functionId)) {
+        log.debug("All-functions client '{}' already declares function '{}'", clientId, functionId);
+        continue;
+      }
+
+      final Map<String, Object> attributes = client.get("attributes") instanceof final Map<?, ?> attrs
+          ? new LinkedHashMap<>(castAttributes(attrs)) : new LinkedHashMap<>();
+      attributes.put(CLIENT_FUNCTIONS_ATTRIBUTE, String.join(",", functions));
+
+      final Map<String, Object> body = new LinkedHashMap<>(client);
+      body.put("attributes", attributes);
+      this.adminPutWithBody("/clients/" + uuid, body);
+
+      updated.add(clientId);
+      log.debug("Function '{}' written to client_functions of all-functions client '{}'",
+          functionId, clientId);
+    }
+    return updated;
+  }
+
+  /**
+   * Resolves everything the application administers: the OIDC clients and the resource servers.
+   *
+   * <p>The two roles are independent and a client may hold both, in which case it appears in both
+   * source lists. It is returned once: this list is what {@code GET /api/clients} renders, and a
+   * client listed twice reads as two clients.</p>
+   *
+   * @return the administered clients, each appearing once; never {@code null}
    * @throws KeycloakAdminException on any Keycloak API error
    */
   public @NonNull List<ManagedClientInfo> resolveAdministeredClients() {
-    final List<ManagedClientInfo> result = new ArrayList<>(this.resolveIamAdminManagedClients());
-    result.addAll(this.resolveResourceServers());
-    return result;
+    final LinkedHashMap<String, ManagedClientInfo> byUuid = new LinkedHashMap<>();
+    for (final ManagedClientInfo client : this.resolveIamAdminManagedClients()) {
+      byUuid.put(client.uuid(), client);
+    }
+    for (final ManagedClientInfo client : this.resolveResourceServers()) {
+      byUuid.putIfAbsent(client.uuid(), client);
+    }
+    return new ArrayList<>(byUuid.values());
   }
 
   /**
@@ -1324,9 +1417,10 @@ public class KeycloakAdminClient {
         uuid,
         clientId,
         getString(client, "name"),
-        "true".equals(clientAttribute(client, "iam_admin_managed")),
-        "true".equals(clientAttribute(client, "iam_admin_resource_server")),
-        ManagedClientInfo.parseFunctions(clientAttribute(client, "client_functions")),
+        resolveOidcClientRole(client),
+        resolveResourceServerRole(client),
+        ManagedClientInfo.parseFunctions(clientAttribute(client, CLIENT_FUNCTIONS_ATTRIBUTE)),
+        "true".equals(clientAttribute(client, "iam_admin_all_functions")),
         redirectUris,
         "true".equals(clientAttribute(client, "use.jwks.url")) ? clientAttribute(client, "jwks.url") : null,
         "true".equals(clientAttribute(client, "use.jwks.string")) ? clientAttribute(client, "jwks.string") : null,
@@ -1428,6 +1522,52 @@ public class KeycloakAdminClient {
    * @return the attribute value, or {@code null} if the client has no attributes or no such
    *     attribute
    */
+  /**
+   * Resolves whether a client plays the OIDC client role.
+   *
+   * <p>{@link #OIDC_CLIENT_ATTRIBUTE} wins wherever present, which is why it is always written,
+   * {@code "true"} or {@code "false"}, and never removed: absence means a client written before
+   * it existed, and back then {@link #MANAGED_ATTRIBUTE} was the role.</p>
+   *
+   * <p>The fallback ignores {@link #RESOURCE_SERVER_ATTRIBUTE} on purpose. A client of that era
+   * carrying both markers was an OIDC client <em>and</em> a resource server, so reading the
+   * resource server marker as evidence against the OIDC role would strip it of every artifact it
+   * holds on the next reconciliation.</p>
+   *
+   * @param client the client representation
+   * @return {@code true} if the client plays the OIDC client role
+   */
+  static boolean resolveOidcClientRole(final @NonNull Map<String, Object> client) {
+    final String marker = clientAttribute(client, OIDC_CLIENT_ATTRIBUTE);
+    if (marker != null && !marker.isBlank()) {
+      return "true".equals(marker);
+    }
+    return "true".equals(clientAttribute(client, MANAGED_ATTRIBUTE));
+  }
+
+  /**
+   * Resolves whether a client plays the resource server role.
+   *
+   * @param client the client representation
+   * @return {@code true} if the client plays the resource server role
+   */
+  static boolean resolveResourceServerRole(final @NonNull Map<String, Object> client) {
+    return "true".equals(clientAttribute(client, RESOURCE_SERVER_ATTRIBUTE));
+  }
+
+  /**
+   * Tells whether this application administers the client, in either role. A resource server
+   * registered before {@link #MANAGED_ATTRIBUTE} was written for resource servers carries only
+   * {@link #RESOURCE_SERVER_ATTRIBUTE}, so that counts too.
+   *
+   * @param client the client representation
+   * @return {@code true} if the client is administered by this application
+   */
+  static boolean administered(final @NonNull Map<String, Object> client) {
+    return "true".equals(clientAttribute(client, MANAGED_ATTRIBUTE))
+        || resolveResourceServerRole(client);
+  }
+
   private static @Nullable String clientAttribute(
       final @NonNull Map<String, Object> client, final @NonNull String name) {
 
@@ -1442,14 +1582,19 @@ public class KeycloakAdminClient {
   // ---------------------------------------------------------------------------
 
   /**
-   * Looks up a managed client by its OAuth2 client_id.
+   * Looks up an administered client by its OAuth2 client_id.
+   *
+   * <p>Covers both roles, exactly as {@link #findManagedClientByUuid(String)} does. Resolving only
+   * the OIDC clients here would miss a client that carries the resource server role alone: that
+   * role does not set {@code iam_admin_managed}, so such a client is administered but not
+   * managed.</p>
    *
    * @param clientId the OAuth2 client_id
-   * @return the managed client, or empty if no such client exists or it is not managed
+   * @return the client, or empty if no such client exists or it is not administered
    * @throws KeycloakAdminException on any Keycloak API error
    */
   public @NonNull Optional<ManagedClientInfo> findManagedClient(final @NonNull String clientId) {
-    return this.resolveIamAdminManagedClients().stream()
+    return this.resolveAdministeredClients().stream()
         .filter(c -> clientId.equals(c.clientId()))
         .findFirst();
   }
@@ -1557,7 +1702,8 @@ public class KeycloakAdminClient {
     log.info("Client '{}' registered in Keycloak — oidcClient={}, resourceServer={}",
         clientId, oidcClient, resourceServer);
     return this.findManagedClient(clientId).orElseThrow(
-        () -> new KeycloakAdminException("Client '" + clientId + "' is not managed after creation"));
+        () -> new KeycloakAdminException("Client '" + clientId + "' carries neither"
+            + " iam_admin_managed nor iam_admin_resource_server after creation"));
   }
 
   /**
@@ -1598,7 +1744,7 @@ public class KeycloakAdminClient {
       throw new KeycloakAdminException("Keycloak client '" + clientId + "' has no id");
     }
 
-    final boolean wasOidcClient = "true".equals(clientAttribute(client, "iam_admin_managed"));
+    final boolean wasOidcClient = resolveOidcClientRole(client);
     this.writeClientSettings(clientUuid, client, name, oidcClient, resourceServer,
         redirectUris, functions, jwksUri, jwksString, serviceAccount);
 
@@ -1619,7 +1765,8 @@ public class KeycloakAdminClient {
     log.info("Client '{}' updated — oidcClient={}, resourceServer={}",
         clientId, oidcClient, resourceServer);
     return this.findManagedClient(clientId).orElseThrow(
-        () -> new KeycloakAdminException("Client '" + clientId + "' is not managed after update"));
+        () -> new KeycloakAdminException("Client '" + clientId + "' carries neither"
+            + " iam_admin_managed nor iam_admin_resource_server after update"));
   }
 
   /**
@@ -1651,8 +1798,16 @@ public class KeycloakAdminClient {
    * public with every flow disabled when off. The resource server role only adds a marker
    * attribute; being an audience target requires no client settings of its own.</p>
    *
+   * <p>{@link #MANAGED_ATTRIBUTE} is written whichever roles are set: it says the application
+   * administers this Keycloak client, not which role it plays.</p>
+   *
    * <p>Turning the OIDC client role off disables Authorization Services, which makes Keycloak
    * discard the client's policies and permissions.</p>
+   *
+   * <p>On a client carrying {@link #ALL_FUNCTIONS_ATTRIBUTE} the declared functions are ignored and
+   * {@code client_functions} is left as it is. That client handles every function, and its
+   * attribute is maintained by {@link #materializeAllFunctions(String)} as functions are created,
+   * not by whoever edits the client.</p>
    *
    * @param clientUuid the Keycloak UUID of the client
    * @param current the current client representation
@@ -1692,7 +1847,9 @@ public class KeycloakAdminClient {
 
     final Map<String, Object> attributes = current.get("attributes") instanceof final Map<?, ?> attrs
         ? new LinkedHashMap<>(castAttributes(attrs)) : new LinkedHashMap<>();
-    attributes.put("client_functions", String.join(",", functions));
+    if (!"true".equals(attributes.get(ALL_FUNCTIONS_ATTRIBUTE))) {
+      attributes.put(CLIENT_FUNCTIONS_ATTRIBUTE, String.join(",", functions));
+    }
 
     if (oidcClient) {
       attributes.put(SERVICE_ACCOUNT_ATTRIBUTE, String.valueOf(serviceAccount));
@@ -1700,7 +1857,6 @@ public class KeycloakAdminClient {
       // is otherwise left exactly as the client has it, including having none.
       body.put("redirectUris", redirectUris);
       body.put("clientAuthenticatorType", "client-jwt");
-      attributes.put("iam_admin_managed", "true");
       if (jwksUri != null) {
         attributes.put("use.jwks.url", "true");
         attributes.put("jwks.url", jwksUri);
@@ -1717,18 +1873,26 @@ public class KeycloakAdminClient {
     else {
       body.put("redirectUris", List.of());
       attributes.remove(SERVICE_ACCOUNT_ATTRIBUTE);
-      attributes.remove("iam_admin_managed");
       attributes.remove("use.jwks.url");
       attributes.remove("jwks.url");
       attributes.remove("use.jwks.string");
       attributes.remove("jwks.string");
     }
 
+    // The application administers this client whichever role it plays, so the marker goes on
+    // unconditionally. The roles themselves are recorded separately.
+    attributes.put(MANAGED_ATTRIBUTE, "true");
+
+    // Written as an explicit "false" rather than removed: an absent value is what identifies a
+    // client from before this attribute existed, and resolveOidcClientRole reads the legacy
+    // meaning of iam_admin_managed for exactly those.
+    attributes.put(OIDC_CLIENT_ATTRIBUTE, String.valueOf(oidcClient));
+
     if (resourceServer) {
-      attributes.put("iam_admin_resource_server", "true");
+      attributes.put(RESOURCE_SERVER_ATTRIBUTE, "true");
     }
     else {
-      attributes.remove("iam_admin_resource_server");
+      attributes.remove(RESOURCE_SERVER_ATTRIBUTE);
     }
 
     body.put("attributes", attributes);
@@ -2144,6 +2308,50 @@ public class KeycloakAdminClient {
    * @return the number of artifacts created
    * @throws KeycloakAdminException on any Keycloak API error
    */
+  /**
+   * Counts the artifacts {@link #ensureFunctionArtifacts} would create for one org/function pair,
+   * without creating anything.
+   *
+   * <p>Reads the same two snapshots and applies the same four checks per right level, so a client
+   * this reports as {@code 0} is one that a reconciliation would leave untouched. Any change to
+   * what {@code ensureFunctionArtifacts} creates has to be mirrored here.</p>
+   *
+   * <p>A realm client scope that does not exist yet is not itself counted, matching
+   * {@code ensureFunctionArtifacts}, which creates it without counting it. Its absence does mean
+   * the optional binding cannot exist, and that binding is counted.</p>
+   *
+   * @param orgIdentifier the organization identifier
+   * @param functionId the function identifier
+   * @param realmScopeIds realm client scope name to Keycloak UUID
+   * @param state the artifacts the client currently holds
+   * @return the number of artifacts missing; {@code 0} if the pair is fully provisioned
+   */
+  public static int countMissingFunctionArtifacts(
+      final @NonNull String orgIdentifier,
+      final @NonNull String functionId,
+      final @NonNull Map<String, String> realmScopeIds,
+      final @NonNull ClientArtifactState state) {
+
+    int missing = 0;
+    for (final String level : RIGHT_LEVELS) {
+      final String scope = scopeName(orgIdentifier, functionId, level);
+      if (!state.authzScopeNames().contains(scope)) {
+        missing++;
+      }
+      if (!state.policyNames().contains(policyName(orgIdentifier, functionId, level))) {
+        missing++;
+      }
+      if (!state.permissionNames().contains(permissionName(orgIdentifier, functionId, level))) {
+        missing++;
+      }
+      final String scopeId = realmScopeIds.get(scope);
+      if (scopeId == null || !state.optionalScopeIds().contains(scopeId)) {
+        missing++;
+      }
+    }
+    return missing;
+  }
+
   public int ensureFunctionArtifacts(
       final @NonNull String clientUuid,
       final @NonNull String orgIdentifier,

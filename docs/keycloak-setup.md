@@ -403,6 +403,7 @@ Create a client with the following settings:
 | Service accounts | Enabled |
 | All other flows | Disabled |
 | `iam_admin_managed` attribute | `true` |
+| `iam_admin_oidc_client` attribute | `true` |
 
 **Client authentication with `private_key_jwt`:**
 
@@ -477,7 +478,8 @@ Create a client with the following settings:
 | Client authenticator | `Signed Jwt` (`private_key_jwt`) |
 | Standard flow | Enabled |
 | All other flows | Disabled |
-| `iam_admin_managed` attribute | `true` (if managed by the IAM admin app) |
+| `iam_admin_managed` attribute | `true` (if administered by the IAM admin app) |
+| `iam_admin_oidc_client` attribute | `true` (if administered by the IAM admin app) |
 
 **Client authentication with `private_key_jwt`:**
 
@@ -538,9 +540,14 @@ at token issuance time that the function extracted from the requested scope matc
 `client_functions` attribute. If the attribute is absent or empty, the resource server is
 treated as function-universal and accepts all functions.
 
-Set the attribute using `add-resource-server.sh` with the `--functions` flag, via
-`set-client-functions.sh` after registration, or from the IAM admin application's
-**Services** tab (see [2.10](#managed-clients-and-reconciliation)).
+That fallback applies only while the attribute is unset, so a resource server serving every
+function, including the ones not created yet, carries `iam_admin_all_functions=true` instead
+(see [2.10](#managed-clients-and-reconciliation)).
+
+Set the attribute using `add-resource-server.sh` with the `--functions` flag, `add-function.sh`
+to add one to a client that already has some, `set-client-functions.sh` to replace the whole
+list, or from the IAM admin application's **Services** tab (see
+[2.10](#managed-clients-and-reconciliation)).
 
 No protocol mappers, no client scopes, and no service account roles are needed. The service
 validates incoming Bearer tokens by verifying the signature against Keycloak's JWKS endpoint,
@@ -635,14 +642,25 @@ names are the contract between creation and removal:
 
 A **managed client** is a client the IAM admin application maintains the scopes, policies
 and permissions for. A client is managed when, and only when, it carries the attribute
-`iam_admin_managed=true`.
+`iam_admin_oidc_client=true`.
+
+Every client the application administers, in either role, additionally carries
+`iam_admin_managed=true`. In Keycloak everything registered is a "client" whichever role it
+plays, so that attribute says only that this application administers it; the two role attributes
+say what it does.
+
+> **Clients registered before 0.9.3** carry `iam_admin_managed=true` with its former meaning, the
+> OIDC client role, and no `iam_admin_oidc_client`. They keep working: where the role attribute is
+> absent the application reads `iam_admin_managed` as the role. Each client is migrated the next
+> time it is written, and no realm surgery is needed. See
+> [Registering a Client](registering-a-client.md#choose-the-client-roles).
 
 A client plays one or both of two **roles**, which are independent and set per client under
 the **Services** tab:
 
 | | OIDC client role | Resource server role |
 |---|---|---|
-| Marker attribute | `iam_admin_managed=true` | `iam_admin_resource_server=true` |
+| Role attribute | `iam_admin_oidc_client=true` | `iam_admin_resource_server=true` |
 | What it does | Logs users in and requests org-scoped tokens | May be named in the OAuth2 `resource` parameter, and appears in `aud` |
 | Keycloak shape | confidential, `client-jwt`, standard flow, Authorization Services | none of its own |
 | Needs redirect URIs and client keys | Yes | No |
@@ -657,7 +675,7 @@ optional scopes it did not have; disabling it turns Authorization Services off, 
 Keycloak discard that client's policies and permissions.
 
 Each marker has a script that sets it on an existing client and changes nothing else:
-`set-iam-admin-managed.sh` sets `iam_admin_managed=true`, and
+`set-iam-admin-managed.sh` sets `iam_admin_managed=true` and `iam_admin_oidc_client=true`, and
 `set-iam-admin-resource-server.sh` sets `iam_admin_resource_server=true`. Because the two
 roles are independent, either script may be run against a client already holding the other
 marker, leaving it with both.
@@ -672,6 +690,10 @@ Managed clients can be registered from the IAM admin application itself (superus
 under the **Services** tab), or with `add-oidc-client.sh` followed by
 `set-iam-admin-managed.sh`. Both routes produce the same client. See
 [Registering a Client](registering-a-client.md) for a step-by-step walkthrough of each.
+
+The IAM admin application's own client is the exception: it carries both roles plus the
+all-functions marker described below, and is registered with `add-iam-admin-app.sh` rather
+than `add-oidc-client.sh`.
 
 **The `client_functions` attribute:**
 
@@ -688,6 +710,37 @@ token from it.
 A client may be registered without any functions. It is then simply inert until functions
 are assigned to it. The admin application shows such clients as *unscoped* and logs a
 warning naming them on every reconciliation run.
+
+To add a function to a client that already has some, use `add-function.sh`, which appends and
+keeps the rest. `set-client-functions.sh` replaces the whole list.
+
+**The `iam_admin_all_functions` attribute:**
+
+One case cannot be expressed as a list: a client that handles every function *including the
+ones not created yet*. The IAM admin application is that case. Its `/iam-api` endpoints are a
+resource server for every function, and no fixed `client_functions` value can describe a
+function that does not exist yet.
+
+`iam_admin_all_functions=true` marks such a client. Only
+[`add-iam-admin-app.sh`](../keycloak/scripts/README.md#add-iam-admin-app) sets it; neither the
+**Services** tab nor `POST /api/clients` can, in the same way as the service account
+attribute.
+
+The marker has two effects:
+
+- The admin application reads it directly. Such a client is never *unscoped*, receives
+  artifacts for every organization and every function attached to it, and never has any of
+  them pruned.
+- `client_functions` is nevertheless kept materialized to the functions that exist. Creating a
+  function appends it to every marked client, and re-running `add-iam-admin-app.sh` re-seeds
+  the attribute from scratch. Editing such a client through the form or the API leaves the
+  attribute untouched.
+
+The materialization is needed because `resource-aud-plugin` runs inside Keycloak. It validates
+the OAuth2 `resource` parameter against the raw `client_functions` attribute and knows nothing
+of the marker, so a token request naming a marked client as its resource would be rejected with
+`invalid_target` for any function the attribute does not list. The marker is what the
+application acts on; the materialized list is what Keycloak acts on.
 
 Reconciliation removes the scopes a client holds that are not defined by a function group
 for that client, so attach the function groups before reconciling. Reconciliation does not
@@ -891,9 +944,10 @@ The application exposes its public key at `/jwks`. Keycloak fetches and caches t
 this URL when processing the first token request. Ensure the application is running and the
 endpoint is reachable before attempting a login.
 
-**Set the `iam_admin_managed` attribute:**
+**Set the iam-admin marker attributes:**
 
-Run the following script to mark this client as managed by the IAM admin application (see
+Run the following script to give this client the OIDC client role, which sets both
+`iam_admin_managed=true` and `iam_admin_oidc_client=true` (see
 [keycloak/scripts/README.md](../keycloak/scripts/README.md) for details):
 
 ```bash
@@ -948,9 +1002,10 @@ This client uses signed JWT assertions for authentication rather than a client s
 2. Go to the client → **Keys** tab → enable **Use JWKS URL** → set **JWKS URL** to
    `https://local.dev.swedenconnect.se:16990/jwks` → Save.
 
-**Set the `iam_admin_managed` attribute:**
+**Set the iam-admin marker attributes:**
 
-Run the following script to mark this client as managed by the IAM admin application (see
+Run the following script to give this client the OIDC client role, which sets both
+`iam_admin_managed=true` and `iam_admin_oidc_client=true` (see
 [keycloak/scripts/README.md](../keycloak/scripts/README.md) for details):
 
 ```bash

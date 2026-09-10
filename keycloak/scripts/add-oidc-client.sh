@@ -357,7 +357,10 @@ client['serviceAccountsEnabled'] = True
 
 if not client.get('attributes'):
     client['attributes'] = {}
+# iam_admin_managed says the IAM Admin application administers this Keycloak client, whichever
+# role it plays. iam_admin_oidc_client carries the OIDC client role itself.
 client['attributes']['iam_admin_managed'] = 'true'
+client['attributes']['iam_admin_oidc_client'] = 'true'
 # The IAM Admin application reads this rather than serviceAccountsEnabled, which Keycloak
 # turns back on by itself whenever Authorization Services are enabled
 client['attributes']['iam_admin_service_account'] = os.environ['_SERVICE_ACCOUNT']

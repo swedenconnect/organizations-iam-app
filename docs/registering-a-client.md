@@ -28,13 +28,19 @@
 
    3.8. [Service Account Clients](#service-account-clients)
 
+   3.9. [Clients Handling All Functions](#clients-handling-all-functions)
+
 4. [**Route B: The Scripts**](#route-b-the-scripts)
 
-   4.1. [An OIDC Client](#an-oidc-client)
+   4.1. [The IAM Admin Application](#the-iam-admin-application)
 
-   4.2. [A Resource Server](#a-resource-server)
+   4.2. [An OIDC Client](#an-oidc-client)
 
-   4.3. [A Client Registered by Other Means](#a-client-registered-by-other-means)
+   4.3. [A Resource Server](#a-resource-server)
+
+   4.4. [A Client Registered by Other Means](#a-client-registered-by-other-means)
+
+   4.5. [Adding a Function Later](#adding-a-function-later)
 
    4.4. [A Client With Both Roles](#a-client-with-both-roles)
 
@@ -59,7 +65,7 @@ A client plays one or both of two independent **roles**:
 
 | Role | Marker attribute | What it means |
 |---|---|---|
-| OIDC client | `iam_admin_managed=true` | Logs users in and requests org-scoped tokens. Holds scopes, policies and permissions, and is reconciled. |
+| OIDC client | `iam_admin_oidc_client=true` | Logs users in and requests org-scoped tokens. Holds scopes, policies and permissions, and is reconciled. |
 | Resource server | `iam_admin_resource_server=true` | May be named in the OAuth2 `resource` parameter and appears in `aud`. Holds no artifacts of its own. |
 
 The conceptual background, what the artifacts are and why reconciliation exists, is in
@@ -137,7 +143,7 @@ At least one role is required.
 | **Client ID** | Required. Used as the OAuth2 `client_id`, typically the application's base URL. No whitespace. Cannot be changed after creation. |
 | **Display Name** | Optional. Shown in the Keycloak admin console and in the client list. |
 | **Redirect URIs** | Required for the OIDC client role. Absolute URIs. A `*` is accepted only as the **last character**, for example `https://app.example.com/login/oauth2/code/*`. Use **Add redirect URI** for more than one. |
-| **Functions** | Optional. The complete list of functions this client receives artifacts for. Selecting none means *none*, never *all*. |
+| **Functions** | Optional. The complete list of functions this client receives artifacts for. Selecting none means *none*, never *all*. Disabled on a client marked as handling all functions, see [3.9](#clients-handling-all-functions). |
 | **Client Keys (JWKS)** | Required for the OIDC client role. Either a **JWKS URI** (absolute, `https://`) or an **Inline JWK Set**, exactly one of the two. |
 
 > **Relative redirect URIs are shown complete.** Keycloak allows a redirect URI given as a path
@@ -245,6 +251,32 @@ attribute, after which no lookup is needed.
 
 ---
 
+<a name="clients-handling-all-functions"></a>
+
+### 3.9. Clients Handling All Functions
+
+A client marked `iam_admin_all_functions=true` handles **every** function in the realm,
+including the ones that have not been created yet. It carries an **All functions** pill in
+the client list, and its function picker is disabled in the form: there is nothing to choose,
+and the list is maintained for it.
+
+The IAM admin application's own client is the case this exists for. It is a resource server
+for its `/iam-api` endpoints, and those serve every function, so no fixed list of functions
+can describe it. Set the marker with
+[`add-iam-admin-app.sh`](../keycloak/scripts/README.md#add-iam-admin-app). Like the service
+account, it is script-only: neither the form nor `POST /api/clients` can set it.
+
+The marker changes two things:
+
+- **Reconciliation.** The client is given artifacts for every organization and every function
+  attached to it, and none of them are ever pruned.
+- **`client_functions`.** The attribute is still kept up to date, listing every function that
+  exists, and creating a function appends it to every marked client. Editing such a client
+  through the form or the API leaves the attribute untouched. Why it is kept as well as the
+  marker: [Keycloak Setup](keycloak-setup.md#managed-clients-and-reconciliation).
+
+---
+
 <a name="route-b-the-scripts"></a>
 
 ## 4. Route B: Using Scripts
@@ -253,11 +285,43 @@ Full option reference: [Keycloak Admin Scripts](../keycloak/scripts/README.md). 
 script takes `--url`, `--realm`, `--username` and `--password`; they are omitted below for
 brevity only where the example already shows them.
 
+<a name="the-iam-admin-application"></a>
+
+### 4.1. The IAM Admin Application
+
+The admin application's own client is registered with its own script, because it plays three
+roles at once and `add-oidc-client.sh` gives it only the first:
+
+```bash
+./keycloak/scripts/add-iam-admin-app.sh \
+    --url https://keycloak.example.com \
+    --realm orgiam \
+    --username admin \
+    --password keycloak \
+    --client-id https://iam.example.com \
+    --name "IAM Admin Application"
+```
+
+| Role | Marker |
+|---|---|
+| OIDC client | `iam_admin_oidc_client=true` |
+| Resource server | `iam_admin_resource_server=true` |
+| All functions | `iam_admin_all_functions=true` |
+
+The script delegates the OIDC client registration to `add-oidc-client.sh`, always keeps the
+service account with its `realm-management` roles, and seeds `client_functions` with every
+function that exists. See [3.9](#clients-handling-all-functions) for the all-functions marker.
+
+It is idempotent. Re-run it to bring an admin application registered with `add-oidc-client.sh`
+alone up to the full shape.
+
+---
+
 <a name="an-oidc-client"></a>
 
-### 4.1. An OIDC Client
+### 4.2. An OIDC Client
 
-`add-oidc-client.sh` registers the client *and* sets `iam_admin_managed=true`, so no
+`add-oidc-client.sh` registers the client *and* sets the markers, so no
 follow-up marking step is needed.
 
 **Step 1. Register the client:**
@@ -310,7 +374,7 @@ curl -X POST https://iam.example.com/api/clients/reconcile
 
 <a name="a-resource-server"></a>
 
-### 4.2. A Resource Server
+### 4.3. A Resource Server
 
 A passive API that only validates Bearer tokens:
 
@@ -337,13 +401,13 @@ a resource server is never reconciled.
 
 <a name="a-client-registered-by-other-means"></a>
 
-### 4.3. A Client Registered by Other Means
+### 4.4. A Client Registered by Other Means
 
 A client that already exists in Keycloak, registered by hand or by another tool, takes on a
 role by having that role's marker set. Each marker has its own script, and neither script
 changes anything else about the client.
 
-To give it the **OIDC client** role (`iam_admin_managed=true`):
+To give it the **OIDC client** role (`iam_admin_managed=true` and `iam_admin_oidc_client=true`):
 
 ```bash
 ./keycloak/scripts/set-iam-admin-managed.sh \
@@ -394,7 +458,7 @@ second marker to it.
 
 **Step 1. Create the client as an OIDC client.** `add-oidc-client.sh` gives it the
 confidential, `client-jwt`, standard flow, Authorization Services shape and sets
-`iam_admin_managed=true`:
+`iam_admin_managed=true` and `iam_admin_oidc_client=true`:
 
 ```bash
 ./keycloak/scripts/add-oidc-client.sh \
@@ -458,6 +522,32 @@ setting has nothing to act on. There is no order in which the two `add-` scripts
 
 There is one list, not one per role, so a function has to be in it for either purpose to
 work. Setting it is `set-client-functions.sh` in both capacities.
+
+---
+
+<a name="adding-a-function-later"></a>
+
+### 4.5. Adding a Function Later
+
+A service that is already registered and gains a function keeps the functions it has:
+
+```bash
+./keycloak/scripts/add-function.sh \
+    --url https://keycloak.example.com \
+    --realm orgiam \
+    --username admin \
+    --password keycloak \
+    --client-id https://my-app.example.com \
+    --function walletreg
+```
+
+`add-function.sh` appends; `set-client-functions.sh` replaces the whole list.
+
+The function must already exist as a group under `/functions`. Create it in the **Functions**
+tab first.
+
+An OIDC client then needs the artifacts for the new function, so follow with
+`POST /api/clients/reconcile`. A resource server holds no artifacts and needs nothing further.
 
 ---
 
@@ -568,7 +658,7 @@ It is superuser-only. Check the account's `org_rights` claim; see the
 [Rights Model](rights-model.md#the-org_rights-claim).
 
 **A client registered outside the application does not appear.**
-It is missing `iam_admin_managed=true` (OIDC client) or `iam_admin_resource_server=true`
+It is missing `iam_admin_oidc_client=true` (OIDC client) or `iam_admin_resource_server=true`
 (resource server). Set the marker with `set-iam-admin-managed.sh` or
 `set-iam-admin-resource-server.sh`.
 
@@ -585,6 +675,12 @@ and **Capability config**: client authentication on, `Signed JWT` as the authent
 standard flow on, Authorization Services on, and the service account back on if the client
 had one. Then reconcile to recreate the artifacts, and check `client_functions`. Use
 [Section 4.4](#a-client-with-both-roles) for the order that would have avoided this.
+
+**`invalid_target` when a client names the admin application as its `resource`.**
+The admin application's `client_functions` does not list the requested function. Re-run
+`add-iam-admin-app.sh` against it, which sets `iam_admin_all_functions=true` and re-seeds the
+attribute from every function that exists. An application registered with `add-oidc-client.sh`
+alone never had the marker.
 
 ---
 

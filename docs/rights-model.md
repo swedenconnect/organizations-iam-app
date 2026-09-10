@@ -427,13 +427,20 @@ The group policies and scope permissions that reconciliation creates alongside t
 not consulted at token issuance. They exist for admin-side policy evaluation.
 
 The OAuth 2.0 `resource` parameter (RFC 8707) is used by clients to bind access tokens to a
-specific API (resource server). When the resource-aud plugin is deployed, the `aud` claim
-in the access token is set to a multi-valued array:
+specific API (resource server). When the resource-aud plugin is deployed, and only when the
+`resource` parameter is present, the `aud` claim in the access token is set to a multi-valued
+array. The shape depends on whether the resource server declares `client_functions`:
 
-- If the `resource` parameter is present: `aud` = `[resource_server_client_id, function]`
-- If the `resource` parameter is absent: `aud` = `[function]`
+- **`resource` present, resource server has `client_functions`** (single-function mode):
+  `aud` = `[resource_server_client_id, function]`, where the function is taken from the first
+  org-scoped scope.
+- **`resource` present, resource server has no `client_functions`** (multi-function mode):
+  `aud` = `[resource_server_client_id, func1, func2, ...]`, one entry per distinct function in
+  the granted scopes.
+- **`resource` absent**: the `aud` claim is **not modified** at all, and Keycloak's default
+  audience is preserved.
 
-The function identifier is extracted from the granted scope (`{org}:{function}:{right}`).
+The function identifiers are extracted from the granted scopes (`{org}:{function}:{right}`).
 
 The plugin also validates that the resource server indicated by the `resource` parameter
 supports the requested function. Each resource server client can declare its supported
@@ -445,6 +452,11 @@ The same attribute governs which functions a **managed client** receives scopes,
 permissions for, and there it is the complete list — a client declaring no functions receives
 nothing, rather than everything. See
 [Managed Clients and Reconciliation](keycloak-setup.md#managed-clients-and-reconciliation).
+
+A client marked `iam_admin_all_functions=true` is the one exception: it handles every function,
+including the ones not created yet, and the admin application keeps its `client_functions` up to
+date accordingly. The IAM admin application's own client is registered that way, because its API
+serves every function.
 
 **The `organization_identifier` claim in access tokens:**
 

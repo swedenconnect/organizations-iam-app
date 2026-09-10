@@ -74,10 +74,34 @@ class ManagedClientInfoTest {
     assertTrue(client.unscoped());
   }
 
+  @Test
+  @DisplayName("An all-functions client handles a function it does not declare")
+  void allFunctionsClientHandlesUndeclaredFunction() {
+    final ManagedClientInfo client = client(Set.of("demo"), true);
+
+    assertTrue(client.handles("demo"));
+    assertTrue(client.handles("walletreg"));
+    assertTrue(client.handles("a-function-created-after-registration"));
+  }
+
+  @Test
+  @DisplayName("An all-functions client with an empty declared list is not unscoped")
+  void allFunctionsClientIsNeverUnscoped() {
+    final ManagedClientInfo client = client(Set.of(), true);
+
+    assertFalse(client.unscoped());
+    assertTrue(client.handles("demo"));
+  }
+
   private static ManagedClientInfo client(final Set<String> functions) {
+    return client(functions, false);
+  }
+
+  private static ManagedClientInfo client(
+      final Set<String> functions, final boolean allFunctions) {
     return new ManagedClientInfo(
         "b8f1c0e2-0000-0000-0000-000000000001", "https://demo-app.example.se", "Demo Application",
-        true, false, functions,
+        true, false, functions, allFunctions,
         List.of("https://demo-app.example.se/login/oauth2/code/orgiam"),
         "https://demo-app.example.se/jwks", null, false, true, true, true);
   }
