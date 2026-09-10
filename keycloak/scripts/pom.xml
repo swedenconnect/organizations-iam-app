@@ -1,0 +1,59 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>se.swedenconnect.iam.keycloak</groupId>
+    <artifactId>keycloak-plugins</artifactId>
+    <version>0.9.3-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>keycloak-scripts-distribution</artifactId>
+  <packaging>pom</packaging>
+
+  <name>Sweden Connect :: IAM :: Keycloak :: Scripts Distribution</name>
+  <description>Assembles the Keycloak realm administration scripts into one ZIP, for setting up a Keycloak outside a checkout of this repository.</description>
+  <url>https://www.swedenconnect.se</url>
+
+  <licenses>
+    <license>
+      <name>The Apache Software License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <build>
+    <plugins>
+
+      <!--
+        The scripts live in this module's own directory rather than under src, because they are
+        run from a checkout as often as from the ZIP. The assembly takes them from there by
+        pattern, so a script added to the folder is picked up without a change here.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-assembly-plugin</artifactId>
+        <version>3.8.0</version>
+        <executions>
+          <execution>
+            <id>make-scripts-distribution</id>
+            <phase>package</phase>
+            <goals>
+              <goal>single</goal>
+            </goals>
+            <configuration>
+              <appendAssemblyId>true</appendAssemblyId>
+              <descriptors>
+                <descriptor>src/assembly/scripts.xml</descriptor>
+              </descriptors>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+    </plugins>
+  </build>
+
+</project>

@@ -13,6 +13,12 @@
   [Keycloak Plugins and Scripts](https://github.com/swedenconnect/organizations-iam-app/blob/main/keycloak/README.md)
   and the [Keycloak Scripts README](https://github.com/swedenconnect/organizations-iam-app/blob/main/keycloak/scripts/README.md).
 
+- **The realm administration scripts are published as an archive too**,
+  `se.swedenconnect.iam.keycloak:keycloak-scripts-distribution:<version>:zip:scripts`. It unpacks
+  into one `keycloak-scripts` directory holding every script of the release, so a Keycloak host
+  can be set up without a checkout of the repository, with the scripts that match the plugins and
+  the application it runs.
+
 - **User registration is now configurable.** The new `iam.admin.user-registration` settings
   control which identity fields the Create user dialogue offers and what is written to
   Keycloak. See [Configuration](iam-admin-configuration.md).
