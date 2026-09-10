@@ -115,7 +115,8 @@ docker compose -f compose/docker-compose.yml up -d keycloak
     --password keycloak \
     --client-id https://local.dev.swedenconnect.se:16990 \
     --name "Demo App" \
-    --redirect-uri '/login/oauth2/code/*'
+    --redirect-uri '/login/oauth2/code/*' \
+    --redirect-uri '/callback/oauth2/code/*'
 
 # 6. Give a client a function it gained after registration. The function must already exist,
 #    so create it in the IAM admin application first
@@ -124,16 +125,16 @@ docker compose -f compose/docker-compose.yml up -d keycloak
     --username admin \
     --password keycloak \
     --client-id https://local.dev.swedenconnect.se:16990 \
-    --function walletreg
+    --function demo
 ```
 
 `{org}:{function}:{right}` scopes and their Authorization Services policies are not created
 by any of these scripts. The IAM admin application creates them when a function is attached
 to an organization.
 
-See [compose/README.md](../README.md) for the full local environment setup, and
-[docs/keycloak-setup.md](../../docs/keycloak-setup.md) for what the realm configuration
-means.
+See [Local environment and Demo application](../../docs/local-environment.md) for the full
+local environment setup, and [docs/keycloak-setup.md](../../docs/keycloak-setup.md) for what
+the realm configuration means.
 
 ---
 

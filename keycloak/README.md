@@ -87,7 +87,8 @@ builds the plugin modules and unpacks the distribution ZIP the build produced in
 directory. Since it installs the contents of the ZIP, the SPI directory ends up holding
 exactly the providers of the current build and nothing else. A failed build stops the script
 rather than leaving an older ZIP to be installed. Restart Keycloak afterwards. See
-[compose/README.md](../compose/README.md) for the full local setup.
+[Local environment and Demo application](../docs/local-environment.md) for the full local
+setup.
 
 **Any other Keycloak.** Nothing in this repository can deploy providers to a server it does
 not run, so this is done wherever that server is managed from. Get the JARs for the version

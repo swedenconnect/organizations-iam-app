@@ -36,7 +36,18 @@
       "mcp__jetbrains__get_project_modules",
       "mcp__jetbrains__get_project_dependencies",
       "mcp__jetbrains__replace_text_in_file",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(unzip -l:*)",
+      "Bash(unzip -p:*)",
+      "Bash(shasum:*)",
+      "Bash(docker compose ps:*)",
+      "Bash(docker compose config:*)",
+      "Bash(docker compose logs:*)",
+      "Bash(docker compose -f compose/docker-compose.yml ps:*)",
+      "Bash(docker compose -f compose/docker-compose.yml config:*)",
+      "Bash(docker compose -f compose/docker-compose.yml logs:*)",
+      "Bash(javap:*)",
+      "Bash(openssl x509:*)"
     ]
   },
   "hooks": {

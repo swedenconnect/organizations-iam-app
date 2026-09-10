@@ -48,16 +48,6 @@
 
     5.2. [Constructing the Redirect URL](#constructing-the-redirect-url)
 
-6. [**Using the Demo**](#using-the-demo)
-
-    6.1. [Prerequisites](#prerequisites)
-
-    6.2. [Registering demo-app and demo-service in Keycloak](#registering-demo-app-and-demo-service-in-keycloak)
-
-    6.3. [Setting Up the Demo Function](#setting-up-the-demo-function)
-
-    6.4. [Running the Demo](#running-the-demo)
-
 ---
 
 <a name="overview"></a>
@@ -66,6 +56,9 @@
 This guide explains how to build applications that integrate with the IAM model. The
 model is defined in full in [rights-model.md](rights-model.md); the summary below covers the concepts
 that are directly relevant when writing an application.
+
+For setting up the local environment and running the demo applications that illustrate these
+patterns, see [Local environment and Demo application](local-environment.md).
 
 **Functions** are named administrative domains. Each function represents an area of
 operation, for example `demo` or `sweden-connect`. An application is scoped to one or more
@@ -131,7 +124,15 @@ application can ask for the personal identity number, the organizational identit
     --redirect-uri '/login/oauth2/code/*'
 ```
 
-After registration, run `set-iam-admin-managed.sh` against the client:
+The script sets `iam_admin_managed=true` (the application administers this client) and
+`iam_admin_oidc_client=true` (it plays the OIDC client role) on the client itself, so no
+further step is needed. The IAM admin application uses these attributes to discover which
+clients require Authorization Services policies when a function is attached to or detached
+from an organization. Without them, the client would never receive the org-scoped scopes it
+needs to call downstream APIs.
+
+For a client that was registered by other means, `set-iam-admin-managed.sh` sets the same two
+attributes on an existing client:
 
 ```bash
 ./compose/keycloak-scripts/set-iam-admin-managed.sh \
@@ -140,12 +141,6 @@ After registration, run `set-iam-admin-managed.sh` against the client:
     --username admin \
     --password keycloak
 ```
-
-This sets `iam_admin_managed=true` (the application administers this client) and
-`iam_admin_oidc_client=true` (it plays the OIDC client role) on the client. The IAM admin application
-uses this attribute to discover which clients require Authorization Services policies when
-a function is attached to or detached from an organization. Without it, the client will
-never receive the org-scoped scopes it needs to call downstream APIs.
 
 **Registering from the IAM admin application instead:**
 
@@ -436,12 +431,12 @@ no token is issued.
 <a name="keycloak-registration-oauth"></a>
 ### 3.1. Keycloak Registration
 
-Use the same `add-oidc-client.sh` and `set-iam-admin-managed.sh` commands described in
-Section 2.1. The `iam_admin_oidc_client` attribute is required: it tells the IAM admin
-application to create the org-scoped Keycloak scopes and their Authorization Services
-policies when a function is attached to an organization. Without these policies, Keycloak
-will deny any token request for a `{orgId}:{function}:{right}` scope regardless of the
-user's group membership.
+Use the same `add-oidc-client.sh` command described in Section 2.1, which sets
+`iam_admin_managed` and `iam_admin_oidc_client` itself. The `iam_admin_oidc_client` attribute
+is required: it tells the IAM admin application to create the org-scoped Keycloak scopes and
+their Authorization Services policies when a function is attached to an organization. Without
+these policies, Keycloak will deny any token request for a `{orgId}:{function}:{right}` scope
+regardless of the user's group membership.
 
 <a name="spring-boot-configuration-oauth"></a>
 ### 3.2. Spring Boot Configuration
@@ -952,143 +947,6 @@ When `func` is included, the IAM admin application restricts the user's session 
 specified function. The user can view and manage user rights for that function only.
 The function management page (create/delete functions) is not available in a
 function-restricted session.
-
----
-
-<a name="using-the-demo"></a>
-## 6. Using the Demo
-
-The `demo/` directory contains two applications that illustrate all of the integration
-patterns described in this guide:
-
-- **`demo-app`** (port 16990): an OIDC relying party and OAuth client, scoped to the
-  `demo` function. Authenticates users, displays organization info and contact data, and
-  delegates administration to the IAM admin app.
-- **`demo-service`** (port 16995): a pure OAuth resource server. Exposes GET and PUT
-  endpoints for organization contact data (address, telephone number, email address) with
-  in-memory storage.
-
-<a name="prerequisites"></a>
-### 6.1. Prerequisites
-
-The `orgiam` Keycloak realm must be bootstrapped. If it has not been set up yet:
-
-```bash
-./compose/keycloak-scripts/bootstrap-realm.sh \
-    --realm orgiam \
-    --username admin \
-    --password keycloak \
-    --display-name "Organizations and Users IAM"
-```
-
-At least one superuser account must exist to log in to the IAM admin application:
-
-```bash
-./compose/keycloak-scripts/create-admin-user.sh \
-    --realm orgiam \
-    --username admin \
-    --password keycloak \
-    --new-username diggadmin \
-    --new-password changeme
-```
-
-All Keycloak provider JARs must be deployed and Keycloak rebuilt before running. They ship as
-one distribution ZIP: see
-[The distribution ZIP](../keycloak/README.md#plugin-distribution), and
-`compose/keycloak-scripts/README.md` for the local installation step.
-
-<a name="registering-demo-app-and-demo-service-in-keycloak"></a>
-### 6.2. Registering demo-app and demo-service in Keycloak
-
-Register `demo-app` as an OIDC client. The `--no-org-rights-access-token` flag is passed
-because the demo-app does not need `org_rights` in access tokens. It uses the ID token
-for UI decisions and requests org-scoped access tokens separately for API calls to
-demo-service:
-
-```bash
-./compose/keycloak-scripts/add-oidc-client.sh \
-    --realm orgiam \
-    --username admin \
-    --password keycloak \
-    --client-id https://local.dev.swedenconnect.se:16990 \
-    --name "Demo App" \
-    --redirect-uri '/login/oauth2/code/*' \
-    --redirect-uri '/callback/oauth2/code/*' \
-    --no-org-rights-access-token
-```
-
-Mark it as IAM-admin-managed so the IAM admin application will manage its Authorization
-Services policies:
-
-```bash
-./compose/keycloak-scripts/set-iam-admin-managed.sh \
-    --realm orgiam \
-    --client-id https://local.dev.swedenconnect.se:16990 \
-    --username admin \
-    --password keycloak
-```
-
-Register `demo-service` as a passive resource server:
-
-```bash
-./compose/keycloak-scripts/add-resource-server.sh \
-    --realm orgiam \
-    --username admin \
-    --password keycloak \
-    --client-id https://local.dev.swedenconnect.se:16995 \
-    --name "Demo Service" \
-    --functions demo
-```
-
-<a name="setting-up-the-demo-function"></a>
-### 6.3. Setting Up the Demo Function
-
-Log in to the IAM admin application at `https://local.dev.swedenconnect.se:17005` as a superuser.
-
-1. Navigate to **Functions** and create a new function with identifier `demo`, Swedish name
-   `Demo`, English name `Demo`.
-
-2. Navigate to **Organizations** and create or select an organization.
-
-3. On the organization's detail page, click **Attach function** and select `demo`. The IAM
-   admin application will automatically create the three Keycloak scopes
-   (`{orgId}:demo:read`, `{orgId}:demo:write`, `{orgId}:demo:admin`) and their
-   Authorization Services policies on all clients holding the OIDC client role, including
-   `https://local.dev.swedenconnect.se:16990`.
-
-4. Navigate to **Users** and select or create the user who will log in to the demo. Assign
-   a right on `demo` for the organization, for example `write`.
-
-<a name="running-the-demo"></a>
-### 6.4. Running the Demo
-
-Start both applications with the `local` Spring profile active. The `local` profile enables
-TLS, sets the correct port, and points to the local Keycloak instance.
-
-```bash
-# Terminal 1: demo-service (port 16995)
-cd demo/demo-service
-mvn spring-boot:run -Dspring-boot.run.profiles=local
-
-# Terminal 2: demo-app backend (port 16990)
-cd demo/demo-app/backend
-mvn spring-boot:run -Dspring-boot.run.profiles=local
-```
-
-Open `https://local.dev.swedenconnect.se:16990` in a browser. Click **Log in** to authenticate
-via Keycloak. After a successful login the application displays the organization's name,
-the user's right level, and a contact data card. Changes to address, telephone number, and
-email address are saved to `demo-service` via an access token scoped to
-`{orgId}:demo:write`.
-
-Click **Delegate administration** to open the IAM admin application. If the user is already
-authenticated in the same Keycloak realm, no re-authentication prompt is shown.
-
-Because `demo-app` passes `func=demo` in the redirect URL, the IAM admin application
-restricts the session to the `demo` function. The administrator can only manage user rights
-for `demo`, not for other functions that may be attached to the same organization. To access
-the full IAM admin application without function restrictions, log in directly at
-`https://local.dev.swedenconnect.se:17005`.
 
 ---
 
