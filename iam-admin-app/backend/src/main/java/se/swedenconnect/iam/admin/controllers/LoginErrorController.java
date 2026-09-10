@@ -39,7 +39,7 @@ import java.util.Map;
  * <p>Called by the frontend login page after a failed login. The session attribute is consumed
  * (read and removed) on first access.</p>
  *
- * <p>Returns <pre>{"code": "...", "messages": {"sv": "...", "en": "..."}}</pre> when a rejection is
+ * <p>Returns <code>{"code": "...", "messages": {"sv": "...", "en": "..."}}</code> when a rejection is
  * available, carrying the finished text in every supported language so the frontend can switch
  * language without asking again. Returns an empty object when nothing is stored, for example after a
  * standard login failure without a session-stored reason.</p>
