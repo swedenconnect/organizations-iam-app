@@ -97,7 +97,6 @@ public class KeycloakAdminClient {
   private final RestClient restClient;
   private final OAuth2AuthorizedClientManager authorizedClientManager;
   private final String adminApiBase;
-  private final boolean pnrUserids;
   private CacheToken cacheToken;
 
   public KeycloakAdminClient(
@@ -107,7 +106,6 @@ public class KeycloakAdminClient {
 
     this.authorizedClientManager = authorizedClientManager;
     this.adminApiBase = properties.getAdminApiBase();
-    this.pnrUserids = properties.isPnrUserids();
     this.restClient = restClientBuilder.build();
 
     log.debug("KeycloakAdminClient initialized — adminApiBase={}", this.adminApiBase);
@@ -1490,8 +1488,9 @@ public class KeycloakAdminClient {
    * <p>The resulting client is identical to what {@code add-oidc-client.sh} produces:
    * {@code private_key_jwt} client authentication, Authorization Services enabled, the
    * {@code org-rights}, {@code scope-org-identifier} and {@code resource-audience} protocol
-   * mappers, and the {@code naturalPersonNumber} and {@code phone} optional client scopes. The
-   * service account user Keycloak creates is deleted unless {@code serviceAccount} is set.</p>
+   * mappers, and the {@code naturalPersonNumber}, {@code naturalPersonOrgId} and {@code phone}
+   * optional client scopes. The service account user Keycloak creates is deleted unless
+   * {@code serviceAccount} is set.</p>
    *
    * <p>No org/function artifacts are created here — the caller reconciles the client afterwards.
    * A creation that fails part-way therefore leaves a client that the next reconciliation
@@ -1889,6 +1888,17 @@ public class KeycloakAdminClient {
   }
 
   /**
+   * The optional client scopes every managed client is given: the personal identity number and the
+   * organizational identity claims of the Swedish OIDC Claims Specification, and the phone number.
+   * Optional rather than default, so a client receives the identity claims it asks for and nothing
+   * else. The realm-level scopes themselves are created by {@code bootstrap-realm.sh}.
+   */
+  static final List<String> BASE_OPTIONAL_SCOPES = List.of(
+      "https://id.oidc.se/scope/naturalPersonNumber",
+      "https://id.oidc.se/scope/naturalPersonOrgId",
+      "phone");
+
+  /**
    * Adds the optional client scopes every managed client needs, if the realm has them.
    *
    * @param clientUuid the Keycloak UUID of the client
@@ -1896,7 +1906,7 @@ public class KeycloakAdminClient {
    */
   private void addBaseOptionalScopes(final @NonNull String clientUuid) {
     final Map<String, String> realmScopeIds = this.fetchRealmClientScopeIds();
-    for (final String scope : List.of("https://id.oidc.se/scope/naturalPersonNumber", "phone")) {
+    for (final String scope : BASE_OPTIONAL_SCOPES) {
       final String scopeId = realmScopeIds.get(scope);
       if (scopeId == null) {
         log.warn("Client scope '{}' not found in realm — skipping. Has the realm been bootstrapped?", scope);
@@ -2605,37 +2615,97 @@ public class KeycloakAdminClient {
   }
 
   /**
+   * Looks up a user by organizational affiliation and returns their Keycloak UUID if found.
+   *
+   * @param orgAffiliation the organizational affiliation ({@code userID@organization-number})
+   * @return the Keycloak user UUID, or {@link Optional#empty()} if no such user exists
+   */
+  public Optional<String> findUserIdByOrgAffiliation(final @NonNull String orgAffiliation) {
+    final List<Map<String, Object>> users = this.adminGet(
+        "/users?q=orgAffiliation:" + orgAffiliation + "&exact=true",
+        new ParameterizedTypeReference<>() {});
+    if (users == null || users.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.ofNullable(getString(users.getFirst(), "id"));
+  }
+
+  /**
+   * Tells whether the given user ID is already taken as a Keycloak {@code username}.
+   *
+   * @param userId the user ID to check
+   * @return {@code true} if a user with this username exists
+   */
+  public boolean usernameExists(final @NonNull String userId) {
+    final List<Map<String, Object>> users = this.adminGet(
+        "/users?username=" + URLEncoder.encode(userId, StandardCharsets.UTF_8) + "&exact=true",
+        new ParameterizedTypeReference<>() {});
+    return users != null && !users.isEmpty();
+  }
+
+  /**
    * Creates a new user in the realm with the given details.
    *
    * <p>The {@code name} is split on the first space into {@code firstName} and {@code lastName}.
-   * If there is no space the whole string is used as {@code firstName}. A random UUID is supplied as {@code username}
-   * because Keycloak 26 requires it.</p>
+   * If there is no space the whole string is used as {@code firstName}.</p>
    *
+   * <p>The caller decides which values to pass — this method reads no configuration. A
+   * {@code userId} of {@code null} means that a random UUID is used as {@code username}, which
+   * Keycloak requires.</p>
+   *
+   * <p>An {@code orgAffiliation} brings the other two organizational identity attributes of the
+   * Swedish OIDC Claims Specification with it: {@code orgNumber} is the organization number part of
+   * the affiliation, and {@code orgName} is the legal name of the organization registered under that
+   * number, when there is one. The affiliation is the authoritative statement of which organization
+   * issued the identity, so the number is taken from it rather than from any organization the user
+   * is being given rights in. A lookup that finds nothing leaves {@code orgName} out; it never fails
+   * the creation. {@code orgUnit} is not written.</p>
+   *
+   * @param userId the {@code username} to assign, or {@code null} for a random UUID
    * @param name display name (split into first / last name)
    * @param email optional email address
-   * @param personalIdentityNumber 12-digit personal identity number
+   * @param personalIdentityNumber optional 12-digit personal identity number
+   * @param orgAffiliation optional organizational affiliation ({@code userID@organization-number})
    * @param phoneNumber optional phone number
+   * @param temporaryPassword optional initial password that the user must change at first login
    * @return the Keycloak UUID of the newly created user
    * @throws KeycloakAdminException on any Keycloak API error
    */
   public @NonNull String createUser(
+      final @Nullable String userId,
       final @NonNull String name,
       final @Nullable String email,
-      final @NonNull String personalIdentityNumber,
-      final @Nullable String phoneNumber) {
+      final @Nullable String personalIdentityNumber,
+      final @Nullable String orgAffiliation,
+      final @Nullable String phoneNumber,
+      final @Nullable String temporaryPassword) {
 
     final int spaceIdx = name.indexOf(' ');
     final String firstName = spaceIdx > 0 ? name.substring(0, spaceIdx) : name;
     final String lastName = spaceIdx > 0 ? name.substring(spaceIdx + 1) : "";
 
     final Map<String, List<String>> attributes = new LinkedHashMap<>();
-    attributes.put("personalIdentityNumber", List.of(personalIdentityNumber));
+    if (personalIdentityNumber != null && !personalIdentityNumber.isBlank()) {
+      attributes.put("personalIdentityNumber", List.of(personalIdentityNumber));
+    }
+    if (orgAffiliation != null && !orgAffiliation.isBlank()) {
+      attributes.put("orgAffiliation", List.of(orgAffiliation));
+      final String orgNumber = orgNumberOf(orgAffiliation);
+      if (orgNumber != null) {
+        attributes.put("orgNumber", List.of(orgNumber));
+        final String orgName = this.resolveOrganizationLegalName(orgNumber);
+        if (orgName != null) {
+          attributes.put("orgName", List.of(orgName));
+        }
+      }
+    }
+    // TODO: hsaId and efosId are written here when those eID attributes are implemented.
     if (phoneNumber != null && !phoneNumber.isBlank()) {
       attributes.put("phoneNumber", List.of(phoneNumber));
     }
 
     final Map<String, Object> body = new LinkedHashMap<>();
-    body.put("username", this.pnrUserids ? personalIdentityNumber : UUID.randomUUID().toString());
+    body.put("username", userId != null && !userId.isBlank() ? userId : UUID.randomUUID().toString());
     body.put("enabled", true);
     body.put("firstName", firstName);
     if (!lastName.isBlank()) {
@@ -2645,15 +2715,63 @@ public class KeycloakAdminClient {
       body.put("email", email);
     }
     body.put("attributes", attributes);
+    if (temporaryPassword != null && !temporaryPassword.isBlank()) {
+      body.put("credentials", List.of(Map.of(
+          "type", "password",
+          "value", temporaryPassword,
+          "temporary", true)));
+    }
 
     final String location = this.adminPost("/users", body);
     if (location == null) {
       throw new KeycloakAdminException("Keycloak did not return a Location header after user creation");
     }
     final String path = URI.create(location).getPath();
-    final String userId = path.substring(path.lastIndexOf('/') + 1);
-    log.debug("User '{}' created in Keycloak with id: {}", name, userId);
-    return userId;
+    final String createdId = path.substring(path.lastIndexOf('/') + 1);
+    log.debug("User '{}' created in Keycloak with id: {}", name, createdId);
+    return createdId;
+  }
+
+  /**
+   * Returns the organization number part of an organizational affiliation, i.e. what follows the
+   * {@code @}, or {@code null} when the value carries no organization number.
+   *
+   * @param orgAffiliation the organizational affiliation ({@code userID@organization-number})
+   * @return the organization number, or {@code null}
+   */
+  static @Nullable String orgNumberOf(final @NonNull String orgAffiliation) {
+    final int atIdx = orgAffiliation.lastIndexOf('@');
+    if (atIdx < 0 || atIdx == orgAffiliation.length() - 1) {
+      return null;
+    }
+    final String orgNumber = orgAffiliation.substring(atIdx + 1).trim();
+    return orgNumber.isEmpty() ? null : orgNumber;
+  }
+
+  /**
+   * Returns the legal name of the organization registered under the given organization number, or
+   * {@code null} when no such organization group exists or it carries no name of its own.
+   *
+   * <p>{@link #resolveLegalName} substitutes the organization identifier for a group that carries no
+   * name at all, and that placeholder is filtered out here: an {@code orgName} claim reading back
+   * the organization number says nothing, and an absent claim is better than a derived one. A
+   * Keycloak error is logged and swallowed for the same reason — the name is a convenience on the
+   * user, never a reason to refuse creating them.</p>
+   *
+   * @param orgNumber the organization number
+   * @return the legal name, or {@code null}
+   */
+  private @Nullable String resolveOrganizationLegalName(final @NonNull String orgNumber) {
+    try {
+      return this.fetchOrganizationByIdentifier(orgNumber)
+          .map(OrganizationInfo::legalName)
+          .filter(legalName -> !legalName.isBlank() && !legalName.equals(orgNumber))
+          .orElse(null);
+    }
+    catch (final RuntimeException e) {
+      log.warn("Could not resolve the organization '{}' for orgName: {}", orgNumber, e.getMessage());
+      return null;
+    }
   }
 
   /**
@@ -2884,7 +3002,7 @@ public class KeycloakAdminClient {
         existing.getOrDefault("attributes", Map.of()) instanceof final Map<?, ?> m
             ? new LinkedHashMap<>((Map<String, Object>) m) : new LinkedHashMap<>();
 
-    // Preserve personalIdentityNumber; update phoneNumber
+    // Preserve the eID attributes, which are immutable after creation; update phoneNumber
     if (phoneNumber != null && !phoneNumber.isBlank()) {
       existingAttrs.put("phoneNumber", List.of(phoneNumber));
     }
@@ -3502,6 +3620,7 @@ public class KeycloakAdminClient {
         getString(raw, "lastName"),
         getString(raw, "email"),
         getFirstAttr(raw, "personalIdentityNumber"),
+        getFirstAttr(raw, "orgAffiliation"),
         getFirstAttr(raw, "phoneNumber"),
         id != null && superuserIds.contains(id),
         List.of());

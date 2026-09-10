@@ -16,62 +16,47 @@
 #
 # bootstrap-realm.sh
 #
-# Wrapper script. Runs the inner bootstrap-realm.sh script inside the
-# Docker Compose keycloak-setup service.
+# Convenience wrapper for the local Docker Compose environment. It calls
+# keycloak/scripts/bootstrap-realm.sh, the single implementation of this script, with the
+# compose Keycloak URL and its CA certificate already supplied. Every other argument is
+# passed through unchanged.
 #
-# Usage:
-#   ./bootstrap-realm.sh --realm <realm> --username <username> --password <password> [--display-name <name>]
+# Requires curl and python3 on the host, since the script runs here rather than inside a
+# container.
+#
+# Against any other Keycloak, call keycloak/scripts/bootstrap-realm.sh directly.
 
 set -euo pipefail
 
-REALM=""
-USERNAME=""
-PASSWORD=""
-DISPLAY_NAME=""
+# The URL the compose Keycloak is published on, and the certificate it serves.
+KC_URL="https://local.dev.swedenconnect.se:17000"
 
-usage() {
-  echo "Usage: $0 --realm <realm> --username <username> --password <password> [--display-name <name>]" >&2
-  exit 1
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --help|-h)
-      cat <<EOF
-Bootstrap a Keycloak realm with groups, roles, client scopes, user profile
-attributes, and client policies required by the IAM system.
+TARGET="${REPO_ROOT}/keycloak/scripts/bootstrap-realm.sh"
+CACERT="${REPO_ROOT}/compose/config/common/tls.crt"
+
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  cat <<EOF
+Bootstrap a Keycloak realm with the groups, roles, client scopes, user profile
+attributes and client policies the IAM system needs.
+
+Runs against the compose Keycloak at ${KC_URL}.
 
 Usage: $0 --realm <realm> --username <username> --password <password> [--display-name <name>]
 
 Options:
-  --realm <realm>              Keycloak realm name to create
-  --username <username>        Admin username for Keycloak master realm
-  --password <password>        Admin password for Keycloak master realm
-  --display-name <name>        Realm display name (defaults to the realm name)
-  --help, -h                   Show this help message
+  --realm <realm>        Keycloak realm name to create
+  --username <username>  Admin username for the Keycloak master realm
+  --password <password>  Admin password for the Keycloak master realm
+  --display-name <name>  Realm display name (defaults to the realm name)
+  --help, -h             Show this help message
 EOF
-      exit 0
-      ;;
-    --realm)         REALM="$2";        shift 2 ;;
-    --username)      USERNAME="$2";     shift 2 ;;
-    --password)      PASSWORD="$2";     shift 2 ;;
-    --display-name)  DISPLAY_NAME="$2"; shift 2 ;;
-    *) echo "Unknown option: $1" >&2; usage ;;
-  esac
-done
-
-if [ -z "${REALM}" ] || [ -z "${USERNAME}" ] || [ -z "${PASSWORD}" ]; then
-  echo "Error: --realm, --username and --password are required." >&2
-  usage
+  exit 0
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMPOSE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+[ -x "${TARGET}" ] || { echo "ERROR: ${TARGET} not found or not executable." >&2; exit 1; }
+[ -r "${CACERT}" ] || { echo "ERROR: CA certificate ${CACERT} not readable." >&2; exit 1; }
 
-ARGS=("${REALM}" "${USERNAME}" "${PASSWORD}")
-if [ -n "${DISPLAY_NAME}" ]; then
-  ARGS+=("${DISPLAY_NAME}")
-fi
-
-docker compose -f "${COMPOSE_DIR}/docker-compose.yml" run --rm keycloak-setup \
-  /scripts/bootstrap-realm.sh "${ARGS[@]}"
+exec "${TARGET}" --url "${KC_URL}" --cacert "${CACERT}" "$@"

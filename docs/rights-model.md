@@ -57,7 +57,13 @@ The system supports the following requirements:
   Keycloak enforces entitlement at token issuance time.
 - Swedish personal identity numbers are used as a user attribute and identity claim, following the
   [Claims and Scopes Specification for the Swedish OpenID Connect Profile](https://www.oidc.se/specifications/swedish-oidc-claims-specification-1_0.html).
-  Usernames are assigned by Keycloak as UUIDs and carry no semantic meaning.
+  An organizational affiliation (`userID@organization-number`) may be recorded instead of, or in
+  addition to, the personal identity number, and is released together with the organization name
+  and number as the organizational identity claims of the same specification. Which attributes
+  are collected when a user is registered, and whether at least one of them is required, is
+  configured per deployment. See [IAM Admin Configuration](iam-admin-configuration.md).
+- Usernames are random UUIDs carrying no semantic meaning, unless the deployment lets the
+  administrator assign the user ID.
 
 ---
 
@@ -114,8 +120,8 @@ scope is requested.
 **Superusers** are a special category. A superuser is assigned the `superuser` realm role
 and has full administrative access to all organizations, functions, and users. Superusers
 are typically internal system administrators and are not required to provide a personal
-identity number. The `personalIdentityNumber` attribute is therefore optional for superuser
-accounts.
+identity number. The `personalIdentityNumber` attribute is optional for every account, and
+always absent for superuser accounts.
 
 **In OIDC flows**, the personal identity number claim is released only when the requesting
 client includes the scope `https://id.oidc.se/scope/naturalPersonNumber`. This governs
@@ -471,8 +477,17 @@ The RP receives an ID token containing:
 - Standard claims: `sub`, `name`, `given_name`, `family_name`
 - `https://id.oidc.se/claim/personalIdentityNumber` — when the scope
   `https://id.oidc.se/scope/naturalPersonNumber` is requested
+- `https://id.oidc.se/claim/orgAffiliation`, `https://id.oidc.se/claim/orgName` and
+  `https://id.oidc.se/claim/orgNumber` — when the scope
+  `https://id.oidc.se/scope/naturalPersonOrgId` is requested, and where the user carries those
+  attributes. The specification also defines `https://id.oidc.se/claim/orgUnit`, which this
+  system never writes
 - `org_rights` — a structured array describing the user's rights across all organizations
   and functions
+
+Both OIDC Sweden scopes are added as optional scopes on every client the IAM admin
+application registers, so a client asks for the identity claims it needs and gets nothing it
+did not ask for.
 
 The RP uses `org_rights` to determine which organizations and functions the user may act on,
 and what level of access they hold. The RP must not grant access beyond what the claim

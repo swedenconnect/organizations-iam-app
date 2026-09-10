@@ -33,6 +33,8 @@
     <module>org-rights-mapper</module>
     <module>scope-org-identifier-mapper</module>
     <module>resource-aud-plugin</module>
+    <!-- Builds last: it assembles the other modules' output into the distribution ZIP. -->
+    <module>plugin-distribution</module>
   </modules>
 
   <dependencyManagement>

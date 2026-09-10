@@ -10,8 +10,10 @@ import { ClientList } from '@/app/components/ClientList';
 import { ClientForm } from '@/app/components/ClientForm';
 import { Header } from '@/app/components/Header';
 import { Footer } from '@/app/components/Footer';
-import { Organization, User, UserOrganizationRole, FunctionType, OrganizationFunction, AdminSessionData, OrganizationData, ManagedClient, ManagedClientInput } from '@/types';
-import { LastAdminError } from '@/services/userService';
+import { Organization, User, UserOrganizationRole, FunctionType, OrganizationFunction, AdminSessionData, OrganizationData, ManagedClient, ManagedClientInput, UserRegistrationSettings } from '@/types';
+import { LastAdminError, UserIdTakenError } from '@/services/userService';
+import { UserFormValues } from '@/app/components/UserForm';
+import { DEFAULT_USER_REGISTRATION_SETTINGS, UserRegistrationProvider } from '@/app/contexts/UserRegistrationContext';
 import { Button } from '@/app/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { Building2, Users as UsersIcon, Plus, Boxes, HelpCircle, KeyRound, RefreshCw } from 'lucide-react';
@@ -104,6 +106,9 @@ function AppContent() {
   const [allowFunctionRemoval, setAllowFunctionRemoval] = useState(false);
   const [allowOrgRights, setAllowOrgRights] = useState(true);
   const [allowAdminAssigningAdmin, setAllowAdminAssigningAdmin] = useState(false);
+  const [userRegistration, setUserRegistration] = useState<UserRegistrationSettings>(
+    DEFAULT_USER_REGISTRATION_SETTINGS
+  );
   const [functionConstraint, setFunctionConstraint] = useState<string | null>(null);
   const [orgConstraint, setOrgConstraint] = useState<string | null>(null);
 
@@ -153,6 +158,7 @@ function AppContent() {
       setUsers(userPage.content.map((u) => ({
         id: u.userId,
         personalIdentityNumber: u.personalIdentityNumber ?? '',
+        orgAffiliation: u.orgAffiliation ?? undefined,
         name: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || u.userId,
         email: u.email ?? '',
         phoneNumber: u.phoneNumber ?? undefined,
@@ -204,6 +210,7 @@ function AppContent() {
             setAllowFunctionRemoval(session.allowFunctionRemoval ?? false);
             setAllowOrgRights(session.allowOrgRights ?? true);
             setAllowAdminAssigningAdmin(session.allowAdminAssigningAdmin ?? false);
+            setUserRegistration(session.userRegistration ?? DEFAULT_USER_REGISTRATION_SETTINGS);
             setFunctionConstraint(session.functionConstraint ?? null);
             setOrgConstraint(session.orgConstraint ?? null);
 
@@ -243,6 +250,7 @@ function AppContent() {
             const mappedUsers: User[] = userPage.content.map((u) => ({
               id: u.userId,
               personalIdentityNumber: u.personalIdentityNumber ?? '',
+              orgAffiliation: u.orgAffiliation ?? undefined,
               name: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || u.userId,
               email: u.email ?? '',
               phoneNumber: u.phoneNumber ?? undefined,
@@ -375,7 +383,7 @@ function AppContent() {
     setIsOrgFormOpen(true);
   };
 
-  const handleSaveUser = async (user: Omit<User, 'id'> & { id?: string }) => {
+  const handleSaveUser = async (user: UserFormValues) => {
     try {
       if (user.id) {
         // Update existing
@@ -397,8 +405,12 @@ function AppContent() {
       setSelectedUser(null);
     } catch (error) {
       console.error('Error saving user:', error);
-      if (error instanceof Error && error.message === 'DUPLICATE_PERSONAL_IDENTITY_NUMBER') {
-        showError(t('error.title.saveFailed'), t('error.body.duplicatePin'));
+      if (error instanceof UserIdTakenError) {
+        // Reported against the user ID field by the form itself
+        throw error;
+      }
+      if (error instanceof Error && error.message === 'DUPLICATE_IDENTITY') {
+        showError(t('error.title.saveFailed'), t('error.body.duplicateIdentity'));
       } else {
         showError(t('error.title.saveFailed'), t('error.body.generic'));
       }
@@ -772,6 +784,7 @@ function AppContent() {
   const canAssignAdmin = (sessionData?.superuser ?? false) || allowAdminAssigningAdmin;
 
   return (
+    <UserRegistrationProvider settings={userRegistration}>
     <div className="min-h-screen bg-background flex flex-col">
       <Toaster />
 
@@ -1034,6 +1047,7 @@ function AppContent() {
       {/* Footer */}
       <Footer />
     </div>
+    </UserRegistrationProvider>
   );
 }
 

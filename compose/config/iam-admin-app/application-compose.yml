@@ -50,10 +50,15 @@ iam:
             key-password: secret
   admin:
     admin-api-base: https://local.dev.swedenconnect.se:17000/admin/realms/orgiam
-    pnr-userids: true
     allow-function-removal: true
     allow-org-rights: true
     allow-admin-assigning-admin: false
+    user-registration:
+      allow-select-user-id: false
+      allow-temporary-password: false
+      eid-attribute-required: true
+      personal-number-enabled: true
+      org-affiliation-enabled: false
 
 logging:
   level:

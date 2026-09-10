@@ -275,7 +275,7 @@ fi
 echo "    Token obtained."
 
 # ---------------------------------------------------------------------------
-# Step 1 — Resolve or create client
+# Step 1: Resolve or create client
 # ---------------------------------------------------------------------------
 
 echo "==> Resolving client '${CLIENT_ID}'..."
@@ -307,7 +307,7 @@ print(json.dumps({
 
   CLIENT_UUID=$(api_create "/${REALM}/clients" "${CREATE_BODY}")
   if [ -z "${CLIENT_UUID}" ]; then
-    # Location header not captured — fall back to lookup
+    # Location header not captured, falling back to a lookup
     CLIENT_UUID=$(api_get "/${REALM}/clients?clientId=${CLIENT_ID_ENC}&max=1" | python3 -c "
 import sys, json
 clients = json.load(sys.stdin)
@@ -323,7 +323,7 @@ print(clients[0]['id'] if clients else '')
 fi
 
 # ---------------------------------------------------------------------------
-# Step 2 — Configure client (read-merge-write to avoid clobbering settings)
+# Step 2: Configure client (read-merge-write to avoid clobbering settings)
 # ---------------------------------------------------------------------------
 
 echo "==> Configuring client settings..."
@@ -379,7 +379,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 3 — Handle service account
+# Step 3: Handle service account
 # ---------------------------------------------------------------------------
 
 SA_USER_ID=$(api_get "/${REALM}/clients/${CLIENT_UUID}/service-account-user" | python3 -c "
@@ -419,7 +419,7 @@ except:
 " 2>/dev/null || echo "")
 
     if [ -z "${ROLE_ID}" ]; then
-      echo "    Role '${ROLE_NAME}' not found — skipping."
+      echo "    Role '${ROLE_NAME}' not found, skipping."
       continue
     fi
 
@@ -431,22 +431,22 @@ print(json.dumps([{'id': sys.argv[1], 'name': sys.argv[2]}]))
     STATUS=$(api_post "/${REALM}/users/${SA_USER_ID}/role-mappings/clients/${RM_UUID}" "${ROLE_BODY}")
     case "${STATUS}" in
       204) echo "    Assigned: ${ROLE_NAME}" ;;
-      409) echo "    Role '${ROLE_NAME}' already assigned — skipping." ;;
-      *)   echo "    Role '${ROLE_NAME}': unexpected status ${STATUS} — skipping." ;;
+      409) echo "    Role '${ROLE_NAME}' already assigned, skipping." ;;
+      *)   echo "    Role '${ROLE_NAME}': unexpected status ${STATUS}, skipping." ;;
     esac
   done
 else
   echo "==> Removing service account user (not requested)..."
   if [ -n "${SA_USER_ID}" ]; then
     STATUS=$(api_delete "/${REALM}/users/${SA_USER_ID}")
-    [ "${STATUS}" = "204" ] && echo "    Deleted." || echo "    Already absent or status: ${STATUS} — skipping."
+    [ "${STATUS}" = "204" ] && echo "    Deleted." || echo "    Already absent or status: ${STATUS}, skipping."
   else
-    echo "    Service account user not found — skipping."
+    echo "    Service account user not found, skipping."
   fi
 fi
 
 # ---------------------------------------------------------------------------
-# Step 4 — Add protocol mappers
+# Step 4: Add protocol mappers
 # ---------------------------------------------------------------------------
 
 MAPPERS_RESP=$(api_get "/${REALM}/clients/${CLIENT_UUID}/protocol-mappers/models")
@@ -462,7 +462,7 @@ print('yes' if any(m.get('name') == '${name}' for m in mappers) else 'no')
 
 echo "==> Adding org-rights protocol mapper..."
 if [ "$(has_mapper org-rights-mapper)" = "yes" ]; then
-  echo "    Already exists — skipping."
+  echo "    Already exists, skipping."
 else
   ORG_RIGHTS_BODY=$(python3 -c '
 import json, sys
@@ -485,7 +485,7 @@ fi
 
 echo "==> Adding scope-org-identifier-mapper..."
 if [ "$(has_mapper scope-org-identifier-mapper)" = "yes" ]; then
-  echo "    Already exists — skipping."
+  echo "    Already exists, skipping."
 else
   STATUS=$(api_post "/${REALM}/clients/${CLIENT_UUID}/protocol-mappers/models" \
     '{"name":"scope-org-identifier-mapper","protocol":"openid-connect","protocolMapper":"scope-org-identifier-mapper","consentRequired":false,"config":{"id.token.claim":"false","access.token.claim":"true"}}')
@@ -494,7 +494,7 @@ fi
 
 echo "==> Adding resource-audience-mapper..."
 if [ "$(has_mapper resource-audience-mapper)" = "yes" ]; then
-  echo "    Already exists — skipping."
+  echo "    Already exists, skipping."
 else
   STATUS=$(api_post "/${REALM}/clients/${CLIENT_UUID}/protocol-mappers/models" \
     '{"name":"resource-audience-mapper","protocol":"openid-connect","protocolMapper":"resource-audience-mapper","consentRequired":false,"config":{"id.token.claim":"false","access.token.claim":"true"}}')
@@ -513,7 +513,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 5 — Add optional client scopes
+# Step 5: Add optional client scopes
 # ---------------------------------------------------------------------------
 
 PNR_SCOPE="https://id.oidc.se/scope/naturalPersonNumber"
@@ -524,6 +524,14 @@ import sys, json
 scopes = json.load(sys.stdin)
 nxt = next((s['id'] for s in scopes if s.get('name') == '${PNR_SCOPE}'), '')
 print(nxt)
+" 2>/dev/null || echo "")
+
+ORG_ID_SCOPE="https://id.oidc.se/scope/naturalPersonOrgId"
+ORG_ID_SCOPE_ID=$(echo "${ALL_SCOPES}" | ORG_ID_SCOPE="${ORG_ID_SCOPE}" python3 -c "
+import os, sys, json
+scopes = json.load(sys.stdin)
+name = os.environ['ORG_ID_SCOPE']
+print(next((s['id'] for s in scopes if s.get('name') == name), ''))
 " 2>/dev/null || echo "")
 
 PHONE_SCOPE_ID=$(echo "${ALL_SCOPES}" | python3 -c "
@@ -538,7 +546,15 @@ if [ -z "${PNR_SCOPE_ID}" ]; then
   echo "    WARNING: Scope not found in realm '${REALM}'. Run bootstrap-realm.sh first."
 else
   STATUS=$(api_put_empty "/${REALM}/clients/${CLIENT_UUID}/optional-client-scopes/${PNR_SCOPE_ID}")
-  [ "${STATUS}" = "204" ] && echo "    Added." || echo "    Already present or status: ${STATUS} — skipping."
+  [ "${STATUS}" = "204" ] && echo "    Added." || echo "    Already present or status: ${STATUS}, skipping."
+fi
+
+echo "==> Adding '${ORG_ID_SCOPE}' as optional client scope..."
+if [ -z "${ORG_ID_SCOPE_ID}" ]; then
+  echo "    WARNING: Scope not found in realm '${REALM}'. Run bootstrap-realm.sh first."
+else
+  STATUS=$(api_put_empty "/${REALM}/clients/${CLIENT_UUID}/optional-client-scopes/${ORG_ID_SCOPE_ID}")
+  [ "${STATUS}" = "204" ] && echo "    Added." || echo "    Already present or status: ${STATUS}, skipping."
 fi
 
 echo "==> Adding 'phone' as optional client scope..."
@@ -546,7 +562,7 @@ if [ -z "${PHONE_SCOPE_ID}" ]; then
   echo "    WARNING: Scope 'phone' not found in realm '${REALM}'. Run bootstrap-realm.sh first."
 else
   STATUS=$(api_put_empty "/${REALM}/clients/${CLIENT_UUID}/optional-client-scopes/${PHONE_SCOPE_ID}")
-  [ "${STATUS}" = "204" ] && echo "    Added." || echo "    Already present or status: ${STATUS} — skipping."
+  [ "${STATUS}" = "204" ] && echo "    Added." || echo "    Already present or status: ${STATUS}, skipping."
 fi
 
 # ---------------------------------------------------------------------------

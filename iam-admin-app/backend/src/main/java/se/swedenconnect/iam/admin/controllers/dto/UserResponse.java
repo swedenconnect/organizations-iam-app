@@ -32,6 +32,7 @@ public record UserResponse(
     @Nullable String lastName,
     @Nullable String email,
     @Nullable String personalIdentityNumber,
+    @Nullable String orgAffiliation,
     @Nullable String phoneNumber,
     boolean superuser,
     @NonNull List<UserRightResponse> rights) {

@@ -16,58 +16,48 @@
 #
 # set-iam-admin-resource-server.sh
 #
-# Wrapper script. Runs the inner set-iam-admin-resource-server.sh script inside
-# the Docker Compose keycloak-setup service.
+# Convenience wrapper for the local Docker Compose environment. It calls
+# keycloak/scripts/set-iam-admin-resource-server.sh, the single implementation of this script, with the
+# compose Keycloak URL and its CA certificate already supplied. Every other argument is
+# passed through unchanged.
 #
-# Usage:
-#   ./set-iam-admin-resource-server.sh --realm <realm> --client-id <clientId> --username <username> --password <password>
+# Requires curl and python3 on the host, since the script runs here rather than inside a
+# container.
+#
+# Against any other Keycloak, call keycloak/scripts/set-iam-admin-resource-server.sh directly.
 
 set -euo pipefail
 
-REALM=""
-CLIENT_ID=""
-USERNAME=""
-PASSWORD=""
+# The URL the compose Keycloak is published on, and the certificate it serves.
+KC_URL="https://local.dev.swedenconnect.se:17000"
 
-usage() {
-  echo "Usage: $0 --realm <realm> --client-id <clientId> --username <username> --password <password>" >&2
-  exit 1
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --help|-h)
-      cat <<EOF
-Mark an existing Keycloak client as a resource server administered by the IAM
-admin application by setting the iam_admin_resource_server=true client attribute.
-Nothing else on the client is changed; iam_admin_managed is left as it is.
+TARGET="${REPO_ROOT}/keycloak/scripts/set-iam-admin-resource-server.sh"
+CACERT="${REPO_ROOT}/compose/config/common/tls.crt"
+
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  cat <<EOF
+Mark a Keycloak client as a resource server administered by the IAM admin application, by
+setting the iam_admin_resource_server=true client attribute. Nothing else on the client is
+changed, and iam_admin_managed is left as it is.
+
+Runs against the compose Keycloak at ${KC_URL}.
 
 Usage: $0 --realm <realm> --client-id <clientId> --username <username> --password <password>
 
 Options:
-  --realm <realm>              Keycloak realm name
-  --client-id <clientId>       Client ID of the target client
-  --username <username>        Admin username for Keycloak master realm
-  --password <password>        Admin password for Keycloak master realm
-  --help, -h                   Show this help message
+  --realm <realm>         Keycloak realm name
+  --client-id <clientId>  Client ID of the target client
+  --username <username>   Admin username for the Keycloak master realm
+  --password <password>   Admin password for the Keycloak master realm
+  --help, -h              Show this help message
 EOF
-      exit 0
-      ;;
-    --realm)      REALM="$2";     shift 2 ;;
-    --client-id)  CLIENT_ID="$2"; shift 2 ;;
-    --username)   USERNAME="$2";  shift 2 ;;
-    --password)   PASSWORD="$2";  shift 2 ;;
-    *) echo "Unknown option: $1" >&2; usage ;;
-  esac
-done
-
-if [ -z "${REALM}" ] || [ -z "${CLIENT_ID}" ] || [ -z "${USERNAME}" ] || [ -z "${PASSWORD}" ]; then
-  echo "Error: --realm, --client-id, --username and --password are required." >&2
-  usage
+  exit 0
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMPOSE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+[ -x "${TARGET}" ] || { echo "ERROR: ${TARGET} not found or not executable." >&2; exit 1; }
+[ -r "${CACERT}" ] || { echo "ERROR: CA certificate ${CACERT} not readable." >&2; exit 1; }
 
-docker compose -f "${COMPOSE_DIR}/docker-compose.yml" run --rm keycloak-setup \
-  /scripts/set-iam-admin-resource-server.sh "${REALM}" "${CLIENT_ID}" "${USERNAME}" "${PASSWORD}"
+exec "${TARGET}" --url "${KC_URL}" --cacert "${CACERT}" "$@"

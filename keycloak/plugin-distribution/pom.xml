@@ -1,0 +1,113 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>se.swedenconnect.iam.keycloak</groupId>
+    <artifactId>keycloak-plugins</artifactId>
+    <version>0.9.3-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>keycloak-plugin-distribution</artifactId>
+  <packaging>pom</packaging>
+
+  <name>Sweden Connect :: IAM :: Keycloak :: Plugin Distribution</name>
+  <description>Assembles every Keycloak provider JAR this release needs into one ZIP, for deployment into a Keycloak providers directory.</description>
+  <url>https://www.swedenconnect.se</url>
+
+  <licenses>
+    <license>
+      <name>The Apache Software License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <properties>
+    <!--
+      The version of the external OIDC Sweden claims plugin that this release is built
+      against. This is the only place it is pinned: the compose installer and the fetch
+      script both take the plugin from the ZIP assembled here.
+    -->
+    <oidc-sweden-claims-plugin.version>1.1.0</oidc-sweden-claims-plugin.version>
+  </properties>
+
+  <!--
+    The provider set of this release. Every dependency below ends up in the ZIP, and nothing
+    else does: the assembly takes the declared dependencies only, never the contents of a
+    target directory, so a JAR left behind by an earlier build cannot be picked up.
+  -->
+  <dependencies>
+
+    <dependency>
+      <groupId>se.swedenconnect.iam.keycloak</groupId>
+      <artifactId>org-rights-mapper</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>se.swedenconnect.iam.keycloak</groupId>
+      <artifactId>scope-org-identifier-mapper</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>se.swedenconnect.iam.keycloak</groupId>
+      <artifactId>resource-aud-plugin</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>se.oidc.keycloak</groupId>
+      <artifactId>oidc-sweden-claims-plugin</artifactId>
+      <version>${oidc-sweden-claims-plugin.version}</version>
+    </dependency>
+
+    <!--
+      The parent POM gives every module Lombok and SLF4J. This module compiles nothing and
+      the ZIP holds providers only, so both are pushed out of its runtime scope and with that
+      out of the assembly. Keycloak brings its own SLF4J.
+    -->
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <scope>provided</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+      <scope>provided</scope>
+    </dependency>
+
+  </dependencies>
+
+  <build>
+    <plugins>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-assembly-plugin</artifactId>
+        <version>3.8.0</version>
+        <executions>
+          <execution>
+            <id>make-plugin-distribution</id>
+            <phase>package</phase>
+            <goals>
+              <goal>single</goal>
+            </goals>
+            <configuration>
+              <appendAssemblyId>true</appendAssemblyId>
+              <descriptors>
+                <descriptor>src/assembly/plugins.xml</descriptor>
+              </descriptors>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+    </plugins>
+  </build>
+
+</project>

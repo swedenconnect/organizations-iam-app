@@ -279,10 +279,18 @@ iam:
     admin-api-base: https://.../admin/realms/orgiam
     theme: digg
     theme-dir:                 # Optional external theme directory
-    pnr-userids: false         # Use personal identity number as Keycloak username
+    pnr-userids: false         # Deprecated; maps onto user-registration.allow-select-user-id
     allow-function-removal: false
     allow-org-rights: true
     allow-admin-assigning-admin: false   # When false, only a superuser may grant/remove `admin`
+    user-registration:
+      allow-select-user-id: false      # Admin assigns the Keycloak user ID; otherwise a random UUID
+      allow-temporary-password: false  # Initial password, changed at first login. Needs the setting above
+      eid-attribute-required: true     # At least one enabled eID attribute must be given
+      personal-number-enabled: true
+      hsa-id-enabled: false            # Rendered but disabled; not implemented yet
+      org-affiliation-enabled: false   # userID@organization-number
+      efos-id-enabled: false           # Rendered but disabled; not implemented yet
     client-reconciliation:
       enabled: false           # Scheduled drift repair for managed clients
       cron: "0 */15 * * * *"
