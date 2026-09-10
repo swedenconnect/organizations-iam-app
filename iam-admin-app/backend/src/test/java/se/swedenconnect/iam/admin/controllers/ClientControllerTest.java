@@ -425,6 +425,45 @@ class ClientControllerTest {
   }
 
   @Test
+  @DisplayName("Updating a resource-server-only client passes its display name through")
+  void updateOfAResourceServerCarriesTheDisplayName() {
+    setupSession(true);
+    when(this.keycloakAdminClient.findManagedClientByUuid(SERVICE_UUID))
+        .thenReturn(Optional.of(resourceServer()));
+    when(this.keycloakAdminClient.updateManagedClient(
+        anyString(), any(), anyBoolean(), anyBoolean(), anyList(), anySet(), any(), any(),
+        anyBoolean(), anyBoolean(), anyBoolean()))
+        .thenReturn(resourceServer());
+
+    final ResponseEntity<?> response = this.controller.updateClient(SERVICE_UUID,
+        new UpdateManagedClientRequest("Client Registry", false, true, null, Set.of("demo"),
+            null, null, null, null),
+        this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(200);
+    verify(this.keycloakAdminClient).updateManagedClient(
+        SERVICE_ID, "Client Registry", false, true, List.of(), Set.of("demo"), null, null,
+        false, true, true);
+  }
+
+  @Test
+  @DisplayName("A resource server may be saved with no display name")
+  void resourceServerWithoutADisplayNameIsAccepted() {
+    setupSession(true);
+    when(this.keycloakAdminClient.clientExists(SERVICE_ID)).thenReturn(false);
+    whenCreateReturns(resourceServer());
+
+    final ResponseEntity<?> response = this.controller.createClient(
+        new CreateManagedClientRequest(SERVICE_ID, null, false, true, null, Set.of("demo"),
+            null, null, null, null),
+        this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(201);
+    verify(this.keycloakAdminClient).createManagedClient(
+        SERVICE_ID, null, false, true, List.of(), Set.of("demo"), null, null, false, true, true);
+  }
+
+  @Test
   @DisplayName("An update never touches the client's service account")
   void updateLeavesTheServiceAccountAlone() {
     setupSession(true);

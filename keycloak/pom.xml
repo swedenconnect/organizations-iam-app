@@ -35,6 +35,8 @@
     <module>resource-aud-plugin</module>
     <!-- Builds last: it assembles the other modules' output into the distribution ZIP. -->
     <module>plugin-distribution</module>
+    <!-- Assembles the realm administration scripts into a ZIP of their own. -->
+    <module>scripts</module>
   </modules>
 
   <dependencyManagement>

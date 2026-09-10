@@ -1,4 +1,4 @@
-![Sweden Connect](../../docs/images/sweden-connect.png)
+![Sweden Connect](https://docs.swedenconnect.se/organizations-iam-app/images/sweden-connect.png)
 
 # Keycloak Admin Scripts
 
@@ -16,6 +16,9 @@ nothing more; anything the wrappers can do can be done by calling these scripts 
 `--url` and `--cacert`.
 
 All scripts are idempotent and safe to re-run.
+
+The scripts are also published as a ZIP, so a Keycloak host does not need a checkout of the
+repository to be set up. See [The scripts ZIP](../README.md#scripts-distribution).
 
 ---
 
@@ -107,7 +110,9 @@ for interactively.
 ### 3.1. bootstrap-realm.sh
 
 Bootstraps a new Keycloak realm with the full base configuration required by the IAM
-system, as described in `docs/keycloak-setup.md` sections 2.1–2.5 and 2.8b.
+system, as described in
+[Keycloak Setup](https://docs.swedenconnect.se/organizations-iam-app/keycloak-setup.html)
+sections 2.1–2.5 and 2.8b.
 
 **What it sets up:**
 
@@ -238,7 +243,7 @@ The script delegates the OIDC client registration to `add-oidc-client.sh` and th
 other two markers, seeding `client_functions` with every function that exists at the time.
 
 The application appends each new function to `client_functions` as it is created. See
-[Keycloak Setup](../../docs/keycloak-setup.md#managed-clients-and-reconciliation) for why both
+[Keycloak Setup](https://docs.swedenconnect.se/organizations-iam-app/keycloak-setup.html#managed-clients-and-reconciliation) for why both
 the marker and the attribute are kept.
 
 A service account with `realm-management` roles is always created. The application administers
@@ -431,7 +436,7 @@ account, no Authorization Services, and no protocol mappers.
 > To give an existing client the resource server role, use
 > [`set-iam-admin-resource-server.sh`](#set-iam-admin-resource-server), which sets the
 > marker and changes nothing else. To build a client that holds both roles, see
-> [Registering a Client, Section 4.4](../../docs/registering-a-client.md#a-client-with-both-roles).
+> [Registering a Client, Section 4.4](https://docs.swedenconnect.se/organizations-iam-app/registering-a-client.html#a-client-with-both-roles).
 
 **Prerequisites:** The realm must already be bootstrapped (`bootstrap-realm.sh`).
 
@@ -809,7 +814,7 @@ resource server needs nothing further. Use `set-client-functions.sh` instead whe
 list is to be replaced rather than added to.
 
 Organizations and functions are created and managed by the IAM admin application after
-it starts up. See [docs/keycloak-setup.md](../../docs/keycloak-setup.md) for the full
+it starts up. See [Keycloak Setup](https://docs.swedenconnect.se/organizations-iam-app/keycloak-setup.html) for the full
 configuration reference.
 
 ---

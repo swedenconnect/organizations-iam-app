@@ -71,7 +71,7 @@ Start the stack with Docker Compose:
 docker compose -f compose/docker-compose.yml up -d keycloak
 ```
 
-Bootstrap the Keycloak realm after first start — see `compose/README.md` for the full step-by-step.
+Bootstrap the Keycloak realm after first start, see `docs/local-environment.md` for the full step-by-step.
 
 ## Module Architecture
 

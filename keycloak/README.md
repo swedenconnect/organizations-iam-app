@@ -77,6 +77,30 @@ mvn -U -DskipTests clean package -f keycloak/pom.xml
 unzip -l keycloak/plugin-distribution/target/keycloak-plugin-distribution-*-plugins.zip
 ```
 
+<a name="scripts-distribution"></a>
+## The scripts ZIP
+
+The [administration scripts](scripts/README.md) are published the same way, as a ZIP of their
+own. It exists for the case the plugin distribution does not cover: setting up a Keycloak from a
+host that has no checkout of this repository, with the scripts of the release being run.
+
+| | |
+| :--- | :--- |
+| Coordinates | `se.swedenconnect.iam.keycloak:keycloak-scripts-distribution:<version>:zip:scripts` |
+| File name | `keycloak-scripts-distribution-<version>-scripts.zip` |
+| Contents | One top level directory, `keycloak-scripts/`, holding every script and the scripts README |
+
+The directory name carries no version, so an upgrade replaces the contents rather than moving
+the path every command line refers to. The scripts keep their execute permission, and one that
+calls another resolves it through its own directory, so `add-iam-admin-app.sh` works from the
+unpacked directory as it does from a checkout. Every `*.sh` in `keycloak/scripts` is taken by
+pattern, so a script added there is in the next ZIP without a change to the build.
+
+```bash
+mvn -U -DskipTests clean package -f keycloak/pom.xml
+unzip -l keycloak/scripts/target/keycloak-scripts-distribution-*-scripts.zip
+```
+
 <a name="deploying-to-keycloak"></a>
 ## Deploying to Keycloak 26.x (Quarkus distribution)
 
@@ -87,7 +111,8 @@ builds the plugin modules and unpacks the distribution ZIP the build produced in
 directory. Since it installs the contents of the ZIP, the SPI directory ends up holding
 exactly the providers of the current build and nothing else. A failed build stops the script
 rather than leaving an older ZIP to be installed. Restart Keycloak afterwards. See
-[compose/README.md](../compose/README.md) for the full local setup.
+[Local environment and Demo application](../docs/local-environment.md) for the full local
+setup.
 
 **Any other Keycloak.** Nothing in this repository can deploy providers to a server it does
 not run, so this is done wherever that server is managed from. Get the JARs for the version
@@ -136,6 +161,9 @@ environment.
 
 Deploy the provider JARs and rebuild Keycloak before running them. `bootstrap-realm.sh`
 configures mappers that the JARs provide, and reports them as missing until they are there.
+
+Where the host running them has no checkout of this repository, take them from
+[the scripts ZIP](#scripts-distribution) instead.
 
 ---
 
