@@ -4,6 +4,27 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) ![Maven Central](https://img.shields.io/maven-central/v/se.swedenconnect.iam/iam-parent.svg)
 
+### Version 0.9.4
+
+**Date: ToBe Set**
+
+- **New export/import feature for bulk-managing organizations, functions and users.** A
+  superuser can export the full realm as a single JSON file, and bulk-import organizations,
+  functions and users from a file in the same format — typically to register a batch of new
+  organizations, functions and people at once, or to take a realm snapshot for backup or
+  migration between environments. Import is a two-step process: a dry run validates the
+  uploaded file against the current state of the realm and reports duplicates without creating
+  anything, and a confirm step creates the validated, duplicate-filtered batch. A duplicate is
+  always skipped entirely — if a person, function or organization already exists, nothing about
+  it is created or changed. Superuser accounts are never included in an export, and there is no
+  way to grant superuser status through import. See [Export and Import](export-import.md).
+
+  Rights granted through an import file are subject to the same `iam.admin.allow-org-rights`
+  restriction as rights assigned manually: an import cannot create an organization-wide right,
+  including `admin`, while the setting is disabled.
+
+---
+
 ### Version 0.9.3
 
 **Date:** 2026-09-10
