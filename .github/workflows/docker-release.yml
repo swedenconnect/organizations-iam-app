@@ -54,6 +54,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.SC_ACTION_SECRET }}
 
+
       - name: Publish image
         run: |
           DOCKER_REPO=ghcr.io mvn clean install jib:build -Ddocker.repository=ghcr.io --no-transfer-progress
