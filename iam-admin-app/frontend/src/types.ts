@@ -170,6 +170,76 @@ export interface ReconciliationReport {
   errors: string[];
 }
 
+// Export/import bundle (superuser-only). The same shape is used for both directions:
+// GET /api/export returns it, and POST /api/import/dry-run accepts it as a file upload.
+// Every key is snake_case, and a localized value is carried as one key per language, tagged
+// after a '#', the same form the Keycloak group attributes use.
+
+export interface BundleFunctionEntry {
+  id: string;
+  'name#sv'?: string | null;
+  'name#en'?: string | null;
+  'description#sv'?: string | null;
+  'description#en'?: string | null;
+}
+
+export interface BundleUserRightEntry {
+  org_identifier: string;
+  function_id?: string | null;
+  right: 'admin' | 'write' | 'read';
+}
+
+export interface BundleOrganizationEntry {
+  org_identifier: string;
+  legal_name: string;
+  'name#sv'?: string | null;
+  'name#en'?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  attached_functions: string[];
+}
+
+export interface BundleUserEntry {
+  name: string;
+  /** The Keycloak username. Honoured on import only when the deployment allows a chosen user ID. */
+  username?: string | null;
+  email?: string | null;
+  personal_identity_number?: string | null;
+  org_affiliation?: string | null;
+  phone_number?: string | null;
+  rights: BundleUserRightEntry[];
+}
+
+export interface ImportExportBundle {
+  schema_version: string;
+  exported_at?: string | null;
+  functions: BundleFunctionEntry[];
+  organizations: BundleOrganizationEntry[];
+  users: BundleUserEntry[];
+}
+
+/** Outcome of one entry from an ImportExportBundle. `key` is a function id, org identifier, or
+ *  a user's personal_identity_number/org_affiliation. `status` is 'new'/'skipped_duplicate'/'error'
+ *  in a dry-run preview, and 'created'/'skipped_duplicate'/'error' in a final import report. */
+export interface ImportItemOutcome {
+  key: string;
+  status: 'new' | 'created' | 'skipped_duplicate' | 'error';
+  reason?: string | null;
+}
+
+export interface ImportPreviewReport {
+  batch_id: string;
+  functions: ImportItemOutcome[];
+  organizations: ImportItemOutcome[];
+  users: ImportItemOutcome[];
+}
+
+export interface ImportReport {
+  functions: ImportItemOutcome[];
+  organizations: ImportItemOutcome[];
+  users: ImportItemOutcome[];
+}
+
 /** The iam.admin.user-registration settings, telling the create-user forms what to render. */
 export interface UserRegistrationSettings {
   allowSelectUserId: boolean;
