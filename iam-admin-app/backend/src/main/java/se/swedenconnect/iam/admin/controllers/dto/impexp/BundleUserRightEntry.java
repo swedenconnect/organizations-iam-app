@@ -15,17 +15,20 @@
  */
 package se.swedenconnect.iam.admin.controllers.dto.impexp;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A single right entry attached to a {@link BundleUserEntry}. When {@code functionId} is
+ * A single right entry attached to a {@link BundleUserEntry}. When {@code function_id} is
  * {@code null}, the right applies to the organization as a whole.
  *
  * @author PF Plars
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record BundleUserRightEntry(
-    @NonNull String orgIdentifier,
-    @Nullable String functionId,
-    @NonNull String right) {
+    @JsonProperty("org_identifier") @NonNull String orgIdentifier,
+    @JsonProperty("function_id") @Nullable String functionId,
+    @JsonProperty("right") @NonNull String right) {
 }

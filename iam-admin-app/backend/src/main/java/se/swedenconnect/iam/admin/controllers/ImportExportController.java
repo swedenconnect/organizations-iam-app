@@ -48,7 +48,7 @@ import java.io.IOException;
  *
  * <p>Import is a two-step flow. {@code POST /import/dry-run} validates an uploaded file against
  * the current state of the realm without creating anything, and stores the resulting
- * duplicate-filtered batch in the caller's session under the returned {@code batchId}.
+ * duplicate-filtered batch in the caller's session under the returned {@code batch_id}.
  * {@code POST /import/{batchId}/confirm} creates that batch's contents. The file is uploaded
  * only once.</p>
  *

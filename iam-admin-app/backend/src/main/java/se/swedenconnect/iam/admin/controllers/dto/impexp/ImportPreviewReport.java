@@ -15,20 +15,21 @@
  */
 package se.swedenconnect.iam.admin.controllers.dto.impexp;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.jspecify.annotations.NonNull;
 
 import java.util.List;
 
 /**
  * Result of a dry-run import validation: the outcome of every entry in the uploaded file, and a
- * {@code batchId} identifying the server-held, already-filtered batch that {@code POST
+ * {@code batch_id} identifying the server-held, already-filtered batch that {@code POST
  * /api/import/{batchId}/confirm} will act on.
  *
  * @author PF Plars
  */
 public record ImportPreviewReport(
-    @NonNull String batchId,
-    @NonNull List<ImportItemOutcome> functions,
-    @NonNull List<ImportItemOutcome> organizations,
-    @NonNull List<ImportItemOutcome> users) {
+    @JsonProperty("batch_id") @NonNull String batchId,
+    @JsonProperty("functions") @NonNull List<ImportItemOutcome> functions,
+    @JsonProperty("organizations") @NonNull List<ImportItemOutcome> organizations,
+    @JsonProperty("users") @NonNull List<ImportItemOutcome> users) {
 }

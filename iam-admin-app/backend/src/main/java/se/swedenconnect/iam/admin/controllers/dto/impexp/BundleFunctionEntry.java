@@ -15,18 +15,25 @@
  */
 package se.swedenconnect.iam.admin.controllers.dto.impexp;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 /**
  * A single function definition inside an {@link ImportExportBundle}.
  *
+ * <p>The display name and the description are localized values, carried as one key per language
+ * tagged after a {@code #}, the same form the Keycloak group attributes use. Swedish and English
+ * are the only tags; a key tagged with any other language is ignored.</p>
+ *
  * @author PF Plars
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record BundleFunctionEntry(
-    @NonNull String id,
-    @Nullable String nameSv,
-    @Nullable String nameEn,
-    @Nullable String descriptionSv,
-    @Nullable String descriptionEn) {
+    @JsonProperty("id") @NonNull String id,
+    @JsonProperty("name#sv") @Nullable String nameSv,
+    @JsonProperty("name#en") @Nullable String nameEn,
+    @JsonProperty("description#sv") @Nullable String descriptionSv,
+    @JsonProperty("description#en") @Nullable String descriptionEn) {
 }

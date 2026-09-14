@@ -121,7 +121,7 @@ public class ImportExportServiceImpl implements ImportExportService {
         continue;
       }
       if (blank(f.nameSv()) || blank(f.nameEn())) {
-        functionOutcomes.add(new ImportItemOutcome(f.id(), "error", "nameSv and nameEn must not be blank"));
+        functionOutcomes.add(new ImportItemOutcome(f.id(), "error", "name#sv and name#en must not be blank"));
         continue;
       }
       if (knownFunctionIds.contains(f.id())) {
@@ -148,11 +148,11 @@ public class ImportExportServiceImpl implements ImportExportService {
     for (final BundleOrganizationEntry o : bundle.organizations()) {
       if (o.orgIdentifier() == null || !ORG_IDENTIFIER_PATTERN.matcher(o.orgIdentifier()).matches()) {
         organizationOutcomes.add(new ImportItemOutcome(
-            String.valueOf(o.orgIdentifier()), "error", "orgIdentifier must be exactly 10 digits"));
+            String.valueOf(o.orgIdentifier()), "error", "org_identifier must be exactly 10 digits"));
         continue;
       }
       if (blank(o.legalName())) {
-        organizationOutcomes.add(new ImportItemOutcome(o.orgIdentifier(), "error", "legalName must not be blank"));
+        organizationOutcomes.add(new ImportItemOutcome(o.orgIdentifier(), "error", "legal_name must not be blank"));
         continue;
       }
       if (knownOrgIdentifiers.contains(o.orgIdentifier())) {
@@ -165,7 +165,7 @@ public class ImportExportServiceImpl implements ImportExportService {
           .toList();
       if (!unknownFunctions.isEmpty()) {
         organizationOutcomes.add(new ImportItemOutcome(o.orgIdentifier(), "error",
-            "attachedFunctions references unknown function(s): " + unknownFunctions));
+            "attached_functions references unknown function(s): " + unknownFunctions));
         continue;
       }
       organizationOutcomes.add(new ImportItemOutcome(o.orgIdentifier(), "new", null));
@@ -177,6 +177,7 @@ public class ImportExportServiceImpl implements ImportExportService {
     // --- Users ---------------------------------------------------------------------------
     final List<ImportItemOutcome> userOutcomes = new ArrayList<>();
     final List<BundleUserEntry> newUsers = new ArrayList<>();
+    final boolean allowSelectUserId = this.properties.getUserRegistration().isAllowSelectUserId();
     int rowIndex = 0;
     for (final BundleUserEntry u : bundle.users()) {
       rowIndex++;
@@ -190,16 +191,16 @@ public class ImportExportServiceImpl implements ImportExportService {
       }
       if (pin == null && orgAffiliation == null) {
         userOutcomes.add(new ImportItemOutcome(key, "error",
-            "at least one of personalIdentityNumber or orgAffiliation must be given"));
+            "at least one of personal_identity_number or org_affiliation must be given"));
         continue;
       }
       if (pin != null && !PIN_PATTERN.matcher(pin).matches()) {
-        userOutcomes.add(new ImportItemOutcome(key, "error", "personalIdentityNumber must be exactly 12 digits"));
+        userOutcomes.add(new ImportItemOutcome(key, "error", "personal_identity_number must be exactly 12 digits"));
         continue;
       }
       if (orgAffiliation != null && !ORG_AFFILIATION_PATTERN.matcher(orgAffiliation).matches()) {
         userOutcomes.add(new ImportItemOutcome(key, "error",
-            "orgAffiliation must be on the format userID@organization-number"));
+            "org_affiliation must be on the format userID@organization-number"));
         continue;
       }
       final String email = trimToNull(u.email());
@@ -220,7 +221,16 @@ public class ImportExportServiceImpl implements ImportExportService {
               || (orgAffiliation != null
                   && this.keycloakAdminClient.findUserIdByOrgAffiliation(orgAffiliation).isPresent());
       if (duplicate) {
+        // A duplicate is skipped before the username is looked at, so re-importing an export into
+        // the realm it came from is quiet whatever the deployment allows and whatever usernames
+        // the file carries.
         userOutcomes.add(new ImportItemOutcome(key, "skipped_duplicate", "user already exists"));
+        continue;
+      }
+
+      final String usernameReason = usernameRejectionReason(trimToNull(u.username()), allowSelectUserId);
+      if (usernameReason != null) {
+        userOutcomes.add(new ImportItemOutcome(key, "error", usernameReason));
         continue;
       }
 
@@ -298,6 +308,7 @@ public class ImportExportServiceImpl implements ImportExportService {
     }
 
     final List<ImportItemOutcome> userOutcomes = new ArrayList<>();
+    final boolean allowSelectUserId = this.properties.getUserRegistration().isAllowSelectUserId();
     for (final BundleUserEntry u : batch.users()) {
       final String pin = trimToNull(u.personalIdentityNumber());
       final String orgAffiliation = trimToNull(u.orgAffiliation());
@@ -312,9 +323,18 @@ public class ImportExportServiceImpl implements ImportExportService {
         continue;
       }
 
+      // The username is re-checked the same way the duplicate keys are: it may have been taken
+      // since the dry-run, and allow-select-user-id is deployment config that may have changed.
+      final String username = trimToNull(u.username());
+      final String usernameReason = usernameRejectionReason(username, allowSelectUserId);
+      if (usernameReason != null) {
+        userOutcomes.add(new ImportItemOutcome(key, "error", usernameReason));
+        continue;
+      }
+
       try {
         final String userId = this.keycloakAdminClient.createUser(
-            null, u.name(), u.email(), pin, orgAffiliation, u.phoneNumber(), null);
+            username, u.name(), u.email(), pin, orgAffiliation, u.phoneNumber(), null);
         for (final BundleUserRightEntry r : u.rights()) {
           // Re-check rather than trust the dry-run outcome: allow-org-rights is deployment
           // config and may have changed since, and this call must never be reachable through a
@@ -384,7 +404,7 @@ public class ImportExportServiceImpl implements ImportExportService {
     }
     if (!ImportExportBundle.SCHEMA_VERSION.equals(bundle.schemaVersion())) {
       throw new ImportValidationException(
-          "Unsupported schemaVersion '" + bundle.schemaVersion() + "', expected '"
+          "Unsupported schema_version '" + bundle.schemaVersion() + "', expected '"
               + ImportExportBundle.SCHEMA_VERSION + "'");
     }
     final List<BundleFunctionEntry> functions = bundle.functions() != null ? bundle.functions() : List.of();
@@ -436,7 +456,7 @@ public class ImportExportServiceImpl implements ImportExportService {
       }
       if (r.functionId() == null && !allowOrgRights) {
         return "organization-wide rights are disabled (iam.admin.allow-org-rights=false); "
-            + "give this right a functionId instead";
+            + "give this right a function_id instead";
       }
       if (r.functionId() != null) {
         final Set<String> attached = orgFunctionAttachments.getOrDefault(r.orgIdentifier(), Set.of());
@@ -445,6 +465,31 @@ public class ImportExportServiceImpl implements ImportExportService {
               + r.orgIdentifier() + "'";
         }
       }
+    }
+    return null;
+  }
+
+  /**
+   * Returns a validation-failure reason for the username of a user entry that is not a duplicate,
+   * or {@code null} when the username may be assigned. A username is honoured only when the
+   * deployment lets an administrator choose the user ID, and never when it is already taken by
+   * someone else. An entry without a username is always fine: Keycloak assigns a random UUID.
+   *
+   * @param username the username from the file, trimmed, or {@code null} when the entry has none
+   * @param allowSelectUserId the value of {@code iam.admin.user-registration.allow-select-user-id}
+   * @return the reason, or {@code null} when the entry passes
+   */
+  private @Nullable String usernameRejectionReason(
+      final @Nullable String username, final boolean allowSelectUserId) {
+    if (username == null) {
+      return null;
+    }
+    if (!allowSelectUserId) {
+      return "usernames are not accepted in an import file for this deployment "
+          + "(iam.admin.user-registration.allow-select-user-id is false)";
+    }
+    if (this.keycloakAdminClient.usernameExists(username)) {
+      return "username '" + username + "' is already taken";
     }
     return null;
   }
@@ -496,6 +541,7 @@ public class ImportExportServiceImpl implements ImportExportService {
     final String name = fullName.isBlank() ? (u.username() != null ? u.username() : u.userId()) : fullName;
     return new BundleUserEntry(
         name,
+        u.username(),
         u.email(),
         u.personalIdentityNumber(),
         u.orgAffiliation(),

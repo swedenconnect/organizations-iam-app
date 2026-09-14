@@ -44,9 +44,7 @@ a Spring Boot admin application.
   OIDC client or resource server, through the admin application, the scripts, or the
   REST API.
 
-- [Export and Import](export-import.md) — Bulk-exporting and bulk-importing organizations,
-  functions and users as a single JSON file, including the two-step import flow and
-  duplicate detection rules.
+- [Export and Import](export-import.md) – Bulk-export and -import of organizations, functions, and users to/from a single JSON file.
 
 ### Operations
 

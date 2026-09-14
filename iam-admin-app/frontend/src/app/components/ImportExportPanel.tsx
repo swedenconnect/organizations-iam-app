@@ -85,7 +85,7 @@ export function ImportExportPanel({ onImportCompleted }: ImportExportPanelProps)
     if (!preview) return;
     setIsBusy(true);
     try {
-      const report = await confirmImport(preview.batchId);
+      const report = await confirmImport(preview.batch_id);
       setResult(report);
       setStep('done');
       onImportCompleted();
@@ -100,7 +100,7 @@ export function ImportExportPanel({ onImportCompleted }: ImportExportPanelProps)
   const handleCancelPreview = async () => {
     if (preview) {
       try {
-        await cancelImport(preview.batchId);
+        await cancelImport(preview.batch_id);
       } catch (error) {
         console.error('Error cancelling import batch:', error);
       }

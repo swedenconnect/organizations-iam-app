@@ -170,52 +170,56 @@ export interface ReconciliationReport {
   errors: string[];
 }
 
-// Export/import bundle (superuser-only). The same shape is used for both directions —
+// Export/import bundle (superuser-only). The same shape is used for both directions:
 // GET /api/export returns it, and POST /api/import/dry-run accepts it as a file upload.
+// Every key is snake_case, and a localized value is carried as one key per language, tagged
+// after a '#', the same form the Keycloak group attributes use.
 
 export interface BundleFunctionEntry {
   id: string;
-  nameSv?: string | null;
-  nameEn?: string | null;
-  descriptionSv?: string | null;
-  descriptionEn?: string | null;
+  'name#sv'?: string | null;
+  'name#en'?: string | null;
+  'description#sv'?: string | null;
+  'description#en'?: string | null;
 }
 
 export interface BundleUserRightEntry {
-  orgIdentifier: string;
-  functionId?: string | null;
+  org_identifier: string;
+  function_id?: string | null;
   right: 'admin' | 'write' | 'read';
 }
 
 export interface BundleOrganizationEntry {
-  orgIdentifier: string;
-  legalName: string;
-  nameSv?: string | null;
-  nameEn?: string | null;
-  contactEmail?: string | null;
-  contactPhone?: string | null;
-  attachedFunctions: string[];
+  org_identifier: string;
+  legal_name: string;
+  'name#sv'?: string | null;
+  'name#en'?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  attached_functions: string[];
 }
 
 export interface BundleUserEntry {
   name: string;
+  /** The Keycloak username. Honoured on import only when the deployment allows a chosen user ID. */
+  username?: string | null;
   email?: string | null;
-  personalIdentityNumber?: string | null;
-  orgAffiliation?: string | null;
-  phoneNumber?: string | null;
+  personal_identity_number?: string | null;
+  org_affiliation?: string | null;
+  phone_number?: string | null;
   rights: BundleUserRightEntry[];
 }
 
 export interface ImportExportBundle {
-  schemaVersion: string;
-  exportedAt?: string | null;
+  schema_version: string;
+  exported_at?: string | null;
   functions: BundleFunctionEntry[];
   organizations: BundleOrganizationEntry[];
   users: BundleUserEntry[];
 }
 
 /** Outcome of one entry from an ImportExportBundle. `key` is a function id, org identifier, or
- *  a user's personalIdentityNumber/orgAffiliation. `status` is 'new'/'skipped_duplicate'/'error'
+ *  a user's personal_identity_number/org_affiliation. `status` is 'new'/'skipped_duplicate'/'error'
  *  in a dry-run preview, and 'created'/'skipped_duplicate'/'error' in a final import report. */
 export interface ImportItemOutcome {
   key: string;
@@ -224,7 +228,7 @@ export interface ImportItemOutcome {
 }
 
 export interface ImportPreviewReport {
-  batchId: string;
+  batch_id: string;
   functions: ImportItemOutcome[];
   organizations: ImportItemOutcome[];
   users: ImportItemOutcome[];

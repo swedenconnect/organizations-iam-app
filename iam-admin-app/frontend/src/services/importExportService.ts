@@ -47,7 +47,7 @@ export async function downloadExport(filename = 'iam-export.json'): Promise<void
 /**
  * Validates an uploaded import file against the current realm state without creating
  * anything. The resulting batch is held server-side (in the session) under the returned
- * batchId for a subsequent confirmImport call.
+ * batch_id for a subsequent confirmImport call.
  */
 export async function dryRunImport(file: File): Promise<ImportPreviewReport> {
   const formData = new FormData();

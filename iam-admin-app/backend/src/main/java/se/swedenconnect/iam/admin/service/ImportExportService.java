@@ -59,7 +59,7 @@ public interface ImportExportService {
    * @param session     the caller's HTTP session
    * @return the outcome of every entry in the file, plus the id of the resulting pending batch
    * @throws ImportValidationException if the file is not valid JSON, does not match the expected
-   *                                    shape, carries an unsupported {@code schemaVersion}, or
+   *                                    shape, carries an unsupported {@code schema_version}, or
    *                                    exceeds the size limits checked before per-entry validation
    */
   @NonNull ImportPreviewReport dryRun(

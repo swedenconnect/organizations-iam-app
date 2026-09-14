@@ -15,6 +15,8 @@
  */
 package se.swedenconnect.iam.admin.controllers.dto.impexp;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -24,14 +26,20 @@ import java.util.List;
  * A single organization inside an {@link ImportExportBundle}, including the identifiers of the
  * functions it has attached.
  *
+ * <p>The display name is a localized value, carried as one key per language tagged after a
+ * {@code #}, the same form the Keycloak group attributes use. Swedish and English are the only
+ * tags; a key tagged with any other language is ignored. The legal name is the name registered
+ * at Bolagsverket, which is not localized, so {@code legal_name} is a plain untagged key.</p>
+ *
  * @author PF Plars
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record BundleOrganizationEntry(
-    @NonNull String orgIdentifier,
-    @NonNull String legalName,
-    @Nullable String nameSv,
-    @Nullable String nameEn,
-    @Nullable String contactEmail,
-    @Nullable String contactPhone,
-    @NonNull List<String> attachedFunctions) {
+    @JsonProperty("org_identifier") @NonNull String orgIdentifier,
+    @JsonProperty("legal_name") @NonNull String legalName,
+    @JsonProperty("name#sv") @Nullable String nameSv,
+    @JsonProperty("name#en") @Nullable String nameEn,
+    @JsonProperty("contact_email") @Nullable String contactEmail,
+    @JsonProperty("contact_phone") @Nullable String contactPhone,
+    @JsonProperty("attached_functions") @NonNull List<String> attachedFunctions) {
 }
