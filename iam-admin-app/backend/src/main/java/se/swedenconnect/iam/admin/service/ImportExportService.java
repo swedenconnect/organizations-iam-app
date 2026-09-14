@@ -17,9 +17,9 @@ package se.swedenconnect.iam.admin.service;
 
 import jakarta.servlet.http.HttpSession;
 import org.jspecify.annotations.NonNull;
-import se.swedenconnect.iam.admin.controllers.dto.ImportExportBundle;
-import se.swedenconnect.iam.admin.controllers.dto.ImportPreviewReport;
-import se.swedenconnect.iam.admin.controllers.dto.ImportReport;
+import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportExportBundle;
+import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportPreviewReport;
+import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportReport;
 
 /**
  * Service backing the superuser-only export/import feature: a full-realm JSON snapshot of
@@ -37,7 +37,7 @@ public interface ImportExportService {
   /**
    * Builds a full-realm snapshot: every function, every organization with its attached
    * functions, and every non-superuser user with their organizational rights. Superuser accounts
-   * are deliberately excluded — see {@link se.swedenconnect.iam.admin.controllers.dto.BundleUserEntry}.
+   * are deliberately excluded — see {@link se.swedenconnect.iam.admin.controllers.dto.impexp.BundleUserEntry}.
    *
    * @return the export bundle
    */

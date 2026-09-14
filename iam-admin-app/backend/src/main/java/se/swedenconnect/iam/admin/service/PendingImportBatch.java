@@ -16,9 +16,9 @@
 package se.swedenconnect.iam.admin.service;
 
 import org.jspecify.annotations.NonNull;
-import se.swedenconnect.iam.admin.controllers.dto.BundleFunctionEntry;
-import se.swedenconnect.iam.admin.controllers.dto.BundleOrganizationEntry;
-import se.swedenconnect.iam.admin.controllers.dto.BundleUserEntry;
+import se.swedenconnect.iam.admin.controllers.dto.impexp.BundleFunctionEntry;
+import se.swedenconnect.iam.admin.controllers.dto.impexp.BundleOrganizationEntry;
+import se.swedenconnect.iam.admin.controllers.dto.impexp.BundleUserEntry;
 
 import java.io.Serializable;
 import java.time.Instant;

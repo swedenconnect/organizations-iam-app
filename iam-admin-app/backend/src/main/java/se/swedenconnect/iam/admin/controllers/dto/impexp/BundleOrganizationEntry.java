@@ -13,22 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package se.swedenconnect.iam.admin.controllers.dto;
+package se.swedenconnect.iam.admin.controllers.dto.impexp;
 
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 
 /**
- * Result of a dry-run import validation: the outcome of every entry in the uploaded file, and a
- * {@code batchId} identifying the server-held, already-filtered batch that {@code POST
- * /api/import/{batchId}/confirm} will act on.
+ * A single organization inside an {@link ImportExportBundle}, including the identifiers of the
+ * functions it has attached.
  *
  * @author PF Plars
  */
-public record ImportPreviewReport(
-    @NonNull String batchId,
-    @NonNull List<ImportItemOutcome> functions,
-    @NonNull List<ImportItemOutcome> organizations,
-    @NonNull List<ImportItemOutcome> users) {
+public record BundleOrganizationEntry(
+    @NonNull String orgIdentifier,
+    @NonNull String legalName,
+    @Nullable String nameSv,
+    @Nullable String nameEn,
+    @Nullable String contactEmail,
+    @Nullable String contactPhone,
+    @NonNull List<String> attachedFunctions) {
 }

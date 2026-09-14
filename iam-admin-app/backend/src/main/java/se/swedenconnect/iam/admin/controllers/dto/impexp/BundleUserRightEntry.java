@@ -13,24 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package se.swedenconnect.iam.admin.controllers.dto;
+package se.swedenconnect.iam.admin.controllers.dto.impexp;
 
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The outcome of processing a single entry from an {@link ImportExportBundle}.
- *
- * <p>{@code key} identifies the entry for display (a function id, an org identifier, or a
- * user's {@code personalIdentityNumber}/{@code orgAffiliation}). {@code status} is one of
- * {@code new}, {@code skipped_duplicate} or {@code error} in a dry-run report, and one of
- * {@code created}, {@code skipped_duplicate} or {@code error} in a final import report.
- * {@code reason} is set for {@code skipped_duplicate} and {@code error}.</p>
+ * A single right entry attached to a {@link BundleUserEntry}. When {@code functionId} is
+ * {@code null}, the right applies to the organization as a whole.
  *
  * @author PF Plars
  */
-public record ImportItemOutcome(
-    @NonNull String key,
-    @NonNull String status,
-    @Nullable String reason) {
+public record BundleUserRightEntry(
+    @NonNull String orgIdentifier,
+    @Nullable String functionId,
+    @NonNull String right) {
 }

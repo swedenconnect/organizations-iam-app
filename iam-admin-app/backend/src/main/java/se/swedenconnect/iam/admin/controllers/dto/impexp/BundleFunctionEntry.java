@@ -13,19 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package se.swedenconnect.iam.admin.controllers.dto;
+package se.swedenconnect.iam.admin.controllers.dto.impexp;
 
 import org.jspecify.annotations.NonNull;
-
-import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
- * Result of executing a confirmed import batch.
+ * A single function definition inside an {@link ImportExportBundle}.
  *
  * @author PF Plars
  */
-public record ImportReport(
-    @NonNull List<ImportItemOutcome> functions,
-    @NonNull List<ImportItemOutcome> organizations,
-    @NonNull List<ImportItemOutcome> users) {
+public record BundleFunctionEntry(
+    @NonNull String id,
+    @Nullable String nameSv,
+    @Nullable String nameEn,
+    @Nullable String descriptionSv,
+    @Nullable String descriptionEn) {
 }
