@@ -4,9 +4,20 @@ on:
     tags:
       - 'v*'
 jobs:
-  ghcr-release:
+  iam-admin-app-release:
     uses: ./.github/workflows/docker-release.yml
     secrets: inherit
     with:
       service-path: iam-admin-app/backend
       frontend-path: iam-admin-app/frontend
+  demo-app-release:
+    uses: ./.github/workflows/docker-release.yml
+    secrets: inherit
+    with:
+      service-path: demo/demo-app/backend
+      frontend-path: demo/demo-app/frontend
+  demo-service-release:
+    uses: ./.github/workflows/docker-release.yml
+    secrets: inherit
+    with:
+      service-path: demo/demo-service
