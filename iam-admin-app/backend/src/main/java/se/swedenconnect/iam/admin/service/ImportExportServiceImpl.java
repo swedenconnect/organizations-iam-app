@@ -21,6 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
+import se.swedenconnect.iam.admin.config.IamAdminProperties;
 import se.swedenconnect.iam.admin.controllers.dto.BundleFunctionEntry;
 import se.swedenconnect.iam.admin.controllers.dto.BundleOrganizationEntry;
 import se.swedenconnect.iam.admin.controllers.dto.BundleUserEntry;
@@ -74,6 +75,7 @@ public class ImportExportServiceImpl implements ImportExportService {
   private final KeycloakAdminClient keycloakAdminClient;
   private final OrganizationService organizationService;
   private final ObjectMapper objectMapper;
+  private final IamAdminProperties properties;
 
   @Override
   public @NonNull ImportExportBundle exportAll() {
@@ -206,7 +208,8 @@ public class ImportExportServiceImpl implements ImportExportService {
         continue;
       }
 
-      final String invalidRightReason = firstInvalidRightReason(u.rights(), knownOrgIdentifiers, orgFunctionAttachments);
+      final String invalidRightReason =
+          firstInvalidRightReason(u.rights(), knownOrgIdentifiers, orgFunctionAttachments, this.properties.isAllowOrgRights());
       if (invalidRightReason != null) {
         userOutcomes.add(new ImportItemOutcome(key, "error", invalidRightReason));
         continue;
@@ -313,6 +316,15 @@ public class ImportExportServiceImpl implements ImportExportService {
         final String userId = this.keycloakAdminClient.createUser(
             null, u.name(), u.email(), pin, orgAffiliation, u.phoneNumber(), null);
         for (final BundleUserRightEntry r : u.rights()) {
+          // Re-check rather than trust the dry-run outcome: allow-org-rights is deployment
+          // config and may have changed since, and this call must never be reachable through a
+          // path the equivalent manual endpoint (UserRightsController) would refuse.
+          if (r.functionId() == null && !this.properties.isAllowOrgRights()) {
+            log.warn("Import: user '{}' created but organization-wide right {}/{} could not be granted: "
+                    + "allow-org-rights is false",
+                key, r.orgIdentifier(), r.right());
+            continue;
+          }
           try {
             if (r.functionId() == null) {
               this.keycloakAdminClient.addUserToOrgRight(r.orgIdentifier(), userId, r.right());
@@ -406,19 +418,25 @@ public class ImportExportServiceImpl implements ImportExportService {
 
   /**
    * Returns a validation-failure reason for the first right in {@code rights} that has an
-   * invalid right level, or references an organization or org/function pair unknown in Keycloak
-   * and unknown earlier in this same import file. {@code null} if every right is valid.
+   * invalid right level, references an organization or org/function pair unknown in Keycloak
+   * and unknown earlier in this same import file, or is an organization-wide right while
+   * {@code allowOrgRights} is {@code false}. {@code null} if every right is valid.
    */
   private static @Nullable String firstInvalidRightReason(
       final @NonNull List<BundleUserRightEntry> rights,
       final @NonNull Set<String> knownOrgIdentifiers,
-      final @NonNull Map<String, Set<String>> orgFunctionAttachments) {
+      final @NonNull Map<String, Set<String>> orgFunctionAttachments,
+      final boolean allowOrgRights) {
     for (final BundleUserRightEntry r : rights) {
       if (r.right() == null || !KeycloakAdminClient.RIGHT_LEVELS.contains(r.right())) {
         return "right must be one of: read, write, admin (got '" + r.right() + "')";
       }
       if (r.orgIdentifier() == null || !knownOrgIdentifiers.contains(r.orgIdentifier())) {
         return "rights reference unknown organization '" + r.orgIdentifier() + "'";
+      }
+      if (r.functionId() == null && !allowOrgRights) {
+        return "organization-wide rights are disabled (iam.admin.allow-org-rights=false); "
+            + "give this right a functionId instead";
       }
       if (r.functionId() != null) {
         final Set<String> attached = orgFunctionAttachments.getOrDefault(r.orgIdentifier(), Set.of());
