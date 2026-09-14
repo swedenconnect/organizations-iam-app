@@ -44,6 +44,10 @@ a Spring Boot admin application.
   OIDC client or resource server, through the admin application, the scripts, or the
   REST API.
 
+- [Export and Import](export-import.md) — Bulk-exporting and bulk-importing organizations,
+  functions and users as a single JSON file, including the two-step import flow and
+  duplicate detection rules.
+
 ### Operations
 
 - [Keycloak Setup](keycloak-setup.md) — Step-by-step Keycloak realm configuration,

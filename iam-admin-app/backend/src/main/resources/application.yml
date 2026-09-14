@@ -13,6 +13,12 @@ server:
 spring:
   application:
     name: iam-admin
+  servlet:
+    multipart:
+      # Bounds the export/import feature's uploaded file; a realm-wide bulk import file is
+      # expected to be well under this.
+      max-file-size: 10MB
+      max-request-size: 10MB
   messages:
     basename: messages
     encoding: UTF-8

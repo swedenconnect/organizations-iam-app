@@ -8,6 +8,7 @@ import { FunctionList } from '@/app/components/FunctionList';
 import { FunctionForm } from '@/app/components/FunctionForm';
 import { ClientList } from '@/app/components/ClientList';
 import { ClientForm } from '@/app/components/ClientForm';
+import { ImportExportPanel } from '@/app/components/ImportExportPanel';
 import { Header } from '@/app/components/Header';
 import { Footer } from '@/app/components/Footer';
 import { Organization, User, UserOrganizationRole, FunctionType, OrganizationFunction, AdminSessionData, OrganizationData, ManagedClient, ManagedClientInput, UserRegistrationSettings } from '@/types';
@@ -16,7 +17,7 @@ import { UserFormValues } from '@/app/components/UserForm';
 import { DEFAULT_USER_REGISTRATION_SETTINGS, UserRegistrationProvider } from '@/app/contexts/UserRegistrationContext';
 import { Button } from '@/app/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
-import { Building2, Users as UsersIcon, Plus, Boxes, HelpCircle, KeyRound, RefreshCw } from 'lucide-react';
+import { Building2, Users as UsersIcon, Plus, Boxes, HelpCircle, KeyRound, RefreshCw, FileJson } from 'lucide-react';
 import { toast } from 'sonner';
 import { Toaster } from '@/app/components/ui/sonner';
 import { LanguageProvider, useLanguage } from '@/app/contexts/LanguageContext';
@@ -838,6 +839,12 @@ function AppContent() {
                       {t('services.tabTitle')}
                     </TabsTrigger>
                   )}
+                  {(sessionData?.superuser ?? false) && (
+                    <TabsTrigger value="importExport" className="flex items-center gap-2">
+                      <FileJson className="w-4 h-4" />
+                      {t('importExport.tabTitle')}
+                    </TabsTrigger>
+                  )}
                 </TabsList>
               )}
             </div>
@@ -991,6 +998,15 @@ function AppContent() {
                 onEdit={handleEditClient}
                 onDelete={handleDeleteClient}
               />
+            </TabsContent>
+
+            <TabsContent value="importExport" className="space-y-4">
+              <div>
+                <h2 className="text-xl font-semibold">{t('importExport.title')}</h2>
+                <p className="text-sm text-gray-500 mt-1">{t('importExport.description')}</p>
+              </div>
+
+              <ImportExportPanel onImportCompleted={() => loadData()} />
             </TabsContent>
           </Tabs>
         </div>

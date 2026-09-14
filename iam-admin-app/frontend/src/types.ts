@@ -170,6 +170,72 @@ export interface ReconciliationReport {
   errors: string[];
 }
 
+// Export/import bundle (superuser-only). The same shape is used for both directions —
+// GET /api/export returns it, and POST /api/import/dry-run accepts it as a file upload.
+
+export interface BundleFunctionEntry {
+  id: string;
+  nameSv?: string | null;
+  nameEn?: string | null;
+  descriptionSv?: string | null;
+  descriptionEn?: string | null;
+}
+
+export interface BundleUserRightEntry {
+  orgIdentifier: string;
+  functionId?: string | null;
+  right: 'admin' | 'write' | 'read';
+}
+
+export interface BundleOrganizationEntry {
+  orgIdentifier: string;
+  legalName: string;
+  nameSv?: string | null;
+  nameEn?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  attachedFunctions: string[];
+}
+
+export interface BundleUserEntry {
+  name: string;
+  email?: string | null;
+  personalIdentityNumber?: string | null;
+  orgAffiliation?: string | null;
+  phoneNumber?: string | null;
+  rights: BundleUserRightEntry[];
+}
+
+export interface ImportExportBundle {
+  schemaVersion: string;
+  exportedAt?: string | null;
+  functions: BundleFunctionEntry[];
+  organizations: BundleOrganizationEntry[];
+  users: BundleUserEntry[];
+}
+
+/** Outcome of one entry from an ImportExportBundle. `key` is a function id, org identifier, or
+ *  a user's personalIdentityNumber/orgAffiliation. `status` is 'new'/'skipped_duplicate'/'error'
+ *  in a dry-run preview, and 'created'/'skipped_duplicate'/'error' in a final import report. */
+export interface ImportItemOutcome {
+  key: string;
+  status: 'new' | 'created' | 'skipped_duplicate' | 'error';
+  reason?: string | null;
+}
+
+export interface ImportPreviewReport {
+  batchId: string;
+  functions: ImportItemOutcome[];
+  organizations: ImportItemOutcome[];
+  users: ImportItemOutcome[];
+}
+
+export interface ImportReport {
+  functions: ImportItemOutcome[];
+  organizations: ImportItemOutcome[];
+  users: ImportItemOutcome[];
+}
+
 /** The iam.admin.user-registration settings, telling the create-user forms what to render. */
 export interface UserRegistrationSettings {
   allowSelectUserId: boolean;
