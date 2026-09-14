@@ -6,7 +6,7 @@
 
 ### Version 0.9.4
 
-**Date:** _Not yet released_
+**Date:** 2026-09-14
 
 - **New export/import feature for bulk-managing organizations, functions and users.** A superuser can export the
   full realm as a single JSON file, and bulk-import organizations, functions and users from a file in the same format.
