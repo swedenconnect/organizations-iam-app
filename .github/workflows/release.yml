@@ -10,4 +10,3 @@ jobs:
     with:
       service-path: iam-admin-app/backend
       frontend-path: iam-admin-app/frontend
-      revision-property: service-revision
