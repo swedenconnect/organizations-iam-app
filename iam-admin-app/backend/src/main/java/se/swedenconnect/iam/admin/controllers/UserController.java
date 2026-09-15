@@ -18,6 +18,7 @@ package se.swedenconnect.iam.admin.controllers;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -46,6 +47,7 @@ import se.swedenconnect.iam.admin.keycloak.model.UserInfo;
 import se.swedenconnect.iam.admin.keycloak.model.UserRight;
 
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -83,6 +85,11 @@ public class UserController {
    * per user. Regular admins receive only their scoped users from session data with
    * in-memory pagination.</p>
    *
+   * <p>For a regular admin each user carries only the rights the caller is entitled to see, see
+   * {@link AdminSessionData#mayViewRight(UserRight)}, and a user left without a single visible
+   * right is left out of the response altogether. The reported total counts the users that remain
+   * after that filtering.</p>
+   *
    * @param page    0-based page index (default 0)
    * @param size    page size (default 50)
    * @param request the HTTP servlet request
@@ -116,38 +123,29 @@ public class UserController {
       log.debug("GET /api/users — superuser, page={}, size={}, total={}", effectivePage, effectiveSize, total);
     }
     else {
-      final List<String> userIds = this.keycloakAdminClient.fetchUserIdsForOrgs(data.adminOrgIdentifiers());
-      // Apply orgConstraint if present
-      final List<String> scopedIds;
-      if (data.orgConstraint() != null) {
-        final String oc = data.orgConstraint();
-        scopedIds = userIds.stream()
-            .filter(id -> this.keycloakAdminClient.fetchUserRights(id).stream()
-                .anyMatch(r -> oc.equals(r.orgIdentifier())))
+      final List<String> candidateUserIds =
+          this.keycloakAdminClient.fetchUserIdsForOrgs(data.adminOrgIdentifiers());
+
+      // A user is only shown with the rights the caller is entitled to see, and a user left
+      // without any visible right is not shown at all. That decision is taken before pagination,
+      // so the reported total counts only the users that survive it.
+      final List<VisibleUser> visibleUsers = new ArrayList<>();
+      for (final String userId : candidateUserIds) {
+        final List<UserRight> rights = this.keycloakAdminClient.fetchUserRights(userId).stream()
+            .filter(data::mayViewRight)
             .toList();
+        if (!rights.isEmpty()) {
+          visibleUsers.add(new VisibleUser(userId, rights));
+        }
       }
-      else {
-        scopedIds = userIds;
-      }
-      total = scopedIds.size();
+
+      total = visibleUsers.size();
       final int fromIndex = Math.min(first, total);
       final int toIndex = Math.min(first + effectiveSize, total);
-      content = scopedIds.subList(fromIndex, toIndex).stream()
-          .map(id -> {
-            final UserInfo u = this.keycloakAdminClient.fetchUserById(id).orElse(null);
-            if (u == null) return null;
-            List<UserRight> rights = this.keycloakAdminClient.fetchUserRights(id);
-            if (data.orgConstraint() != null) {
-              final String oc = data.orgConstraint();
-              rights = rights.stream().filter(r -> oc.equals(r.orgIdentifier())).toList();
-            }
-            if (data.functionConstraint() != null) {
-              final String fc = data.functionConstraint();
-              rights = rights.stream()
-                  .filter(r -> r.functionId() == null || fc.equals(r.functionId()))
-                  .toList();
-            }
-            return toResponse(u, rights);
+      content = visibleUsers.subList(fromIndex, toIndex).stream()
+          .map(v -> {
+            final UserInfo u = this.keycloakAdminClient.fetchUserById(v.userId()).orElse(null);
+            return u != null ? toResponse(u, v.rights()) : null;
           })
           .filter(Objects::nonNull)
           .toList();
@@ -442,6 +440,16 @@ public class UserController {
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
+
+  /**
+   * A candidate user for the list along with the rights the caller is entitled to see. The profile
+   * itself is loaded only for the users on the requested page.
+   *
+   * @param userId the Keycloak user UUID
+   * @param rights the rights visible to the caller; never empty
+   */
+  private record VisibleUser(@NonNull String userId, @NonNull List<UserRight> rights) {
+  }
 
   private static UserResponse toResponse(final UserInfo u, final List<UserRight> rights) {
     final List<UserRightResponse> rightResponses = rights.stream()

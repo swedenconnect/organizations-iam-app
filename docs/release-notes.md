@@ -26,6 +26,11 @@
   view showed the same function correctly. See
   [issue #86](https://github.com/swedenconnect/organizations-iam-app/issues/86).
 
+- **An administrator no longer sees a user's rights outside their own scope.** Each user is now
+  listed with the rights the caller administers only, and a user left without a visible right is
+  not listed at all. A superuser is unaffected. See
+  [issue #55](https://github.com/swedenconnect/organizations-iam-app/issues/55).
+
 ### Version 0.9.6
 
 **Date:** 2026-09-15

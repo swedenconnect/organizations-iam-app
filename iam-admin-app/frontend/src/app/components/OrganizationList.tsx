@@ -31,6 +31,28 @@ import { AddUserToFunctionDialog } from '@/app/components/AddUserToFunctionDialo
 import { formatOrgNumber, canAdminOrg, canAdminFunction, resolveOrgName } from '@/utils';
 import { LastAdminError } from '@/services/userService';
 
+/**
+ * Counts the distinct users with access to an organization, from the very lists the expanded panel
+ * renders: the organization-level users and the users of every function attached to the
+ * organization. A user holding both an organization-level right and a function right, or rights on
+ * several functions, is counted once.
+ */
+export function countUsersWithAccess(
+  orgUsers: Array<{ user?: { id: string } | undefined }>,
+  orgFunctions: Array<{ users: Array<{ user: { id: string } }> }>,
+): number {
+  const userIds = new Set<string>();
+  for (const { user } of orgUsers) {
+    if (user) userIds.add(user.id);
+  }
+  for (const { users: functionUsers } of orgFunctions) {
+    for (const { user } of functionUsers) {
+      userIds.add(user.id);
+    }
+  }
+  return userIds.size;
+}
+
 interface OrganizationListProps {
   organizations: Organization[];
   currentPage: number;
@@ -238,6 +260,7 @@ export function OrganizationList({
         {organizations.map((org) => {
           const orgUsers = getUsersForOrganization(org.id);
           const orgFunctions = getFunctionsForOrganization(org.id);
+          const userCount = countUsersWithAccess(orgUsers, orgFunctions);
           const isExpanded = expandedOrgs.has(org.id);
 
           return (
@@ -261,9 +284,9 @@ export function OrganizationList({
                       </div>
                       {!isExpanded && (
                         <div className="flex gap-3 mt-2">
-                          {orgUsers.length > 0 && (
+                          {userCount > 0 && (
                             <p className="text-xs text-gray-400">
-                              {orgUsers.length} {orgUsers.length === 1 ? t('users.count') : t('users.count_plural')}
+                              {userCount} {userCount === 1 ? t('users.count') : t('users.count_plural')}
                             </p>
                           )}
                           {orgFunctions.length > 0 && (

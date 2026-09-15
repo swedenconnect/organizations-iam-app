@@ -418,19 +418,14 @@ public class UserRightsController {
   private static boolean hasOrgAdminRight(
       final AdminSessionData data,
       final String orgIdentifier) {
-    return data.claim().orgEntries().stream()
-        .filter(e -> orgIdentifier.equals(e.orgIdentifier().toString()))
-        .anyMatch(e -> "admin".equals(e.orgLevelRight()));
+    return data.hasOrgLevelAdminRight(orgIdentifier);
   }
 
   private static boolean hasFunctionAdminRight(
       final AdminSessionData data,
       final String orgIdentifier,
       final String functionId) {
-    return data.claim().orgEntries().stream()
-        .filter(e -> orgIdentifier.equals(e.orgIdentifier().toString()))
-        .flatMap(e -> e.functions().stream())
-        .anyMatch(f -> functionId.equals(f.function()) && "admin".equals(f.right()));
+    return data.hasFunctionAdminRight(orgIdentifier, functionId);
   }
 
 
