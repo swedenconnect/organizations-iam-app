@@ -473,7 +473,9 @@ In the IAM admin application at https://local.dev.swedenconnect.se:17005, logged
 superuser:
 
 1. Go to **Organizations** and create or select an organization. An organization is identified
-   by its ten-digit Swedish organizational number, for example `2021006883`.
+   by its ten-digit Swedish organizational number, for example `2021006883`. Creating one asks for
+   the legal name, optional Swedish and English display names, and an optional contact e-mail and
+   phone number.
 
 2. On the organization's detail page, click **Attach function** and select `demo`. The IAM
    admin application creates the three Keycloak scopes `{orgId}:demo:read`, `{orgId}:demo:write`

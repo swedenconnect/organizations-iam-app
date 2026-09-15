@@ -121,9 +121,12 @@ public class OrganizationServiceImpl implements OrganizationService {
       final @NonNull String orgNumber,
       final @NonNull String legalName,
       final @Nullable String nameSv,
-      final @Nullable String nameEn) {
+      final @Nullable String nameEn,
+      final @Nullable String contactEmail,
+      final @Nullable String contactPhone) {
 
-    this.keycloakAdminClient.createOrganization(orgNumber, legalName, nameSv, nameEn);
+    this.keycloakAdminClient.createOrganization(
+        orgNumber, legalName, nameSv, nameEn, contactEmail, contactPhone);
 
     final OrganizationInfo created = this.keycloakAdminClient.fetchOrganizationByIdentifier(orgNumber)
         .orElseThrow(() -> new KeycloakAdminException(

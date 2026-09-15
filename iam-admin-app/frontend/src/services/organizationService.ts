@@ -55,6 +55,9 @@ export async function createOrganization(org: Omit<Organization, 'id'>): Promise
       // Display names are optional; an empty field stores nothing.
       nameSv: org.nameSv ?? null,
       nameEn: org.nameEn ?? null,
+      // Contact details are optional too, and are stored as part of the creation.
+      contactEmail: org.contactEmail ?? null,
+      contactPhone: org.additionalData?.contactPhone ?? null,
     }),
   });
   if (response.status === 409) {

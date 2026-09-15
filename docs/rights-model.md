@@ -231,7 +231,8 @@ the following optional members:
 | `email`        | Contact email address for the organization                          | `info@digg.se`   |
 | `phone_number` | Contact phone number (E.164-style, digits and optional leading `+`) | `+46701234567`   |
 
-Both members are optional. The attribute may be absent entirely if neither is set. It is
+Both members are optional. The attribute may be absent entirely if neither is set. Both can be
+given when the organization is created, and changed afterwards by editing it. The attribute is
 written and read exclusively by the IAM admin application via the Keycloak Admin REST API —
 it is not exposed in any OIDC token or claim.
 
