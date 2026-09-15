@@ -6,6 +6,16 @@
 
 ---
 
+### Version 0.9.7
+
+**Date:** _Not yet released_
+
+- **Functions attached to a newly created organization are no longer missing from the organizations
+  view.** The view rendered a cached organization whose attached function list was not refreshed
+  when a function was attached or detached, so it reported no functions assigned while the users
+  view showed the same function correctly. See
+  [issue #86](https://github.com/swedenconnect/organizations-iam-app/issues/86).
+
 ### Version 0.9.6
 
 **Date:** 2026-09-15
