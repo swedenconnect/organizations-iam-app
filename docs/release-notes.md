@@ -6,6 +6,12 @@
 
 ---
 
+### Version 0.9.7
+
+**Date:** _not yet released_
+
+- **Keycloak version was updated.** Keycloak plugins and the local environment now uses Keycloak v26.7.3.
+
 ### Version 0.9.6
 
 **Date:** 2026-09-15
