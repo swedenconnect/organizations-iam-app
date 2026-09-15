@@ -4,11 +4,27 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) ![Maven Central](https://img.shields.io/maven-central/v/se.swedenconnect.iam/iam-parent.svg)
 
+---
+
+### Version 0.9.6
+
+**Date:** 2026-09-15
+
+- **Fixed bad build for 0.9.5** 
+
+### Version 0.9.5
+
+**Date:** 2026-09-14
+
+- **GH Action to perform releases** GH - Actions now perform releases. 
+  
 ### Version 0.9.4
 
-**Date:** _not yet released_
+**Date:** 2026-09-14
 
-- **Keycloak version was updated.** Keycloak plugins and the local environment now uses Keycloak v26.7.3. 
+- **New export/import feature for bulk-managing organizations, functions and users.** A superuser can export the
+  full realm as a single JSON file, and bulk-import organizations, functions and users from a file in the same format.
+
 
 ### Version 0.9.3
 
