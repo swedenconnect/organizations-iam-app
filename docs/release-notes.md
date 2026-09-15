@@ -12,6 +12,10 @@
 
 - **Keycloak version was updated.** Keycloak plugins and the local environment now uses Keycloak v26.7.3.
 
+- **The Functions tab is now shown to superusers only.** The functions attached to an organization
+  are still listed when the organization is expanded, with a help icon explaining what a function
+  is. See [issue #60](https://github.com/swedenconnect/organizations-iam-app/issues/60).
+
 - **Functions attached to a newly created organization are no longer missing from the organizations
   view.** The view rendered a cached organization whose attached function list was not refreshed
   when a function was attached or detached, so it reported no functions assigned while the users

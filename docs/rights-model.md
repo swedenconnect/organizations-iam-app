@@ -169,6 +169,12 @@ for that function.
 A special `superuser` role exists at the realm level. A user holding this role can administer
 all organizations, all functions, and all users, regardless of group memberships.
 
+The deployment-wide views of the admin application are superuser-only: the **Functions**,
+**Services** and **Import/Export** tabs are shown to a superuser and to nobody else. An
+organization administrator works in the **Organizations** and **Users** tabs, where the functions
+attached to an organization they administer are listed, along with a help icon explaining what a
+function is.
+
 #### Who may grant the `admin` right
 
 Whether an organization admin or a function admin may manage the `admin` right within the scope

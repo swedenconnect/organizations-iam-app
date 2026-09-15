@@ -22,7 +22,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/app/components/ui/alert-dialog';
-import { Pencil, Trash2, Building2, Search, ChevronDown, ChevronRight, User as UserIcon, Plus, X, Boxes, Info, Unlink } from 'lucide-react';
+import { Pencil, Trash2, Building2, Search, ChevronDown, ChevronRight, User as UserIcon, Plus, X, Boxes, Info, Unlink, HelpCircle } from 'lucide-react';
 import { useLanguage } from '@/app/contexts/LanguageContext';
 import { useState, useEffect } from 'react';
 import { AddUserToOrgDialog } from '@/app/components/AddUserToOrgDialog';
@@ -67,6 +67,8 @@ interface OrganizationListProps {
   expandOrgId: string | null;
   onExpandOrgHandled: () => void;
   onUserCreated: (user: User) => void;
+  /** Opens the "what are functions" dialog owned by App. */
+  onShowFunctionsHelp: () => void;
 }
 
 export function OrganizationList({
@@ -98,6 +100,7 @@ export function OrganizationList({
   expandOrgId,
   onExpandOrgHandled,
   onUserCreated,
+  onShowFunctionsHelp,
 }: OrganizationListProps) {
   const { t, language } = useLanguage();
   const [expandedOrgs, setExpandedOrgs] = useState<Set<string>>(new Set());
@@ -414,6 +417,17 @@ export function OrganizationList({
                       <h4 className="text-sm font-medium flex items-center gap-2">
                         <Boxes className="w-4 h-4" />
                         {t('functions.orgFunctions')}
+                        {/* The Functions tab is superuser-only, so this is where a regular
+                            administrator reaches the explanation of what a function is. */}
+                        <button
+                          type="button"
+                          onClick={onShowFunctionsHelp}
+                          aria-label={t('functions.help')}
+                          title={t('functions.help')}
+                          className="text-gray-400 hover:text-gray-600"
+                        >
+                          <HelpCircle className="w-4 h-4" />
+                        </button>
                       </h4>
                       {isSuperuser && (
                         <Button
