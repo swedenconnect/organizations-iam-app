@@ -134,4 +134,24 @@ public interface OrganizationService {
    * @param orgNumber the organization identifier
    */
   void delete(@NonNull String orgNumber);
+
+  /**
+   * Re-reads one organization from Keycloak and replaces its cache entry, so that a change made
+   * outside this service becomes visible to the cache-backed list and search operations.
+   *
+   * <p>Attaching or detaching a function changes the organization's
+   * {@link OrganizationInfo#attachedFunctions()} without going through {@link #update}, so the
+   * caller performing that change must invoke this method afterwards. The organization is evicted
+   * if it no longer exists in Keycloak, and nothing happens while the cache is unprimed.</p>
+   *
+   * @param orgNumber the organization identifier
+   */
+  void refresh(@NonNull String orgNumber);
+
+  /**
+   * Discards the whole cache so that the next list or search operation primes it from Keycloak
+   * again. For changes that affect an unbounded set of organizations, such as deleting a function
+   * that is attached to several of them.
+   */
+  void refreshAll();
 }

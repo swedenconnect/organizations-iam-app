@@ -41,6 +41,7 @@ import se.swedenconnect.iam.admin.keycloak.KeycloakAdminException;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
 import se.swedenconnect.iam.admin.keycloak.model.FunctionInfo;
 import se.swedenconnect.iam.admin.keycloak.model.OrganizationInfo;
+import se.swedenconnect.iam.admin.service.OrganizationService;
 
 import org.jspecify.annotations.NonNull;
 
@@ -62,6 +63,7 @@ public class FunctionController {
 
   private final KeycloakAdminClient keycloakAdminClient;
   private final IamAdminProperties properties;
+  private final OrganizationService organizationService;
 
   /**
    * Lists all canonical function definitions.
@@ -325,6 +327,10 @@ public class FunctionController {
       log.error("DELETE /api/functions/{} — Keycloak error: {}", functionId, e.getMessage(), e);
       return ResponseEntity.status(500).body(e.getMessage());
     }
+
+    // The function is gone from every organization that had it attached, so the cached attached
+    // function lists are stale across the board.
+    this.organizationService.refreshAll();
 
     log.info("DELETE /api/functions/{} — deleted successfully", functionId);
     return ResponseEntity.noContent().build();
