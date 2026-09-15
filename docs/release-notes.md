@@ -8,7 +8,9 @@
 
 ### Version 0.9.7
 
-**Date:** _Not yet released_
+**Date:** _not yet released_
+
+- **Keycloak version was updated.** Keycloak plugins and the local environment now uses Keycloak v26.7.3.
 
 - **Functions attached to a newly created organization are no longer missing from the organizations
   view.** The view rendered a cached organization whose attached function list was not refreshed

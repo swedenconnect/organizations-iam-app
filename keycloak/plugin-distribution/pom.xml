@@ -30,7 +30,7 @@
       against. This is the only place it is pinned: the compose installer and the fetch
       script both take the plugin from the ZIP assembled here.
     -->
-    <oidc-sweden-claims-plugin.version>1.1.0</oidc-sweden-claims-plugin.version>
+    <oidc-sweden-claims-plugin.version>1.1.1</oidc-sweden-claims-plugin.version>
   </properties>
 
   <!--
