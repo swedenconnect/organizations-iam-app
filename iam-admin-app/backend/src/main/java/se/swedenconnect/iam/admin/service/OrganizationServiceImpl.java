@@ -165,6 +165,22 @@ public class OrganizationServiceImpl implements OrganizationService {
     log.info("Organization '{}' deleted and evicted from cache", orgNumber);
   }
 
+  @Override
+  public void refresh(final @NonNull String orgNumber) {
+    if (!this.cache.isLoaded()) {
+      return;
+    }
+    this.keycloakAdminClient.fetchOrganizationByIdentifier(orgNumber)
+        .ifPresentOrElse(this.cache::put, () -> this.cache.evict(orgNumber));
+    log.debug("Cache entry for organization '{}' refreshed from Keycloak", orgNumber);
+  }
+
+  @Override
+  public void refreshAll() {
+    this.cache.clear();
+    log.debug("Organization cache discarded; it will be primed on next access");
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------

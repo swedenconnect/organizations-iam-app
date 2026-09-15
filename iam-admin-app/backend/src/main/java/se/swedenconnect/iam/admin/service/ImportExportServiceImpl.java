@@ -299,6 +299,10 @@ public class ImportExportServiceImpl implements ImportExportService {
                 o.orgIdentifier(), functionId, e.getMessage());
           }
         }
+        if (!o.attachedFunctions().isEmpty()) {
+          // Attaching bypasses OrganizationService, so the cached attached function list is stale.
+          this.organizationService.refresh(o.orgIdentifier());
+        }
         organizationOutcomes.add(new ImportItemOutcome(o.orgIdentifier(), "created", null));
       }
       catch (final KeycloakAdminException e) {

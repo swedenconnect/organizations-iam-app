@@ -28,6 +28,7 @@ import se.swedenconnect.iam.admin.keycloak.AdminSessionBootstrapHandler;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminClient;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminException;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
+import se.swedenconnect.iam.admin.service.OrganizationService;
 
 /**
  * REST controller for attaching functions to organizations.
@@ -43,6 +44,8 @@ import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
 public class OrganizationFunctionController {
 
   private final KeycloakAdminClient keycloakAdminClient;
+
+  private final OrganizationService organizationService;
 
   /**
    * Attaches a function to an organization.
@@ -93,6 +96,9 @@ public class OrganizationFunctionController {
       return ResponseEntity.status(500).body(e.getMessage());
     }
 
+    // The attached function list lives on the cached organization, so the entry has to be re-read.
+    this.organizationService.refresh(orgIdentifier);
+
     log.info("POST /api/organizations/{}/functions/{} — function attached successfully",
         orgIdentifier, functionId);
     return ResponseEntity.noContent().build();
@@ -134,6 +140,9 @@ public class OrganizationFunctionController {
           orgIdentifier, functionId, e.getMessage(), e);
       return ResponseEntity.status(500).body(e.getMessage());
     }
+
+    // The attached function list lives on the cached organization, so the entry has to be re-read.
+    this.organizationService.refresh(orgIdentifier);
 
     log.info("DELETE /api/organizations/{}/functions/{} — function detached successfully",
         orgIdentifier, functionId);
