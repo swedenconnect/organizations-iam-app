@@ -10,7 +10,11 @@
 
 **Date:** _not yet released_
 
-- **Keycloak version was updated.** Keycloak plugins and the local environment now uses Keycloak v26.7.3.
+- **Keycloak version was updated.** Keycloak plugins and the local environment now use Keycloak v26.7.3.
+
+- **Contact e-mail and phone can now be given when an organization is created.** Both are optional,
+  and are stored as part of the creation rather than by a follow-up edit.
+  See [issue #54](https://github.com/swedenconnect/organizations-iam-app/issues/54).
 
 - **The Functions tab is now shown to superusers only.** The functions attached to an organization
   are still listed when the organization is expanded, with a help icon explaining what a function

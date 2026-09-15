@@ -25,11 +25,16 @@ import org.jspecify.annotations.Nullable;
  * mandatory. The two display names exist for presentation only and are optional, independently of
  * each other; absent or blank means no display name, and no attribute is written for it.</p>
  *
+ * <p>{@code contactEmail} and {@code contactPhone} are optional in the same way. They are stored
+ * together in one group attribute, which is not written at all when neither is given.</p>
+ *
  * @author Martin Lindström
  */
 public record CreateOrganizationRequest(
     @NonNull String organizationNumber,
     @NonNull String legalName,
     @Nullable String nameSv,
-    @Nullable String nameEn) {
+    @Nullable String nameEn,
+    @Nullable String contactEmail,
+    @Nullable String contactPhone) {
 }

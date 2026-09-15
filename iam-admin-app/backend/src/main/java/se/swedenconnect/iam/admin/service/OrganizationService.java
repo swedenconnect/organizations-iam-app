@@ -97,17 +97,24 @@ public interface OrganizationService {
   /**
    * Creates a new organization in Keycloak and adds it to the cache if the cache is already loaded.
    *
-   * @param orgNumber the 10-digit organization number
-   * @param legalName the legal name as registered at Bolagsverket
-   * @param nameSv    Swedish display name, or {@code null} for none
-   * @param nameEn    English display name, or {@code null} for none
+   * <p>Contact details are written as part of the creation, so the organization never exists
+   * without the contact information it was created with.</p>
+   *
+   * @param orgNumber    the 10-digit organization number
+   * @param legalName    the legal name as registered at Bolagsverket
+   * @param nameSv       Swedish display name, or {@code null} for none
+   * @param nameEn       English display name, or {@code null} for none
+   * @param contactEmail contact e-mail, or {@code null} for none
+   * @param contactPhone contact phone, or {@code null} for none
    * @return the freshly created organization
    */
   @NonNull OrganizationInfo create(
       @NonNull String orgNumber,
       @NonNull String legalName,
       @Nullable String nameSv,
-      @Nullable String nameEn);
+      @Nullable String nameEn,
+      @Nullable String contactEmail,
+      @Nullable String contactPhone);
 
   /**
    * Updates an organization in Keycloak and refreshes the corresponding cache entry.

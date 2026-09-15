@@ -286,7 +286,7 @@ public class ImportExportServiceImpl implements ImportExportService {
         continue;
       }
       try {
-        this.organizationService.create(o.orgIdentifier(), o.legalName(), o.nameSv(), o.nameEn());
+        this.organizationService.create(o.orgIdentifier(), o.legalName(), o.nameSv(), o.nameEn(), null, null);
         if (o.contactEmail() != null || o.contactPhone() != null) {
           this.organizationService.update(o.orgIdentifier(), null, null, null, o.contactEmail(), o.contactPhone());
         }
