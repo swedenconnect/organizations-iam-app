@@ -82,6 +82,22 @@ public record AdminSessionData(
   }
 
   /**
+   * Decides whether a user may be addressed by this caller at all, that is whether the user holds
+   * at least one right the caller is entitled to see. A caller who may not address a user must be
+   * answered as if the user did not exist.
+   *
+   * <p>The rights must be the user's live rights, not a snapshot of who was visible earlier: a
+   * right granted moments ago has to make the user addressable in the same interaction.</p>
+   *
+   * @param userRights the user's rights, as held in Keycloak right now
+   * @return {@code true} if at least one of the rights is visible to the caller
+   */
+  public boolean mayViewUser(final @NonNull List<UserRight> userRights) {
+    // A superuser may address every user, including one holding no rights at all.
+    return this.currentUserIsSuperuser || userRights.stream().anyMatch(this::mayViewRight);
+  }
+
+  /**
    * True if the caller holds {@code admin} at the <em>organization</em> level for the given
    * organization. This is the one legitimate use of {@code org_level_right}: it answers "may this
    * person administer the organization itself", not "what may they do".

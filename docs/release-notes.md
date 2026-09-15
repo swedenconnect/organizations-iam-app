@@ -31,6 +31,12 @@
   not listed at all. A superuser is unaffected. See
   [issue #55](https://github.com/swedenconnect/organizations-iam-app/issues/55).
 
+- **Reading or updating a single user is now scoped to the caller as well.** An administrator can
+  address a user by their Keycloak UUID only when that user holds a right the administrator can
+  see, and any other UUID is reported as not found, whether or not it belongs to an existing user.
+  A superuser reaches every user. See
+  [issue #92](https://github.com/swedenconnect/organizations-iam-app/issues/92).
+
 ### Version 0.9.6
 
 **Date:** 2026-09-15
