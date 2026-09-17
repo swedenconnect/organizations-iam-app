@@ -37,6 +37,7 @@
     <module>plugin-distribution</module>
     <!-- Assembles the realm administration scripts into a ZIP of their own. -->
     <module>scripts</module>
+    <module>idp-user-matcher</module>
   </modules>
 
   <dependencyManagement>
