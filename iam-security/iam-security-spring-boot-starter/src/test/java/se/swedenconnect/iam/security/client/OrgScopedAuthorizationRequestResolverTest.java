@@ -55,7 +55,7 @@ class OrgScopedAuthorizationRequestResolverTest {
 
   @Test
   void orgAndFunctionPlaceholders_resolved() {
-    this.clientContext.setOrg("5590026042");
+    this.clientContext.setOrg("2021006883");
     this.clientContext.setFunction("demo");
 
     final HttpServletRequest request = mock(HttpServletRequest.class);
@@ -65,12 +65,12 @@ class OrgScopedAuthorizationRequestResolverTest {
     final OAuth2AuthorizationRequest result = this.createResolver().resolve(request);
 
     assertThat(result).isNotNull();
-    assertThat(result.getScopes()).containsExactly("5590026042:demo:read");
+    assertThat(result.getScopes()).containsExactly("2021006883:demo:read");
   }
 
   @Test
   void functionFallsBackToProperty() {
-    this.clientContext.setOrg("5590026042");
+    this.clientContext.setOrg("2021006883");
     this.properties.setFunction("demo");
 
     final HttpServletRequest request = mock(HttpServletRequest.class);
@@ -80,7 +80,7 @@ class OrgScopedAuthorizationRequestResolverTest {
     final OAuth2AuthorizationRequest result = this.createResolver().resolve(request);
 
     assertThat(result).isNotNull();
-    assertThat(result.getScopes()).containsExactly("5590026042:demo:read");
+    assertThat(result.getScopes()).containsExactly("2021006883:demo:read");
   }
 
   @Test

@@ -18,6 +18,7 @@ package se.swedenconnect.iam.admin.controllers;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -31,6 +32,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import se.swedenconnect.iam.admin.config.IamAdminProperties;
 import se.swedenconnect.iam.admin.controllers.dto.CreateUserRequest;
 import se.swedenconnect.iam.admin.controllers.dto.UpdateUserRequest;
 import se.swedenconnect.iam.admin.controllers.dto.UserPageResponse;
@@ -44,9 +46,12 @@ import se.swedenconnect.iam.admin.keycloak.model.UserInfo;
 import se.swedenconnect.iam.admin.keycloak.model.UserRight;
 
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.regex.Pattern;
 
 /**
  * REST controller for user management operations.
@@ -64,7 +69,12 @@ public class UserController {
 
   private final KeycloakAdminClient keycloakAdminClient;
 
+  private final IamAdminProperties properties;
+
   private static final int DEFAULT_PAGE_SIZE = 50;
+
+  /** Pattern for an organizational affiliation: a local part, a single '@' and 10 digits. */
+  private static final Pattern ORG_AFFILIATION_PATTERN = Pattern.compile("^[^@\\s]+@\\d{10}$");
 
   /**
    * Returns a paginated list of users.
@@ -151,10 +161,16 @@ public class UserController {
   /**
    * Creates a new user in Keycloak.
    *
+   * <p>What the request may carry is decided by {@code iam.admin.user-registration}. A value for
+   * a setting that is turned off is ignored: the user ID unless {@code allow-select-user-id} is
+   * set, the temporary password unless {@code allow-temporary-password} is set, and an eID
+   * attribute unless the setting enabling it is set.</p>
+   *
    * @param req     the request body
    * @param request the HTTP servlet request
    * @return 201 Created with the created user, 400 on invalid input, 403 if not authenticated,
-   *         409 if a user with the same personal identity number already exists
+   *         409 if the user ID is taken, or if a user with the same personal identity number or
+   *         organizational affiliation already exists
    */
   @PostMapping(value = "/users",
       consumes = MediaType.APPLICATION_JSON_VALUE,
@@ -169,38 +185,75 @@ public class UserController {
       return ResponseEntity.status(403).build();
     }
 
+    final IamAdminProperties.UserRegistration settings = this.properties.getUserRegistration();
+
     final String name = req.name();
     final String email = req.email();
-    final String pin = req.personalIdentityNumber();
     final String phoneNumber = req.phoneNumber();
+    final String selectedUserId = settings.isAllowSelectUserId() ? trimToNull(req.userId()) : null;
+    final String temporaryPassword =
+        settings.isAllowTemporaryPassword() ? trimToNull(req.temporaryPassword()) : null;
+    final String pin = settings.isPersonalNumberEnabled() ? trimToNull(req.personalIdentityNumber()) : null;
+    final String orgAffiliation =
+        settings.isOrgAffiliationEnabled() ? trimToNull(req.orgAffiliation()) : null;
+    // TODO: hsaId and efosId are picked up here when those eID attributes are implemented.
 
     if (name == null || name.isBlank()) {
       return ResponseEntity.badRequest().body("name must not be blank");
     }
-    if (pin == null || !pin.matches("^\\d{12}$")) {
+    if (pin != null && !pin.matches("^\\d{12}$")) {
       return ResponseEntity.badRequest().body("personalIdentityNumber must be exactly 12 digits");
+    }
+    if (orgAffiliation != null && !ORG_AFFILIATION_PATTERN.matcher(orgAffiliation).matches()) {
+      return ResponseEntity.badRequest()
+          .body("orgAffiliation must be on the format userID@organization-number");
     }
     if (email != null && !email.isBlank() && !email.contains("@")) {
       return ResponseEntity.badRequest().body("email is not valid");
     }
-
-    final java.util.Optional<String> existingUserId =
-        this.keycloakAdminClient.findUserIdByPersonalIdentityNumber(pin);
-    if (existingUserId.isPresent()) {
-      log.info("POST /api/users — rejected: user with personalIdentityNumber '{}' already exists (id={})",
-          pin, existingUserId.get());
-      return ResponseEntity.status(409).body(Map.of("existingUserId", existingUserId.get()));
+    if (settings.isEidAttributeRequired() && pin == null && orgAffiliation == null) {
+      // TODO: hsaId and efosId also satisfy this requirement when they are implemented.
+      log.info("POST /api/users — rejected: no eID attribute given for user '{}'", name);
+      return ResponseEntity.badRequest().body("at least one eID attribute must be given");
     }
 
-    final String userId = this.keycloakAdminClient.createUser(name, email, pin, phoneNumber);
+    if (selectedUserId != null && this.keycloakAdminClient.usernameExists(selectedUserId)) {
+      log.info("POST /api/users — rejected: user ID '{}' is already taken", selectedUserId);
+      return ResponseEntity.status(409).body(Map.of("reason", "USER_ID_TAKEN"));
+    }
+
+    if (pin != null) {
+      final Optional<String> existingUserId =
+          this.keycloakAdminClient.findUserIdByPersonalIdentityNumber(pin);
+      if (existingUserId.isPresent()) {
+        log.info("POST /api/users — rejected: user with personalIdentityNumber '{}' already exists (id={})",
+            pin, existingUserId.get());
+        return ResponseEntity.status(409).body(Map.of("existingUserId", existingUserId.get()));
+      }
+    }
+    if (orgAffiliation != null) {
+      final Optional<String> existingUserId =
+          this.keycloakAdminClient.findUserIdByOrgAffiliation(orgAffiliation);
+      if (existingUserId.isPresent()) {
+        log.info("POST /api/users — rejected: user with orgAffiliation '{}' already exists (id={})",
+            orgAffiliation, existingUserId.get());
+        return ResponseEntity.status(409).body(Map.of("existingUserId", existingUserId.get()));
+      }
+    }
+
+    final String userId = this.keycloakAdminClient.createUser(
+        selectedUserId, name, email, pin, orgAffiliation, phoneNumber, temporaryPassword);
     log.info("POST /api/users — user '{}' created with id '{}'", name, userId);
 
-    return ResponseEntity.status(201).body(Map.of(
-        "id", userId,
-        "name", name,
-        "email", email != null ? email : "",
-        "personalIdentityNumber", pin,
-        "phoneNumber", phoneNumber != null ? phoneNumber : ""));
+    final Map<String, String> body = new LinkedHashMap<>();
+    body.put("id", userId);
+    body.put("name", name);
+    body.put("email", email != null ? email : "");
+    body.put("userId", selectedUserId != null ? selectedUserId : "");
+    body.put("personalIdentityNumber", pin != null ? pin : "");
+    body.put("orgAffiliation", orgAffiliation != null ? orgAffiliation : "");
+    body.put("phoneNumber", phoneNumber != null ? phoneNumber : "");
+    return ResponseEntity.status(201).body(body);
   }
 
   /**
@@ -235,6 +288,7 @@ public class UserController {
               "name", name,
               "email", u.email() != null ? u.email() : "",
               "personalIdentityNumber", u.personalIdentityNumber() != null ? u.personalIdentityNumber() : "",
+              "orgAffiliation", u.orgAffiliation() != null ? u.orgAffiliation() : "",
               "phoneNumber", u.phoneNumber() != null ? u.phoneNumber() : ""));
         })
         .orElseGet(() -> {
@@ -304,6 +358,7 @@ public class UserController {
                 "name", resolvedName,
                 "email", u.email() != null ? u.email() : "",
                 "personalIdentityNumber", u.personalIdentityNumber() != null ? u.personalIdentityNumber() : "",
+                "orgAffiliation", u.orgAffiliation() != null ? u.orgAffiliation() : "",
                 "phoneNumber", u.phoneNumber() != null ? u.phoneNumber() : ""));
           })
           .orElse(ResponseEntity.notFound().build());
@@ -399,9 +454,24 @@ public class UserController {
         u.lastName(),
         u.email(),
         u.personalIdentityNumber(),
+        u.orgAffiliation(),
         u.phoneNumber(),
         u.superuser(),
         rightResponses);
+  }
+
+  /**
+   * Returns the trimmed value, or {@code null} if the value is {@code null} or blank.
+   *
+   * @param value the value to trim
+   * @return the trimmed value or {@code null}
+   */
+  private static @Nullable String trimToNull(final @Nullable String value) {
+    if (value == null) {
+      return null;
+    }
+    final String trimmed = value.trim();
+    return trimmed.isEmpty() ? null : trimmed;
   }
 
   private static String getCurrentUserId() {

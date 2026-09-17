@@ -53,7 +53,7 @@ public record OrgRightsClaim(boolean superuser, @NonNull List<OrgEntry> orgEntri
    */
   public @NonNull List<Organization> organizations() {
     return this.orgEntries.stream()
-        .map(e -> new Organization(e.orgIdentifier(), e.name(), e.orgLevelRight()))
+        .map(e -> new Organization(e.orgIdentifier(), e.legalName(), e.name(), e.orgLevelRight()))
         .toList();
   }
 
@@ -65,13 +65,18 @@ public record OrgRightsClaim(boolean superuser, @NonNull List<OrgEntry> orgEntri
    * function. It is {@code null} when the user's rights in this organization are all
    * function-level.</p>
    *
+   * <p>See {@link OrgEntry} for how {@code legalName} and {@code name} relate.</p>
+   *
    * @param orgIdentifier the organization identifier
-   * @param name the localized name of the organization
+   * @param legalName the organization's registered legal name, from the
+   *     {@code organization_legal_name} claim member; always present
+   * @param name the localized display names of the organization
    * @param orgLevelRight the right granted at the organization level ({@code admin}, {@code write}
    *     or {@code read}), or {@code null} if the user holds no org-level right
    */
   public record Organization(
       @NonNull OrganizationID orgIdentifier,
+      @NonNull String legalName,
       @NonNull LocalizedString name,
       @Nullable String orgLevelRight) {
   }
@@ -90,14 +95,31 @@ public record OrgRightsClaim(boolean superuser, @NonNull List<OrgEntry> orgEntri
    * <p>{@link #functions()} may be empty while {@code orgLevelRight} is set — that is an
    * organization with no attached functions, which consumers must handle without error.</p>
    *
+   * <h2>Names</h2>
+   *
+   * <p>{@code legalName} is the organization's name as registered at Bolagsverket, taken from the
+   * {@code organization_legal_name} claim member. It is always present and is <strong>the correct
+   * way to read the registered name</strong>.</p>
+   *
+   * <p>{@code name} holds the optional Swedish and English <em>display</em> names, collected from
+   * the {@code organization_name#*} claim members. Read it when a name is to be shown for a given
+   * language; it falls back to the legal name on its own, because the claim also carries the legal
+   * name under the untagged {@code organization_name} member, which lands in {@code name} under the
+   * no-language key. That untagged entry is a duplicate kept for backwards compatibility and must
+   * not be relied on: use {@code legalName} when the registered name is what is wanted.</p>
+   *
    * @param orgIdentifier the organization identifier
-   * @param name the localized name of the organization
+   * @param legalName the organization's registered legal name, from the
+   *     {@code organization_legal_name} claim member; always present
+   * @param name the localized display names of the organization, with the legal name as the
+   *     no-language fallback
    * @param orgLevelRight the right granted at the organization level ({@code admin}, {@code write}
    *     or {@code read}), or {@code null} if the user holds no org-level right
    * @param functions the list of function-right entries for this organization
    */
   public record OrgEntry(
       @NonNull OrganizationID orgIdentifier,
+      @NonNull String legalName,
       @NonNull LocalizedString name,
       @Nullable String orgLevelRight,
       @NonNull List<FunctionEntry> functions) {

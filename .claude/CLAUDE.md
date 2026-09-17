@@ -71,7 +71,7 @@ Start the stack with Docker Compose:
 docker compose -f compose/docker-compose.yml up -d keycloak
 ```
 
-Bootstrap the Keycloak realm after first start — see `compose/README.md` for the full step-by-step.
+Bootstrap the Keycloak realm after first start, see `docs/local-environment.md` for the full step-by-step.
 
 ## Module Architecture
 
@@ -126,6 +126,68 @@ The starter supports two authority modes controlled by `iam.security.function`:
 - **Multi-function** (no property set): authorities are `{orgId}:{functionId}:{right}`, type `OrganizationalAuthority`. Used by the admin app.
 - **Function-scoped** (`iam.security.function=demo`): authorities are `{orgId}:{right}`, type `FunctionScopedAuthority`. Used by single-function apps like the demo.
 - **Superuser**: single authority `ROLE_SUPERUSER` when the `org_rights` claim contains `{"superuser": true}`.
+
+### Managed clients
+
+A managed client is a Keycloak client carrying `iam_admin_managed=true`, and that attribute is
+the only thing that makes it managed. `client_functions` is the complete list of functions it receives
+artifacts for — an empty or absent attribute means **no** functions, never all of them. Functions are optional when
+registering a client; one with none is inert until they are assigned.
+
+The `org-rights-mapper`'s `id.token.claim` / `access.token.claim` say where `org_rights` is
+emitted; both are settable on create and update, from the form as well as the API.
+
+Service accounts are **script-only**. `iam_admin_service_account` records whether a client
+keeps one. Keycloak enables `serviceAccountsEnabled` and creates the service account user by
+itself for every client with Authorization Services on, so neither the flag nor the user's
+existence is a signal — for a client without the attribute, the check is whether its service
+account user holds `realm-management` roles (`hasAdminRoleMappings`). `ClientController` never creates, attaches or
+removes a service account: create passes `false`, update passes the client's existing value
+through, and delete refuses a client holding one with a `409`. The GUI shows it as a pill and
+disables the delete button.
+
+`iam_admin_all_functions=true` marks a client that handles **every** function, including the
+ones not created yet. It is script-only (`add-iam-admin-app.sh`), and the IAM Admin App
+itself is what it exists for: its `/iam-api` is a resource server for every function.
+`ManagedClientInfo.handles()` returns true for everything on such a client, so
+reconciliation covers every org/function pair and prunes none. Its `client_functions` is
+*also* kept materialized: `resource-aud-plugin` reads the raw attribute inside Keycloak and
+cannot see the marker. `FunctionController.createFunction` appends each new function via
+`KeycloakAdminClient.materializeAllFunctions`; a failure there is a WARN, not a failed
+request. `writeClientSettings` leaves `client_functions` alone on a marked client, so an
+edit through the form or the API cannot clobber it.
+
+In Keycloak everything registered is a **client**, whichever role it plays, so the markers
+separate administration from role:
+
+- `iam_admin_managed=true` says the app **administers** this client. Set on every client the
+  app administers, resource servers included. It says nothing about role.
+- `iam_admin_oidc_client=true` is the **OIDC client** role: requests tokens, takes the
+  confidential/`client-jwt`/authz-services shape, is reconciled.
+- `iam_admin_resource_server=true` is the **resource server** role: may be named in the OAuth2
+  `resource` parameter, needs no client settings, holds no artifacts.
+
+Both roles may be set on one client. `resolveIamAdminManagedClients()` returns clients holding
+the OIDC client role; `resolveAdministeredClients()` returns everything administered.
+`ManagedClientInfo.reconcilable()` is the check to use before reconciling.
+
+`iam_admin_managed` used to carry the OIDC client role itself, so `resolveOidcClientRole()`
+falls back to it when `iam_admin_oidc_client` is **absent**. The role attribute is therefore
+always written explicitly, `"true"` or `"false"`, never removed: absence is what identifies an
+unmigrated client. The fallback ignores `iam_admin_resource_server` on purpose, because a
+legacy client carrying both markers was an OIDC client and a resource server, and reading the
+resource server marker as evidence against the OIDC role would strip it of every artifact.
+`ClientRoleResolutionTest` pins every legacy and current combination.
+
+`ClientReconciliationService` creates whatever a managed client is missing — realm client
+scopes, authz scopes, `policy-{org}-{func}-{level}`, `permission-{org}-{func}-{level}`, and
+the optional client scope bindings. It runs on client create/update, on function
+attach/detach, on demand via `/api/clients/reconcile`, and optionally on a cron schedule.
+Artifacts for functions a client no longer handles are removed on every run.
+
+Artifact names are produced by `KeycloakAdminClient.scopeName` / `policyName` /
+`permissionName` — creation and removal must always go through them, never through inline
+string concatenation.
 
 ### Client authentication
 
@@ -242,8 +304,23 @@ iam:
     admin-api-base: https://.../admin/realms/orgiam
     theme: digg
     theme-dir:                 # Optional external theme directory
-    authz-client-ids: []       # Fallback list of managed client IDs
-    pnr-userids: false         # Use personal identity number as Keycloak username
+    pnr-userids: false         # Deprecated; maps onto user-registration.allow-select-user-id
     allow-function-removal: false
     allow-org-rights: true
+    allow-admin-assigning-admin: false   # When false, only a superuser may grant/remove `admin`
+    user-registration:
+      allow-select-user-id: false      # Admin assigns the Keycloak user ID; otherwise a random UUID
+      allow-temporary-password: false  # Initial password, changed at first login. Needs the setting above
+      eid-attribute-required: true     # At least one enabled eID attribute must be given
+      personal-number-enabled: true
+      hsa-id-enabled: false            # Rendered but disabled; not implemented yet
+      org-affiliation-enabled: false   # userID@organization-number
+      efos-id-enabled: false           # Rendered but disabled; not implemented yet
+    client-reconciliation:
+      enabled: false           # Scheduled drift repair for managed clients
+      cron: "0 */15 * * * *"
 ```
+
+## General
+
+Never use em-dashes in written documentation!

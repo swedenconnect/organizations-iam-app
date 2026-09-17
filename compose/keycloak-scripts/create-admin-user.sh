@@ -14,65 +14,51 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+# create-admin-user.sh
+#
+# Convenience wrapper for the local Docker Compose environment. It calls
+# keycloak/scripts/create-admin-user.sh, the single implementation of this script, with the
+# compose Keycloak URL and its CA certificate already supplied. Every other argument is
+# passed through unchanged.
+#
+# Requires curl and python3 on the host, since the script runs here rather than inside a
+# container.
+#
+# Against any other Keycloak, call keycloak/scripts/create-admin-user.sh directly.
 
 set -euo pipefail
 
-REALM=""
-USERNAME=""
-PASSWORD=""
-NEW_USERNAME=""
-NEW_PASSWORD=""
-EMAIL=""
+# The URL the compose Keycloak is published on, and the certificate it serves.
+KC_URL="https://local.dev.swedenconnect.se:17000"
 
-usage() {
-  echo "Usage: $0 --realm <realm> --username <admin-username> --password <admin-password>" >&2
-  echo "          --new-username <username> --new-password <password> [--email <email>]" >&2
-  exit 1
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --help|-h)
-      cat <<EOF
-Create a user in the specified Keycloak realm and assign the superuser role.
+TARGET="${REPO_ROOT}/keycloak/scripts/create-admin-user.sh"
+CACERT="${REPO_ROOT}/compose/config/common/tls.crt"
+
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  cat <<EOF
+Create a user in the given realm and assign the superuser role.
+
+Runs against the compose Keycloak at ${KC_URL}.
 
 Usage: $0 --realm <realm> --username <admin-username> --password <admin-password>
           --new-username <username> --new-password <password> [--email <email>]
 
 Options:
-  --realm <realm>              Keycloak realm name
-  --username <username>        Admin username for Keycloak master realm
-  --password <password>        Admin password for Keycloak master realm
-  --new-username <username>    Username for the new user
-  --new-password <password>    Password for the new user
-  --email <email>              Email address for the new user (optional)
-  --help, -h                   Show this help message
+  --realm <realm>            Keycloak realm name
+  --username <username>      Admin username for the Keycloak master realm
+  --password <password>      Admin password for the Keycloak master realm
+  --new-username <username>  Username for the new user
+  --new-password <password>  Password for the new user
+  --email <email>            Email address for the new user (optional)
+  --help, -h                 Show this help message
 EOF
-      exit 0
-      ;;
-    --realm)        REALM="$2";        shift 2 ;;
-    --username)     USERNAME="$2";     shift 2 ;;
-    --password)     PASSWORD="$2";     shift 2 ;;
-    --new-username) NEW_USERNAME="$2"; shift 2 ;;
-    --new-password) NEW_PASSWORD="$2"; shift 2 ;;
-    --email)        EMAIL="$2";        shift 2 ;;
-    *) echo "Unknown option: $1" >&2; usage ;;
-  esac
-done
-
-if [ -z "${REALM}" ] || [ -z "${USERNAME}" ] || [ -z "${PASSWORD}" ] \
-    || [ -z "${NEW_USERNAME}" ] || [ -z "${NEW_PASSWORD}" ]; then
-  echo "Error: --realm, --username, --password, --new-username and --new-password are required." >&2
-  usage
+  exit 0
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMPOSE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+[ -x "${TARGET}" ] || { echo "ERROR: ${TARGET} not found or not executable." >&2; exit 1; }
+[ -r "${CACERT}" ] || { echo "ERROR: CA certificate ${CACERT} not readable." >&2; exit 1; }
 
-ARGS=("${REALM}" "${USERNAME}" "${PASSWORD}" "${NEW_USERNAME}" "${NEW_PASSWORD}")
-if [ -n "${EMAIL}" ]; then
-  ARGS+=("${EMAIL}")
-fi
-
-docker compose -f "${COMPOSE_DIR}/docker-compose.yml" run --rm keycloak-setup \
-  /scripts/create-admin-user.sh "${ARGS[@]}"
+exec "${TARGET}" --url "${KC_URL}" --cacert "${CACERT}" "$@"

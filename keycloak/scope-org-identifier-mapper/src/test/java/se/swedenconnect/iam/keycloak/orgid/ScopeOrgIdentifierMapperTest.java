@@ -59,32 +59,32 @@ class ScopeOrgIdentifierMapperTest {
 
   @Test
   void setClaim_matchingScope_setsOrgIdentifier() {
-    when(clientSessionCtx.getScopeString(false)).thenReturn("5590026042:walletreg:write");
+    when(clientSessionCtx.getScopeString(false)).thenReturn("2021006883:walletreg:write");
 
     final IDToken token = new IDToken();
     mapper.setClaim(token, mappingModel, userSession, keycloakSession, clientSessionCtx);
 
-    assertEquals("5590026042", token.getOtherClaims().get(ScopeOrgIdentifierMapper.CLAIM_NAME));
+    assertEquals("2021006883", token.getOtherClaims().get(ScopeOrgIdentifierMapper.CLAIM_NAME));
   }
 
   @Test
   void setClaim_multipleScopes_firstMatchWins() {
-    when(clientSessionCtx.getScopeString(false)).thenReturn("openid 5590026042:walletreg:write");
+    when(clientSessionCtx.getScopeString(false)).thenReturn("openid 2021006883:walletreg:write");
 
     final IDToken token = new IDToken();
     mapper.setClaim(token, mappingModel, userSession, keycloakSession, clientSessionCtx);
 
-    assertEquals("5590026042", token.getOtherClaims().get(ScopeOrgIdentifierMapper.CLAIM_NAME));
+    assertEquals("2021006883", token.getOtherClaims().get(ScopeOrgIdentifierMapper.CLAIM_NAME));
   }
 
   @Test
   void setClaim_multipleOrgScopes_firstOrgWins() {
-    when(clientSessionCtx.getScopeString(false)).thenReturn("5590026042:walletreg:read 5561234567:demo:write");
+    when(clientSessionCtx.getScopeString(false)).thenReturn("2021006883:walletreg:read 5561234567:demo:write");
 
     final IDToken token = new IDToken();
     mapper.setClaim(token, mappingModel, userSession, keycloakSession, clientSessionCtx);
 
-    assertEquals("5590026042", token.getOtherClaims().get(ScopeOrgIdentifierMapper.CLAIM_NAME));
+    assertEquals("2021006883", token.getOtherClaims().get(ScopeOrgIdentifierMapper.CLAIM_NAME));
   }
 
   @Test

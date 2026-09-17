@@ -57,7 +57,13 @@ The system supports the following requirements:
   Keycloak enforces entitlement at token issuance time.
 - Swedish personal identity numbers are used as a user attribute and identity claim, following the
   [Claims and Scopes Specification for the Swedish OpenID Connect Profile](https://www.oidc.se/specifications/swedish-oidc-claims-specification-1_0.html).
-  Usernames are assigned by Keycloak as UUIDs and carry no semantic meaning.
+  An organizational affiliation (`userID@organization-number`) may be recorded instead of, or in
+  addition to, the personal identity number, and is released together with the organization name
+  and number as the organizational identity claims of the same specification. Which attributes
+  are collected when a user is registered, and whether at least one of them is required, is
+  configured per deployment. See [IAM Admin Configuration](iam-admin-configuration.md).
+- Usernames are random UUIDs carrying no semantic meaning, unless the deployment lets the
+  administrator assign the user ID.
 
 ---
 
@@ -83,8 +89,13 @@ display names are stored as group attributes `name#sv` and `name#en`.
 ### 2.2. Organizations
 
 An **organization** is identified uniquely by its `organization_identifier`, which is a
-ten-digit Swedish organizational number (no dash, e.g. `5590026042`). The organization's
-names (Swedish and English) are stored as metadata attributes.
+ten-digit Swedish organizational number (no dash, e.g. `2021006883`).
+
+An organization carries two distinct kinds of name. Its **legal name** is the name it is
+registered under at Bolagsverket. It is a plain string with no language, it is mandatory, and it is
+the authoritative identification of the organization. Its **display names**, in Swedish and English,
+exist for presentation only and are optional, independently of each other. Where no display name is
+set for the wanted language, the legal name is shown instead.
 
 An organization may have one or more functions attached to it, meaning the organization
 participates in that function's domain (for example, has signed an agreement to join a
@@ -109,8 +120,8 @@ scope is requested.
 **Superusers** are a special category. A superuser is assigned the `superuser` realm role
 and has full administrative access to all organizations, functions, and users. Superusers
 are typically internal system administrators and are not required to provide a personal
-identity number. The `personalIdentityNumber` attribute is therefore optional for superuser
-accounts.
+identity number. The `personalIdentityNumber` attribute is optional for every account, and
+always absent for superuser accounts.
 
 **In OIDC flows**, the personal identity number claim is released only when the requesting
 client includes the scope `https://id.oidc.se/scope/naturalPersonNumber`. This governs
@@ -158,6 +169,21 @@ for that function.
 A special `superuser` role exists at the realm level. A user holding this role can administer
 all organizations, all functions, and all users, regardless of group memberships.
 
+#### Who may grant the `admin` right
+
+Whether an organization admin or a function admin may manage the `admin` right within the scope
+they administer is not fixed by the model. A deployment may permit it, or restrict it so that only
+a superuser can grant, remove or downgrade `admin`. Both positions are legitimate.
+
+Where it is restricted, an admin works with `read` and `write` only: they cannot make another user
+an admin, they cannot remove an existing admin, and they cannot lower an existing admin to a lesser
+right. It follows that the admin population of an organization or a function does not change
+without a superuser. Combined with the rule that the last admin of a scope cannot be removed, an
+organization whose only admin is not a superuser keeps exactly that one admin until a superuser
+intervenes.
+
+Superusers are unaffected either way.
+
 <a name="group-structure"></a>
 
 ### 2.5. Group Structure
@@ -167,7 +193,7 @@ than `superuser`. Rights are determined entirely by which group a user is a memb
 
 ```
 orgs/
-  <organization_identifier>/         e.g. 5590026042
+  <organization_identifier>/         e.g. 2021006883
     _admin/                           org-level admin right
     _write/                           org-level write right
     _read/                            org-level read right
@@ -183,19 +209,20 @@ functions/
 
 **Organization group attributes:**
 
-| Attribute                 | Description                                           | Example                                                    |
-|---------------------------|-------------------------------------------------------|------------------------------------------------------------|
-| `organization_identifier` | Ten-digit org number, no dash                         | `5590026042`                                               |
-| `organization_name#sv`    | Organization name in Swedish                          | `Litsec AB`                                                |
-| `organization_name#en`    | Organization name in English                          | `Litsec AB`                                                |
-| `contact_info`            | JSON object with optional contact details (see below) | `{"email":"info@litsec.se","phone_number":"+46701234567"}` |
+| Attribute                 | Description                                            | Example                                                  |
+|---------------------------|--------------------------------------------------------|----------------------------------------------------------|
+| `organization_identifier` | Ten-digit org number, no dash                          | `2021006883`                                             |
+| `organization_name`       | Registered legal name. No language tag. Always present | `Myndigheten för Digital förvaltning`                    |
+| `organization_name#sv`    | Optional display name in Swedish. Absent when not set  | `Digg - Myndigheten för Digital förvaltning`             |
+| `organization_name#en`    | Optional display name in English. Absent when not set  | `Digg - Authority for Digital Government`                |
+| `contact_info`            | JSON object with optional contact details (see below)  | `{"email":"info@digg.se","phone_number":"+46701234567"}` |
 
 The `contact_info` attribute is a single-element list containing a compact JSON string with
 the following optional members:
 
 | Member         | Description                                                         | Example          |
 |----------------|---------------------------------------------------------------------|------------------|
-| `email`        | Contact email address for the organization                          | `info@litsec.se` |
+| `email`        | Contact email address for the organization                          | `info@digg.se`   |
 | `phone_number` | Contact phone number (E.164-style, digits and optional leading `+`) | `+46701234567`   |
 
 Both members are optional. The attribute may be absent entirely if neither is set. It is
@@ -235,17 +262,19 @@ structured description of all rights held by the authenticated user.
 ```json
 "org_rights": [
 {
-"organization_identifier": "5590026042",
-"organization_name#sv": "Litsec AB",
-"organization_name#en": "Litsec AB",
+"organization_identifier": "2021006883",
+"organization_legal_name": "Myndigheten för Digital förvaltning",
+"organization_name": "Myndigheten för Digital förvaltning",
+"organization_name#sv": "Digg - Myndigheten för Digital förvaltning",
+"organization_name#en": "Digg - Authority for Digital Government",
 "functions": [
 {"function": "demo", "right": "write"}
 ]
 },
 {
 "organization_identifier": "5561234567",
-"organization_name#sv": "Exempel AB",
-"organization_name#en": "Example Corp",
+"organization_legal_name": "Exempel Aktiebolag",
+"organization_name": "Exempel Aktiebolag",
 "org_level_right": "admin",
 "functions": [
 {"function": "walletreg", "right": "admin"},
@@ -262,6 +291,14 @@ attached function, so consumers never have to resolve the attachment set themsel
 example above the user was granted `admin` at the organization level of `5561234567`, and
 `walletreg` and `eidas` are the two functions attached to it.
 
+**Names in the claim.** `organization_legal_name` is always present and is what to read when the
+registered name is wanted. `organization_name`, without a language tag, repeats the same value and
+exists only for backwards compatibility, so that a consumer resolving a name across the
+`organization_name*` members still finds something when no display name is set; it must not be
+relied on. `organization_name#sv` and `organization_name#en` are the optional display names and are
+emitted only when set. To show a name for a given language, take the display name for that language,
+then the display name in the other language, then `organization_legal_name`.
+
 **`org_level_right` is provenance only — it confers no access.** It records *how* a right was
 granted (`admin`, `write` or `read` at the organization level) and is absent when the user
 holds no org-level right. Effective rights come exclusively from the `functions` array.
@@ -276,9 +313,11 @@ yields, for an organization with `demo` and `walletreg` attached:
 
 ```json
 {
-  "organization_identifier": "5590026042",
-  "organization_name#sv": "Litsec AB",
-  "organization_name#en": "Litsec AB",
+  "organization_identifier": "2021006883",
+  "organization_legal_name": "Myndigheten för Digital förvaltning",
+  "organization_name": "Myndigheten för Digital förvaltning",
+  "organization_name#sv": "Digg - Myndigheten för Digital förvaltning",
+  "organization_name#en": "Digg - Authority for Digital Government",
   "org_level_right": "read",
   "functions": [
     {
@@ -300,7 +339,7 @@ emitted; a consumer that nevertheless sees duplicates should take the highest.
 
 An organization with **no attached functions** produces an entry with `org_level_right` set
 and an empty `functions` array. The entry is deliberately kept so the organization remains
-enumerable (relying parties read `organization_name#*` off the claim to know which
+enumerable (relying parties read the organization's name off the claim to know which
 organizations to display), and the empty array correctly conveys that no function-level access
 follows. Consumers must handle an empty `functions` array without error.
 
@@ -333,23 +372,23 @@ Scope names follow the pattern:
 Examples:
 
 ```
-5590026042:demo:read
-5590026042:demo:write
-5590026042:demo:admin
+2021006883:demo:read
+2021006883:demo:write
+2021006883:demo:admin
 ```
 
-**Entitlement evaluation** (what qualifies for `5590026042:demo:read`):
+**Entitlement evaluation** (what qualifies for `2021006883:demo:read`):
 
 Keycloak checks whether the user is a member of **any one** of the following groups,
 or holds the `superuser` realm role:
 
 ```
-orgs/5590026042/_read
-orgs/5590026042/_write
-orgs/5590026042/_admin
-orgs/5590026042/demo/_read
-orgs/5590026042/demo/_write
-orgs/5590026042/demo/_admin
+orgs/2021006883/_read
+orgs/2021006883/_write
+orgs/2021006883/_admin
+orgs/2021006883/demo/_read
+orgs/2021006883/demo/_write
+orgs/2021006883/demo/_admin
 ```
 
 The general rule is:
@@ -363,20 +402,61 @@ an organization. The admin application is responsible for creating the three sco
 (`:<function>:read`, `:<function>:write`, `:<function>:admin`) and the corresponding
 Authorization Services policies at that time.
 
+**Where entitlement is enforced.** Keycloak grants an optional client scope to any user who
+asks for it, and it does *not* consult the Authorization Services scope permissions during
+standard token issuance — those are only evaluated by the `uma-ticket` grant and the policy
+evaluation API. Entitlement is therefore enforced by the `resource-function-executor` Client
+Policy executor shipped in the resource-aud plugin. On every token request the executor reads
+the requested scopes, resolves the user from the authorization code's session, and rejects the
+request with
+
+```
+error=invalid_scope
+```
+
+if the user holds none of the qualifying groups listed above for one of the requested scopes.
+The `superuser` realm role bypasses the check.
+
+The check reads the user's **live group memberships**, not a claim, so a right revoked after
+login takes effect on the next token request. It applies to the authorization code grant only:
+a service account token (`client_credentials`) is issued to the client rather than to a user
+and carries no organizational entitlement to check, and a refresh token continues to carry the
+scopes granted when it was issued until it expires.
+
+The group policies and scope permissions that reconciliation creates alongside the scopes are
+not consulted at token issuance. They exist for admin-side policy evaluation.
+
 The OAuth 2.0 `resource` parameter (RFC 8707) is used by clients to bind access tokens to a
-specific API (resource server). When the resource-aud plugin is deployed, the `aud` claim
-in the access token is set to a multi-valued array:
+specific API (resource server). When the resource-aud plugin is deployed, and only when the
+`resource` parameter is present, the `aud` claim in the access token is set to a multi-valued
+array. The shape depends on whether the resource server declares `client_functions`:
 
-- If the `resource` parameter is present: `aud` = `[resource_server_client_id, function]`
-- If the `resource` parameter is absent: `aud` = `[function]`
+- **`resource` present, resource server has `client_functions`** (single-function mode):
+  `aud` = `[resource_server_client_id, function]`, where the function is taken from the first
+  org-scoped scope.
+- **`resource` present, resource server has no `client_functions`** (multi-function mode):
+  `aud` = `[resource_server_client_id, func1, func2, ...]`, one entry per distinct function in
+  the granted scopes.
+- **`resource` absent**: the `aud` claim is **not modified** at all, and Keycloak's default
+  audience is preserved.
 
-The function identifier is extracted from the granted scope (`{org}:{function}:{right}`).
+The function identifiers are extracted from the granted scopes (`{org}:{function}:{right}`).
 
 The plugin also validates that the resource server indicated by the `resource` parameter
 supports the requested function. Each resource server client can declare its supported
 functions via the `client_functions` attribute (see the Keycloak Setup document). If the
 resource server does not support the requested function, the token request is rejected with an
 `invalid_target` error.
+
+The same attribute governs which functions a **managed client** receives scopes, policies and
+permissions for, and there it is the complete list — a client declaring no functions receives
+nothing, rather than everything. See
+[Managed Clients and Reconciliation](keycloak-setup.md#managed-clients-and-reconciliation).
+
+A client marked `iam_admin_all_functions=true` is the one exception: it handles every function,
+including the ones not created yet, and the admin application keeps its `client_functions` up to
+date accordingly. The IAM admin application's own client is registered that way, because its API
+serves every function.
 
 **The `organization_identifier` claim in access tokens:**
 
@@ -409,8 +489,17 @@ The RP receives an ID token containing:
 - Standard claims: `sub`, `name`, `given_name`, `family_name`
 - `https://id.oidc.se/claim/personalIdentityNumber` — when the scope
   `https://id.oidc.se/scope/naturalPersonNumber` is requested
+- `https://id.oidc.se/claim/orgAffiliation`, `https://id.oidc.se/claim/orgName` and
+  `https://id.oidc.se/claim/orgNumber` — when the scope
+  `https://id.oidc.se/scope/naturalPersonOrgId` is requested, and where the user carries those
+  attributes. The specification also defines `https://id.oidc.se/claim/orgUnit`, which this
+  system never writes
 - `org_rights` — a structured array describing the user's rights across all organizations
   and functions
+
+Both OIDC Sweden scopes are added as optional scopes on every client the IAM admin
+application registers, so a client asks for the identity claims it needs and gets nothing it
+did not ask for.
 
 The RP uses `org_rights` to determine which organizations and functions the user may act on,
 and what level of access they hold. The RP must not grant access beyond what the claim
@@ -450,14 +539,14 @@ client when calling the Demo Service (`https://local.dev.swedenconnect.se:16995`
 GET /realms/orgiam/protocol/openid-connect/auth
   ?client_id=https://local.dev.swedenconnect.se:16990
   &response_type=code
-  &scope=5590026042%3Ademo%3Awrite
+  &scope=2021006883%3Ademo%3Awrite
   &resource=https://local.dev.swedenconnect.se:16995
   &redirect_uri=https://local.dev.swedenconnect.se:16990/login/oauth2/code/*
   &state=...
 ```
 
 Keycloak evaluates whether the user is entitled to the requested scope at token issuance time.
-If the user does not hold a sufficient right on `demo` for organization `5590026042`,
+If the user does not hold a sufficient right on `demo` for organization `2021006883`,
 the token request is denied and no token is issued.
 
 The resulting access token will contain:
@@ -468,8 +557,8 @@ The resulting access token will contain:
     "https://local.dev.swedenconnect.se:16995",
     "demo"
   ],
-  "scope": "5590026042:demo:write",
-  "organization_identifier": "5590026042",
+  "scope": "2021006883:demo:write",
+  "organization_identifier": "2021006883",
   "https://id.oidc.se/claim/personalIdentityNumber": "196911292032",
   ...
 }

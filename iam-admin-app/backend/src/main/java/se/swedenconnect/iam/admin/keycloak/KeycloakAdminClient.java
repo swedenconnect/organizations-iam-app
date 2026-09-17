@@ -27,17 +27,19 @@ import org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.util.UriComponentsBuilder;
 import se.swedenconnect.iam.admin.config.IamAdminProperties;
+import se.swedenconnect.iam.admin.keycloak.model.ClientArtifactState;
 import se.swedenconnect.iam.admin.keycloak.model.FunctionInfo;
+import se.swedenconnect.iam.admin.keycloak.model.ManagedClientInfo;
 import se.swedenconnect.iam.admin.keycloak.model.OrganizationInfo;
 import se.swedenconnect.iam.admin.keycloak.model.RightsHolderEntry;
 import se.swedenconnect.iam.admin.keycloak.model.UserInfo;
 import se.swedenconnect.iam.admin.keycloak.model.UserRight;
 import se.swedenconnect.iam.commons.types.LocalizedString;
 
-import org.springframework.web.util.UriComponentsBuilder;
-
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -62,6 +64,7 @@ import java.util.concurrent.TimeUnit;
  * and refresh are handled automatically by the underlying {@code OAuth2AuthorizedClientService}.</p>
  *
  * @author Martin Lindström
+ * @author Felix Hellman
  */
 @Component
 @Slf4j
@@ -69,11 +72,61 @@ public class KeycloakAdminClient {
 
   private static final int PAGE_SIZE = 500;
 
+  /** The name of the protocol mapper emitting the {@code org_rights} claim. */
+  private static final String ORG_RIGHTS_MAPPER = "org-rights-mapper";
+
+  /**
+   * Records whether a service account user is wanted. Keycloak turns {@code serviceAccountsEnabled}
+   * back on by itself when Authorization Services are enabled, so the flag on the client cannot be
+   * read as the answer — the attribute carries the intent instead.
+   */
+  private static final String SERVICE_ACCOUNT_ATTRIBUTE = "iam_admin_service_account";
+
+  /**
+   * Marks a client as administered by this application, in either role. In Keycloak everything
+   * registered is a "client", so this says nothing about what the client does;
+   * {@link #OIDC_CLIENT_ATTRIBUTE} and {@link #RESOURCE_SERVER_ATTRIBUTE} carry the roles.
+   */
+  private static final String MANAGED_ATTRIBUTE = "iam_admin_managed";
+
+  /**
+   * The OIDC client role: logs users in, requests org-scoped tokens, and holds the artifacts
+   * reconciliation creates. See {@link #resolveOidcClientRole} for why it is never removed.
+   */
+  private static final String OIDC_CLIENT_ATTRIBUTE = "iam_admin_oidc_client";
+
+  /**
+   * The resource server role: may be named in the OAuth2 {@code resource} parameter, putting the
+   * client in the {@code aud} claim. Needs no client settings and holds no artifacts.
+   */
+  private static final String RESOURCE_SERVER_ATTRIBUTE = "iam_admin_resource_server";
+
+  /** Lists the functions a client handles. Comma-separated, and the complete list. */
+  private static final String CLIENT_FUNCTIONS_ATTRIBUTE = "client_functions";
+
+  /**
+   * Marks a client as handling every function in the realm, including the ones not created yet.
+   * Set by script only. The client's {@link #CLIENT_FUNCTIONS_ATTRIBUTE} is kept materialized to
+   * the functions that exist, because {@code resource-aud-plugin} reads that attribute inside
+   * Keycloak and cannot see this marker.
+   */
+  private static final String ALL_FUNCTIONS_ATTRIBUTE = "iam_admin_all_functions";
+
+  /**
+   * Organization group attribute holding the legal name, as registered at Bolagsverket. Untagged,
+   * because a legal name is not a localized value. Always written on create.
+   */
+  private static final String ORG_ATTR_NAME = "organization_name";
+
+  /** Organization group attribute holding the optional Swedish display name. */
+  private static final String ORG_ATTR_NAME_SV = "organization_name#sv";
+
+  /** Organization group attribute holding the optional English display name. */
+  private static final String ORG_ATTR_NAME_EN = "organization_name#en";
+
   private final RestClient restClient;
   private final OAuth2AuthorizedClientManager authorizedClientManager;
   private final String adminApiBase;
-  private final boolean pnrUserids;
-  private final IamAdminProperties properties;
   private CacheToken cacheToken;
 
   public KeycloakAdminClient(
@@ -83,8 +136,6 @@ public class KeycloakAdminClient {
 
     this.authorizedClientManager = authorizedClientManager;
     this.adminApiBase = properties.getAdminApiBase();
-    this.pnrUserids = properties.isPnrUserids();
-    this.properties = properties;
     this.restClient = restClientBuilder.build();
 
     log.debug("KeycloakAdminClient initialized — adminApiBase={}", this.adminApiBase);
@@ -626,6 +677,45 @@ public class KeycloakAdminClient {
         .toList();
   }
 
+  /**
+   * Resolves an organization's legal name from its group attributes.
+   *
+   * <p>Groups created before the legal name existed carry no untagged {@code organization_name}
+   * attribute. The Swedish display name is used then, falling back to the English one, and the fact
+   * is logged: a human has to enter the real registered name, and the derived value is deliberately
+   * not written back. A group carrying no name at all is malformed, and the organization identifier
+   * is used so that nothing downstream breaks.</p>
+   *
+   * @param legalNameAttr the value of the untagged {@code organization_name} attribute, or
+   *     {@code null} if absent
+   * @param displayName the display names read from the group, or {@code null} if none were set
+   * @param orgIdentifier the organization identifier, used in log messages and as last resort
+   * @return the legal name; never {@code null}
+   */
+  static @NonNull String resolveLegalName(
+      final @Nullable String legalNameAttr,
+      final @Nullable LocalizedString displayName,
+      final @NonNull String orgIdentifier) {
+
+    if (legalNameAttr != null && !legalNameAttr.isBlank()) {
+      return legalNameAttr;
+    }
+    if (displayName != null) {
+      final String sv = displayName.asMap().get("sv");
+      final String en = displayName.asMap().get("en");
+      final String derived = sv != null && !sv.isBlank() ? sv : en;
+      if (derived != null && !derived.isBlank()) {
+        log.warn("Organization '{}' has no '{}' attribute — its legal name has not been entered and "
+                + "needs to be updated; showing a display name in the meantime",
+            orgIdentifier, ORG_ATTR_NAME);
+        return derived;
+      }
+    }
+    log.error("Organization group '{}' carries no name at all — neither '{}' nor a display name; "
+        + "using the organization identifier as its name", orgIdentifier, ORG_ATTR_NAME);
+    return orgIdentifier;
+  }
+
   private @NonNull List<OrganizationInfo> mapOrgGroups(final @NonNull List<Map<String, Object>> orgGroups) {
     final List<OrganizationInfo> result = new ArrayList<>();
     for (final Map<String, Object> org : orgGroups) {
@@ -642,19 +732,26 @@ public class KeycloakAdminClient {
           .filter(name -> name != null && !name.startsWith("_"))
           .toList();
 
-      final LocalizedString orgName = new LocalizedString();
       @SuppressWarnings("unchecked")
       final Map<String, Object> orgAttrs =
           org.getOrDefault("attributes", Map.of()) instanceof final Map<?, ?> m
               ? (Map<String, Object>) m : Map.of();
+
+      // The untagged attribute is the legal name; the tagged ones are optional display names.
+      LocalizedString displayName = null;
       for (final Map.Entry<String, Object> attr : orgAttrs.entrySet()) {
-        if (attr.getKey().startsWith("organization_name")) {
+        if (attr.getKey().startsWith("organization_name#")) {
           final String val = getFirstListValue(attr.getValue());
-          if (val != null) {
-            orgName.addFromClaim(attr.getKey(), val);
+          if (val != null && !val.isBlank()) {
+            if (displayName == null) {
+              displayName = new LocalizedString();
+            }
+            displayName.addFromClaim(attr.getKey(), val);
           }
         }
       }
+      final String legalName = resolveLegalName(
+          getFirstListValue(orgAttrs.get(ORG_ATTR_NAME)), displayName, orgIdentifier);
 
       final String contactInfoJson = getFirstListValue(orgAttrs.get("contact_info"));
       final Map<String, String> contactInfo = parseContactInfo(contactInfoJson);
@@ -663,7 +760,8 @@ public class KeycloakAdminClient {
 
       result.add(new OrganizationInfo(
           orgIdentifier,
-          orgName,
+          legalName,
+          displayName,
           groupId,
           attachedFunctions,
           contactEmail,
@@ -692,26 +790,36 @@ public class KeycloakAdminClient {
    * {@link KeycloakAdminException} as a partial-failure signal and investigate manually.</p>
    *
    * @param orgIdentifier the organization number (10 digits), used as the group name
-   * @param nameSv Swedish organization name
-   * @param nameEn English organization name
+   * @param legalName the legal name as registered at Bolagsverket; mandatory
+   * @param nameSv Swedish display name, or {@code null} for none
+   * @param nameEn English display name, or {@code null} for none
    * @throws KeycloakAdminException on any Keycloak API error
    */
   public void createOrganization(
       final @NonNull String orgIdentifier,
-      final @NonNull String nameSv,
-      final @NonNull String nameEn) {
+      final @NonNull String legalName,
+      final @Nullable String nameSv,
+      final @Nullable String nameEn) {
 
     log.debug("Creating organization group '{}' under /orgs", orgIdentifier);
 
     final String orgsGroupId = this.findTopLevelGroupId("orgs");
     log.debug("Resolved 'orgs' group id: {}", orgsGroupId);
 
+    // Display names are optional — no attribute is written for one that has not been given.
+    final Map<String, Object> attributes = new LinkedHashMap<>();
+    attributes.put("organization_identifier", List.of(orgIdentifier));
+    attributes.put(ORG_ATTR_NAME, List.of(legalName));
+    if (nameSv != null && !nameSv.isBlank()) {
+      attributes.put(ORG_ATTR_NAME_SV, List.of(nameSv));
+    }
+    if (nameEn != null && !nameEn.isBlank()) {
+      attributes.put(ORG_ATTR_NAME_EN, List.of(nameEn));
+    }
+
     final Map<String, Object> orgGroupBody = Map.of(
         "name", orgIdentifier,
-        "attributes", Map.of(
-            "organization_identifier", List.of(orgIdentifier),
-            "organization_name#sv", List.of(nameSv),
-            "organization_name#en", List.of(nameEn)));
+        "attributes", attributes);
 
     final String location = this.adminPost("/groups/" + orgsGroupId + "/children", orgGroupBody);
     if (location == null) {
@@ -886,6 +994,9 @@ public class KeycloakAdminClient {
     final String orgsGroupId = this.findTopLevelGroupId("orgs");
     final List<Map<String, Object>> orgGroups = this.fetchGroupChildren(orgsGroupId);
 
+    // Only clients that handle this function hold artifacts for it
+    final List<ManagedClientInfo> clients = this.resolveManagedClientsForFunction(functionId);
+
     for (final Map<String, Object> orgGroup : orgGroups) {
       final String orgGroupId = getString(orgGroup, "id");
       final String orgIdentifier = getString(orgGroup, "name");
@@ -905,84 +1016,25 @@ public class KeycloakAdminClient {
       }
 
       // Step 3 — Clean up per-client authz artifacts and client scopes
-      final List<String> clientUuids = this.resolveIamAdminManagedClientUuids();
+      final Map<String, String> realmScopeIds = this.fetchRealmClientScopeIds();
 
-      // Fetch all realm client scopes once per org
-      final List<Map<String, Object>> allScopes = this.adminGet(
-          "/client-scopes", new ParameterizedTypeReference<>() {});
-
-      for (final String clientUuid : clientUuids) {
-        for (final String level : List.of("read", "write", "admin")) {
-          final String permName = "permission-" + orgIdentifier + ":" + functionId + ":" + level;
-          final String encoded = URLEncoder.encode(permName, StandardCharsets.UTF_8);
-          final List<Map<String, Object>> perms = this.adminGet(
-              "/clients/" + clientUuid + "/authz/resource-server/permission?name=" + encoded + "&exact=true",
-              new ParameterizedTypeReference<>() {});
-          if (perms != null && !perms.isEmpty()) {
-            final String permId = getString(perms.getFirst(), "id");
-            if (permId != null) {
-              this.adminDelete("/clients/" + clientUuid + "/authz/resource-server/permission/" + permId);
-              log.debug("Deleted permission '{}' on client {}", permName, clientUuid);
-            }
-          }
-          else {
-            log.debug("Permission '{}' not found on client {} — skipping", permName, clientUuid);
-          }
-
-          final String policyName = "policy-" + orgIdentifier + "-" + functionId + "-" + level;
-          final String encodedPolicy = URLEncoder.encode(policyName, StandardCharsets.UTF_8);
-          final List<Map<String, Object>> policies = this.adminGet(
-              "/clients/" + clientUuid + "/authz/resource-server/policy?name=" + encodedPolicy + "&exact=true",
-              new ParameterizedTypeReference<>() {});
-          if (policies != null && !policies.isEmpty()) {
-            final String policyId = getString(policies.getFirst(), "id");
-            if (policyId != null) {
-              this.adminDelete("/clients/" + clientUuid + "/authz/resource-server/policy/" + policyId);
-              log.debug("Deleted policy '{}' on client {}", policyName, clientUuid);
-            }
-          }
-          else {
-            log.debug("Policy '{}' not found on client {} — skipping", policyName, clientUuid);
-          }
-
-          final String scopeName = orgIdentifier + ":" + functionId + ":" + level;
-          final String scopeId = allScopes == null ? null : allScopes.stream()
-              .filter(s -> scopeName.equals(getString(s, "name")))
-              .map(s -> getString(s, "id"))
-              .filter(Objects::nonNull)
-              .findFirst()
-              .orElse(null);
-          if (scopeId != null) {
-            try {
-              this.adminDelete("/clients/" + clientUuid + "/optional-client-scopes/" + scopeId);
-              log.debug("Removed optional client scope '{}' from client {}", scopeName, clientUuid);
-            }
-            catch (final KeycloakAdminException e) {
-              log.debug("Optional client scope '{}' not on client {} — skipping: {}", scopeName, clientUuid,
-                  e.getMessage());
-            }
-          }
-          else {
-            log.debug("Client scope '{}' not found — skipping optional scope removal", scopeName);
-          }
-        }
+      for (final ManagedClientInfo client : clients) {
+        final int removed = this.removeClientFunctionArtifacts(
+            client.uuid(), orgIdentifier, functionId, realmScopeIds);
+        log.debug("Removed {} artifacts from client '{}' for '{}:{}'",
+            removed, client.clientId(), orgIdentifier, functionId);
       }
 
       // Delete realm-level client scopes
-      for (final String level : List.of("read", "write", "admin")) {
-        final String scopeName = orgIdentifier + ":" + functionId + ":" + level;
-        final String scopeId = allScopes == null ? null : allScopes.stream()
-            .filter(s -> scopeName.equals(getString(s, "name")))
-            .map(s -> getString(s, "id"))
-            .filter(Objects::nonNull)
-            .findFirst()
-            .orElse(null);
+      for (final String level : RIGHT_LEVELS) {
+        final String scope = scopeName(orgIdentifier, functionId, level);
+        final String scopeId = realmScopeIds.get(scope);
         if (scopeId != null) {
           this.adminDelete("/client-scopes/" + scopeId);
-          log.debug("Deleted realm client scope '{}'", scopeName);
+          log.debug("Deleted realm client scope '{}'", scope);
         }
         else {
-          log.debug("Realm client scope '{}' not found — skipping", scopeName);
+          log.debug("Realm client scope '{}' not found — skipping", scope);
         }
       }
 
@@ -1065,8 +1117,8 @@ public class KeycloakAdminClient {
       throw new KeycloakAdminException("Org group not found for: " + orgIdentifier);
     }
 
-    // Resolve client UUIDs
-    final List<String> clientUuids = this.resolveIamAdminManagedClientUuids();
+    // Resolve the managed clients that handle this function
+    final List<ManagedClientInfo> clients = this.resolveManagedClientsForFunction(functionId);
 
     // Step 2 — Create function sub-group under org group
     log.debug("Creating function sub-group '{}' under org group '{}'", functionId, orgIdentifier);
@@ -1088,52 +1140,21 @@ public class KeycloakAdminClient {
       log.debug("Created sub-group '{}' under function group '{}'", subGroupName, functionId);
     }
 
-    // Step 4 — Create 3 client scopes (IDs needed for optional-scope registration in step 6)
-    final String readScopeName = orgIdentifier + ":" + functionId + ":read";
-    final String writeScopeName = orgIdentifier + ":" + functionId + ":write";
-    final String adminScopeName = orgIdentifier + ":" + functionId + ":admin";
-    final String readScopeId = this.createClientScope(readScopeName);
-    final String writeScopeId = this.createClientScope(writeScopeName);
-    final String adminScopeId = this.createClientScope(adminScopeName);
-    log.debug("Client scopes created — read:{}, write:{}, admin:{}", readScopeId, writeScopeId, adminScopeId);
+    // Step 4 — Ensure the three realm client scopes exist. They are shared between clients, so
+    // they are created even when no managed client handles the function.
+    final Map<String, String> realmScopeIds = this.fetchRealmClientScopeIds();
+    for (final String level : RIGHT_LEVELS) {
+      this.ensureRealmClientScope(scopeName(orgIdentifier, functionId, level), realmScopeIds);
+    }
 
-    // Step 5 — For each client, create authz scopes, group policies and scope permissions.
-    // KeyCloak Authorization Services maintains its own scope registry on each resource server,
-    // separate from OAuth2 client scopes. Authz scopes must exist before permissions can
-    // reference them.
-    for (final String clientUuid : clientUuids) {
-      this.createAuthzScope(clientUuid, readScopeName);
-      this.createAuthzScope(clientUuid, writeScopeName);
-      this.createAuthzScope(clientUuid, adminScopeName);
-      log.debug("Authorization Services scopes created on client {}", clientUuid);
-
-      this.createPolicyAndPermission(clientUuid, orgIdentifier, functionId,
-          "read", readScopeName,
-          List.of(
-              "/orgs/" + orgIdentifier + "/_read",
-              "/orgs/" + orgIdentifier + "/_write",
-              "/orgs/" + orgIdentifier + "/_admin",
-              "/orgs/" + orgIdentifier + "/" + functionId + "/_read",
-              "/orgs/" + orgIdentifier + "/" + functionId + "/_write",
-              "/orgs/" + orgIdentifier + "/" + functionId + "/_admin"));
-      this.createPolicyAndPermission(clientUuid, orgIdentifier, functionId,
-          "write", writeScopeName,
-          List.of(
-              "/orgs/" + orgIdentifier + "/_write",
-              "/orgs/" + orgIdentifier + "/_admin",
-              "/orgs/" + orgIdentifier + "/" + functionId + "/_write",
-              "/orgs/" + orgIdentifier + "/" + functionId + "/_admin"));
-      this.createPolicyAndPermission(clientUuid, orgIdentifier, functionId,
-          "admin", adminScopeName,
-          List.of(
-              "/orgs/" + orgIdentifier + "/_admin",
-              "/orgs/" + orgIdentifier + "/" + functionId + "/_admin"));
-
-      // Step 6 — Add each scope as optional to this client
-      this.adminPut("/clients/" + clientUuid + "/optional-client-scopes/" + readScopeId);
-      this.adminPut("/clients/" + clientUuid + "/optional-client-scopes/" + writeScopeId);
-      this.adminPut("/clients/" + clientUuid + "/optional-client-scopes/" + adminScopeId);
-      log.debug("Optional scopes registered on client {}", clientUuid);
+    // Step 5 — Create the per-client authz scopes, group policies, scope permissions and optional
+    // client scope assignments
+    for (final ManagedClientInfo client : clients) {
+      final ClientArtifactState state = this.fetchClientArtifactState(client.uuid());
+      final int created = this.ensureFunctionArtifacts(
+          client.uuid(), orgIdentifier, functionId, realmScopeIds, state);
+      log.debug("Created {} artifacts on client '{}' for '{}:{}'",
+          created, client.clientId(), orgIdentifier, functionId);
     }
 
     log.info("Function '{}' attached to organization '{}' in Keycloak", functionId, orgIdentifier);
@@ -1158,86 +1179,1354 @@ public class KeycloakAdminClient {
   }
 
   /**
-   * Resolves the internal Keycloak UUID for a client identified by its {@code clientId}.
+   * Resolves the clients that play the OIDC client role, i.e. the ones reconciliation applies to.
    *
-   * <p>Uses {@link UriComponentsBuilder} to properly encode the clientId query parameter
-   * (which may contain {@code ://}).</p>
+   * <p>Pages through {@code GET /clients} and keeps the administered clients whose OIDC client
+   * role is set, as resolved by {@link #resolveOidcClientRole}. If the result is empty a WARN is
+   * logged.</p>
    *
-   * @param clientId the OAuth2 client_id string
-   * @return the Keycloak UUID for the client
-   * @throws KeycloakAdminException if the client is not found or has no id
-   */
-  private String resolveClientUuid(final @NonNull String clientId) {
-    final URI uri = UriComponentsBuilder.fromUriString(this.adminApiBase + "/clients")
-        .queryParam("clientId", clientId)
-        .queryParam("exact", "true")
-        .build(true)
-        .toUri();
-    final List<Map<String, Object>> clients = this.adminGet(uri, new ParameterizedTypeReference<>() {});
-    if (clients == null || clients.isEmpty()) {
-      throw new KeycloakAdminException("Keycloak client not found: " + clientId);
-    }
-    final String id = getString(clients.getFirst(), "id");
-    if (id == null) {
-      throw new KeycloakAdminException("Keycloak client has no id: " + clientId);
-    }
-    return id;
-  }
-
-  /**
-   * Resolves the full set of managed Keycloak client UUIDs by combining two sources:
+   * <p>Each client carries the functions declared in its {@code client_functions} attribute. Use
+   * {@link ManagedClientInfo#handles(String)} to decide whether a client should receive the
+   * artifacts for a given function.</p>
    *
-   * <ol>
-   *   <li><strong>Dynamic discovery</strong> — queries {@code GET /clients?max=500} and
-   *       filters clients whose {@code attributes.iam_admin_managed} equals {@code "true"}.</li>
-   *   <li><strong>Fallback config</strong> — resolves each client ID in
-   *       {@code IamAdminProperties.authzClientIds} (if any) to a UUID via
-   *       {@link #resolveClientUuid(String)}.</li>
-   * </ol>
-   *
-   * <p>The result is the union of both sources with duplicates eliminated. If the result
-   * is empty a WARN is logged.</p>
-   *
-   * @return list of Keycloak client UUIDs; never {@code null}
+   * @return list of OIDC clients; never {@code null}
    * @throws KeycloakAdminException on any Keycloak API error
    */
-  private @NonNull List<String> resolveIamAdminManagedClientUuids() {
-    final LinkedHashSet<String> result = new LinkedHashSet<>();
+  public @NonNull List<ManagedClientInfo> resolveIamAdminManagedClients() {
+    final LinkedHashMap<String, ManagedClientInfo> result = new LinkedHashMap<>();
 
-    // Source 1 — dynamic discovery via iam_admin_managed attribute
-    final List<Map<String, Object>> allClients = this.adminGet(
-        "/clients?max=500", new ParameterizedTypeReference<>() {});
-    if (allClients != null) {
-      for (final Map<String, Object> client : allClients) {
-        @SuppressWarnings("unchecked")
-        final Map<String, Object> attrs =
-            client.get("attributes") instanceof final Map<?, ?> m
-                ? (Map<String, Object>) m : null;
-        if (attrs != null && "true".equals(attrs.get("iam_admin_managed"))) {
-          final String uuid = getString(client, "id");
-          if (uuid != null) {
-            result.add(uuid);
-          }
+    for (final Map<String, Object> client : this.fetchAllClients()) {
+      if (administered(client) && resolveOidcClientRole(client)) {
+        final ManagedClientInfo info = this.toManagedClientInfo(client);
+        if (info != null) {
+          result.put(info.uuid(), info);
         }
       }
     }
-    log.debug("Managed clients discovered via iam_admin_managed attribute: {}", result.size());
+    log.debug("OIDC clients discovered via the iam-admin role markers: {}", result.size());
 
-    // Source 2 — fallback config
-    final List<String> fallbackIds = this.properties.getAuthzClientIds();
-    if (fallbackIds != null && !fallbackIds.isEmpty()) {
-      log.debug("Resolving {} fallback authz-client-ids", fallbackIds.size());
-      for (final String clientId : fallbackIds) {
-        result.add(this.resolveClientUuid(clientId));
+    if (result.isEmpty()) {
+      log.warn("No Keycloak clients holding the OIDC client role found (no client carries the"
+          + " iam-admin role markers) — no authz artifacts will be created/deleted");
+    }
+
+    return new ArrayList<>(result.values());
+  }
+
+  /**
+   * Resolves the resource servers the application administers, i.e. clients carrying
+   * {@code iam_admin_resource_server=true}.
+   *
+   * <p>A resource server is never reconciled — it holds no scopes, policies or permissions. Only
+   * its {@code client_functions} attribute matters, and that is read by {@code resource-aud-plugin}
+   * when the client is named in the OAuth2 {@code resource} parameter.</p>
+   *
+   * @return list of resource servers; never {@code null}
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  public @NonNull List<ManagedClientInfo> resolveResourceServers() {
+    final List<ManagedClientInfo> result = new ArrayList<>();
+    for (final Map<String, Object> client : this.fetchAllClients()) {
+      if (resolveResourceServerRole(client)) {
+        final ManagedClientInfo info = this.toManagedClientInfo(client);
+        if (info != null) {
+          result.add(info);
+        }
+      }
+    }
+    log.debug("Resource servers discovered via {}: {}", RESOURCE_SERVER_ATTRIBUTE, result.size());
+    return result;
+  }
+
+  /**
+   * Writes a newly created function into the {@code client_functions} attribute of every client
+   * that handles all functions.
+   *
+   * <p>A client marked {@code iam_admin_all_functions=true} handles every function whether or not
+   * the attribute names it, and this application reads the marker directly. Keycloak does not:
+   * {@code resource-aud-plugin} validates the OAuth2 {@code resource} parameter against the raw
+   * {@code client_functions} attribute and knows nothing of the marker. The attribute is therefore
+   * kept materialized, so that a token request naming such a client as its resource is accepted for
+   * the new function.</p>
+   *
+   * <p>Idempotent: a function already present on a client leaves that client untouched.</p>
+   *
+   * @param functionId the function identifier
+   * @return the {@code client_id}s the function was written to; never {@code null}
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  public @NonNull List<String> materializeAllFunctions(final @NonNull String functionId) {
+    final List<String> updated = new ArrayList<>();
+
+    for (final Map<String, Object> client : this.fetchAllClients()) {
+      if (!"true".equals(clientAttribute(client, ALL_FUNCTIONS_ATTRIBUTE))) {
+        continue;
+      }
+      final String uuid = getString(client, "id");
+      final String clientId = getString(client, "clientId");
+      if (uuid == null || clientId == null) {
+        log.debug("Skipping Keycloak client representation without id or clientId");
+        continue;
+      }
+
+      final Set<String> functions = new LinkedHashSet<>(
+          ManagedClientInfo.parseFunctions(clientAttribute(client, CLIENT_FUNCTIONS_ATTRIBUTE)));
+      if (!functions.add(functionId)) {
+        log.debug("All-functions client '{}' already declares function '{}'", clientId, functionId);
+        continue;
+      }
+
+      final Map<String, Object> attributes = client.get("attributes") instanceof final Map<?, ?> attrs
+          ? new LinkedHashMap<>(castAttributes(attrs)) : new LinkedHashMap<>();
+      attributes.put(CLIENT_FUNCTIONS_ATTRIBUTE, String.join(",", functions));
+
+      final Map<String, Object> body = new LinkedHashMap<>(client);
+      body.put("attributes", attributes);
+      this.adminPutWithBody("/clients/" + uuid, body);
+
+      updated.add(clientId);
+      log.debug("Function '{}' written to client_functions of all-functions client '{}'",
+          functionId, clientId);
+    }
+    return updated;
+  }
+
+  /**
+   * Resolves everything the application administers: the OIDC clients and the resource servers.
+   *
+   * <p>The two roles are independent and a client may hold both, in which case it appears in both
+   * source lists. It is returned once: this list is what {@code GET /api/clients} renders, and a
+   * client listed twice reads as two clients.</p>
+   *
+   * @return the administered clients, each appearing once; never {@code null}
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  public @NonNull List<ManagedClientInfo> resolveAdministeredClients() {
+    final LinkedHashMap<String, ManagedClientInfo> byUuid = new LinkedHashMap<>();
+    for (final ManagedClientInfo client : this.resolveIamAdminManagedClients()) {
+      byUuid.put(client.uuid(), client);
+    }
+    for (final ManagedClientInfo client : this.resolveResourceServers()) {
+      byUuid.putIfAbsent(client.uuid(), client);
+    }
+    return new ArrayList<>(byUuid.values());
+  }
+
+  /**
+   * Returns the managed clients that handle the given function, i.e. those that should receive the
+   * KeyCloak artifacts belonging to it.
+   *
+   * @param functionId the function identifier
+   * @return the matching managed clients; never {@code null}
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  private @NonNull List<ManagedClientInfo> resolveManagedClientsForFunction(
+      final @NonNull String functionId) {
+
+    final List<ManagedClientInfo> all = this.resolveIamAdminManagedClients();
+    final List<ManagedClientInfo> matching = all.stream()
+        .filter(c -> c.handles(functionId))
+        .toList();
+
+    if (matching.size() < all.size()) {
+      log.debug("{} of {} managed clients handle function '{}'", matching.size(), all.size(), functionId);
+    }
+    return matching;
+  }
+
+  /**
+   * Pages through {@code GET /clients} and returns every client representation in the realm.
+   *
+   * @return the client representations; never {@code null}
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  private @NonNull List<Map<String, Object>> fetchAllClients() {
+    final List<Map<String, Object>> all = new ArrayList<>();
+    int first = 0;
+    while (true) {
+      final List<Map<String, Object>> page = this.adminGet(
+          "/clients?first=" + first + "&max=" + PAGE_SIZE, new ParameterizedTypeReference<>() {});
+      if (page == null || page.isEmpty()) {
+        break;
+      }
+      all.addAll(page);
+      if (page.size() < PAGE_SIZE) {
+        break;
+      }
+      first += PAGE_SIZE;
+    }
+    log.debug("Fetched {} Keycloak clients", all.size());
+    return all;
+  }
+
+  /**
+   * Converts a Keycloak client representation into a {@link ManagedClientInfo}.
+   *
+   * @param client the client representation
+   * @return the managed client, or {@code null} if the representation has no id or clientId
+   */
+  /**
+   * Expands a redirect URI that Keycloak stores as a path into the complete URI it resolves to.
+   *
+   * <p>Keycloak permits a redirect URI given as a path only and resolves it against the client root
+   * URL. Showing the stored value raw leaves the user unable to see where the callback actually
+   * goes, so it is joined here with exactly one {@code /} between the two parts. A trailing wildcard
+   * is carried along untouched.</p>
+   *
+   * <p>Where the client has no root URL the path is returned unchanged. Keycloak would resolve it
+   * against the auth server root URL, but that is not known here, and guessing would display a
+   * callback that is not the real one. Such a URI is rejected on save, so the user has to complete
+   * it first.</p>
+   *
+   * @param uri the stored redirect URI
+   * @param rootUrl the client's root URL, or {@code null} if it has none
+   * @return the complete redirect URI, or the input unchanged if it cannot be expanded
+   */
+  static @NonNull String expandRedirectUri(final @NonNull String uri, final @Nullable String rootUrl) {
+    if (rootUrl == null || rootUrl.isBlank() || uri.isBlank()) {
+      return uri;
+    }
+    try {
+      if (new URI(uri).isAbsolute()) {
+        return uri;
+      }
+    }
+    catch (final URISyntaxException e) {
+      return uri;
+    }
+    final String base = rootUrl.endsWith("/") ? rootUrl.substring(0, rootUrl.length() - 1) : rootUrl;
+    return uri.startsWith("/") ? base + uri : base + "/" + uri;
+  }
+
+  private @Nullable ManagedClientInfo toManagedClientInfo(final @NonNull Map<String, Object> client) {
+    final String uuid = getString(client, "id");
+    final String clientId = getString(client, "clientId");
+    if (uuid == null || clientId == null) {
+      log.debug("Skipping Keycloak client representation without id or clientId");
+      return null;
+    }
+    final String rootUrl = getString(client, "rootUrl");
+    final List<String> redirectUris = client.get("redirectUris") instanceof final List<?> uris
+        ? uris.stream()
+            .filter(String.class::isInstance)
+            .map(String.class::cast)
+            .map(uri -> expandRedirectUri(uri, rootUrl))
+            .toList()
+        : List.of();
+    return new ManagedClientInfo(
+        uuid,
+        clientId,
+        getString(client, "name"),
+        resolveOidcClientRole(client),
+        resolveResourceServerRole(client),
+        ManagedClientInfo.parseFunctions(clientAttribute(client, CLIENT_FUNCTIONS_ATTRIBUTE)),
+        "true".equals(clientAttribute(client, "iam_admin_all_functions")),
+        redirectUris,
+        "true".equals(clientAttribute(client, "use.jwks.url")) ? clientAttribute(client, "jwks.url") : null,
+        "true".equals(clientAttribute(client, "use.jwks.string")) ? clientAttribute(client, "jwks.string") : null,
+        this.serviceAccountWanted(client, uuid),
+        orgRightsClaimEnabled(client, "id.token.claim"),
+        orgRightsClaimEnabled(client, "access.token.claim"),
+        !Boolean.FALSE.equals(client.get("enabled")));
+  }
+
+  /**
+   * Tells whether a client is meant to have a service account user.
+   *
+   * <p>The {@link #SERVICE_ACCOUNT_ATTRIBUTE} attribute answers it for every client this
+   * application has written. A client provisioned outside it carries no such attribute, and is
+   * read from {@code serviceAccountsEnabled}.</p>
+   *
+   * @param client the client representation
+   * @param clientUuid the Keycloak UUID of the client
+   * @return {@code true} if the client keeps a service account user
+   */
+  private boolean serviceAccountWanted(
+      final @NonNull Map<String, Object> client, final @NonNull String clientUuid) {
+
+    final String attribute = clientAttribute(client, SERVICE_ACCOUNT_ATTRIBUTE);
+    if (attribute != null) {
+      return "true".equals(attribute);
+    }
+    if (!Boolean.TRUE.equals(client.get("serviceAccountsEnabled"))) {
+      return false;
+    }
+    // A client provisioned outside this application carries no attribute, and neither the flag
+    // nor the user proves anything: Keycloak turns the flag on and creates the user by itself for
+    // every client with Authorization Services enabled. A service account that was actually asked
+    // for is the one carrying the realm-management roles the scripts assign to it
+    return this.hasAdminRoleMappings(clientUuid);
+  }
+
+  /**
+   * Tells whether a client's service account user holds {@code realm-management} roles, i.e.
+   * whether it was created deliberately rather than as a by-product of Authorization Services.
+   *
+   * @param clientUuid the Keycloak UUID of the client
+   * @return {@code true} if the client has a service account user with {@code realm-management}
+   *     role mappings
+   */
+  private boolean hasAdminRoleMappings(final @NonNull String clientUuid) {
+    final String userId = this.findServiceAccountUserId(clientUuid);
+    if (userId == null) {
+      return false;
+    }
+    try {
+      final Map<String, Object> mappings = this.adminGet(
+          "/users/" + userId + "/role-mappings", new ParameterizedTypeReference<>() {});
+      return mappings != null
+          && mappings.get("clientMappings") instanceof final Map<?, ?> clientMappings
+          && clientMappings.containsKey("realm-management");
+    }
+    catch (final KeycloakAdminException e) {
+      log.debug("Could not read role mappings for the service account of client {}: {}",
+          clientUuid, e.getMessage());
+      return false;
+    }
+  }
+
+  /**
+   * Reads a claim inclusion flag from the {@code org-rights-mapper} of a Keycloak client
+   * representation.
+   *
+   * <p>A representation that carries no such mapper is reported as emitting the claim: that is
+   * what a managed client is given when it is registered, and it is also the safe reading for a
+   * client that has not been given its mappers yet.</p>
+   *
+   * @param client the client representation
+   * @param configKey the mapper configuration key, {@code id.token.claim} or
+   *     {@code access.token.claim}
+   * @return {@code false} only if the mapper is present and has the flag set to {@code false}
+   */
+  private static boolean orgRightsClaimEnabled(
+      final @NonNull Map<String, Object> client, final @NonNull String configKey) {
+
+    if (!(client.get("protocolMappers") instanceof final List<?> mappers)) {
+      return true;
+    }
+    for (final Object mapper : mappers) {
+      if (mapper instanceof final Map<?, ?> m
+          && ORG_RIGHTS_MAPPER.equals(m.get("name"))
+          && m.get("config") instanceof final Map<?, ?> config) {
+        return !"false".equals(config.get(configKey));
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Reads a single attribute from a Keycloak client representation.
+   *
+   * @param client the client representation
+   * @param name the attribute name
+   * @return the attribute value, or {@code null} if the client has no attributes or no such
+   *     attribute
+   */
+  /**
+   * Resolves whether a client plays the OIDC client role.
+   *
+   * <p>{@link #OIDC_CLIENT_ATTRIBUTE} wins wherever present, which is why it is always written,
+   * {@code "true"} or {@code "false"}, and never removed: absence means a client written before
+   * it existed, and back then {@link #MANAGED_ATTRIBUTE} was the role.</p>
+   *
+   * <p>The fallback ignores {@link #RESOURCE_SERVER_ATTRIBUTE} on purpose. A client of that era
+   * carrying both markers was an OIDC client <em>and</em> a resource server, so reading the
+   * resource server marker as evidence against the OIDC role would strip it of every artifact it
+   * holds on the next reconciliation.</p>
+   *
+   * @param client the client representation
+   * @return {@code true} if the client plays the OIDC client role
+   */
+  static boolean resolveOidcClientRole(final @NonNull Map<String, Object> client) {
+    final String marker = clientAttribute(client, OIDC_CLIENT_ATTRIBUTE);
+    if (marker != null && !marker.isBlank()) {
+      return "true".equals(marker);
+    }
+    return "true".equals(clientAttribute(client, MANAGED_ATTRIBUTE));
+  }
+
+  /**
+   * Resolves whether a client plays the resource server role.
+   *
+   * @param client the client representation
+   * @return {@code true} if the client plays the resource server role
+   */
+  static boolean resolveResourceServerRole(final @NonNull Map<String, Object> client) {
+    return "true".equals(clientAttribute(client, RESOURCE_SERVER_ATTRIBUTE));
+  }
+
+  /**
+   * Tells whether this application administers the client, in either role. A resource server
+   * registered before {@link #MANAGED_ATTRIBUTE} was written for resource servers carries only
+   * {@link #RESOURCE_SERVER_ATTRIBUTE}, so that counts too.
+   *
+   * @param client the client representation
+   * @return {@code true} if the client is administered by this application
+   */
+  static boolean administered(final @NonNull Map<String, Object> client) {
+    return "true".equals(clientAttribute(client, MANAGED_ATTRIBUTE))
+        || resolveResourceServerRole(client);
+  }
+
+  private static @Nullable String clientAttribute(
+      final @NonNull Map<String, Object> client, final @NonNull String name) {
+
+    if (client.get("attributes") instanceof final Map<?, ?> attrs) {
+      return attrs.get(name) instanceof final String value ? value : null;
+    }
+    return null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Managed client administration
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Looks up an administered client by its OAuth2 client_id.
+   *
+   * <p>Covers both roles, exactly as {@link #findManagedClientByUuid(String)} does. Resolving only
+   * the OIDC clients here would miss a client that carries the resource server role alone: that
+   * role does not set {@code iam_admin_managed}, so such a client is administered but not
+   * managed.</p>
+   *
+   * @param clientId the OAuth2 client_id
+   * @return the client, or empty if no such client exists or it is not administered
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  public @NonNull Optional<ManagedClientInfo> findManagedClient(final @NonNull String clientId) {
+    return this.resolveAdministeredClients().stream()
+        .filter(c -> clientId.equals(c.clientId()))
+        .findFirst();
+  }
+
+  /**
+   * Looks up a managed client by its Keycloak UUID.
+   *
+   * <p>The per-client REST endpoints address clients by UUID rather than by client_id: a client_id
+   * is a URL, and URL-encoding one into a path segment is rejected by Spring Security's strict
+   * HTTP firewall before the request reaches the controller.</p>
+   *
+   * @param uuid the Keycloak UUID
+   * @return the managed client, or empty if no such client exists or it is not managed
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  public @NonNull Optional<ManagedClientInfo> findManagedClientByUuid(final @NonNull String uuid) {
+    return this.resolveAdministeredClients().stream()
+        .filter(c -> uuid.equals(c.uuid()))
+        .findFirst();
+  }
+
+  /**
+   * Tells whether a client with the given client_id exists in the realm, managed or not.
+   *
+   * @param clientId the OAuth2 client_id
+   * @return {@code true} if the client exists
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  public boolean clientExists(final @NonNull String clientId) {
+    return this.fetchClientByClientId(clientId) != null;
+  }
+
+  /**
+   * Registers a managed OIDC client in Keycloak.
+   *
+   * <p>The resulting client is identical to what {@code add-oidc-client.sh} produces:
+   * {@code private_key_jwt} client authentication, Authorization Services enabled, the
+   * {@code org-rights}, {@code scope-org-identifier} and {@code resource-audience} protocol
+   * mappers, and the {@code naturalPersonNumber}, {@code naturalPersonOrgId} and {@code phone}
+   * optional client scopes. The service account user Keycloak creates is deleted unless
+   * {@code serviceAccount} is set.</p>
+   *
+   * <p>No org/function artifacts are created here — the caller reconciles the client afterwards.
+   * A creation that fails part-way therefore leaves a client that the next reconciliation
+   * repairs, rather than a broken one.</p>
+   *
+   * @param clientId the OAuth2 client_id
+   * @param name the display name, or {@code null}
+   * @param redirectUris the redirect URIs
+   * @param functions the functions the client handles
+   * @param jwksUri the JWKS URI, or {@code null} if {@code jwksString} is given
+   * @param jwksString the inline JWK Set, or {@code null} if {@code jwksUri} is given
+   * @param serviceAccount whether to keep the service account user
+   * @param orgRightsIdToken whether {@code org_rights} is emitted in the ID token
+   * @param orgRightsAccessToken whether {@code org_rights} is emitted in the access token
+   * @return the created client
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  public @NonNull ManagedClientInfo createManagedClient(
+      final @NonNull String clientId,
+      final @Nullable String name,
+      final boolean oidcClient,
+      final boolean resourceServer,
+      final @NonNull List<String> redirectUris,
+      final @NonNull Set<String> functions,
+      final @Nullable String jwksUri,
+      final @Nullable String jwksString,
+      final boolean serviceAccount,
+      final boolean orgRightsIdToken,
+      final boolean orgRightsAccessToken) {
+
+    final Map<String, Object> creation = new LinkedHashMap<>();
+    creation.put("clientId", clientId);
+    creation.put("protocol", "openid-connect");
+    creation.put("enabled", true);
+    creation.put("publicClient", !oidcClient);
+    creation.put("standardFlowEnabled", oidcClient);
+    creation.put("implicitFlowEnabled", false);
+    creation.put("directAccessGrantsEnabled", false);
+    creation.put("serviceAccountsEnabled", oidcClient);
+    if (oidcClient) {
+      creation.put("clientAuthenticatorType", "client-jwt");
+    }
+    this.adminPost("/clients", creation);
+
+    final Map<String, Object> client = this.fetchClientByClientId(clientId);
+    if (client == null) {
+      throw new KeycloakAdminException("Keycloak client '" + clientId + "' not found after creation");
+    }
+    final String clientUuid = getString(client, "id");
+    if (clientUuid == null) {
+      throw new KeycloakAdminException("Keycloak client '" + clientId + "' has no id");
+    }
+    log.debug("Client '{}' created with id {}", clientId, clientUuid);
+
+    this.writeClientSettings(clientUuid, client, name, oidcClient, resourceServer,
+        redirectUris, functions, jwksUri, jwksString, serviceAccount);
+
+    if (oidcClient) {
+      this.handleServiceAccount(clientUuid, clientId, serviceAccount);
+      this.addProtocolMappers(clientUuid, orgRightsIdToken, orgRightsAccessToken);
+      this.addBaseOptionalScopes(clientUuid);
+    }
+
+    log.info("Client '{}' registered in Keycloak — oidcClient={}, resourceServer={}",
+        clientId, oidcClient, resourceServer);
+    return this.findManagedClient(clientId).orElseThrow(
+        () -> new KeycloakAdminException("Client '" + clientId + "' carries neither"
+            + " iam_admin_managed nor iam_admin_resource_server after creation"));
+  }
+
+  /**
+   * Updates the mutable settings of a managed client: display name, redirect URIs, handled
+   * functions and client keys. The client_id is immutable.
+   *
+   * @param clientId the OAuth2 client_id
+   * @param name the display name, or {@code null}
+   * @param redirectUris the redirect URIs
+   * @param functions the functions the client handles
+   * @param jwksUri the JWKS URI, or {@code null} if {@code jwksString} is given
+   * @param jwksString the inline JWK Set, or {@code null} if {@code jwksUri} is given
+   * @param serviceAccount whether the client keeps a service account user
+   * @param orgRightsIdToken whether {@code org_rights} is emitted in the ID token
+   * @param orgRightsAccessToken whether {@code org_rights} is emitted in the access token
+   * @return the updated client
+   * @throws KeycloakAdminException if the client does not exist, or on any Keycloak API error
+   */
+  public @NonNull ManagedClientInfo updateManagedClient(
+      final @NonNull String clientId,
+      final @Nullable String name,
+      final boolean oidcClient,
+      final boolean resourceServer,
+      final @NonNull List<String> redirectUris,
+      final @NonNull Set<String> functions,
+      final @Nullable String jwksUri,
+      final @Nullable String jwksString,
+      final boolean serviceAccount,
+      final boolean orgRightsIdToken,
+      final boolean orgRightsAccessToken) {
+
+    final Map<String, Object> client = this.fetchClientByClientId(clientId);
+    if (client == null) {
+      throw new KeycloakAdminException("Keycloak client not found: " + clientId);
+    }
+    final String clientUuid = getString(client, "id");
+    if (clientUuid == null) {
+      throw new KeycloakAdminException("Keycloak client '" + clientId + "' has no id");
+    }
+
+    final boolean wasOidcClient = resolveOidcClientRole(client);
+    this.writeClientSettings(clientUuid, client, name, oidcClient, resourceServer,
+        redirectUris, functions, jwksUri, jwksString, serviceAccount);
+
+    if (oidcClient) {
+      // The service account itself is never touched here — only the attribute recording it, which
+      // writeClientSettings has already carried over
+      if (!wasOidcClient) {
+        // The client is taking on the OIDC client role — it needs the mappers and base scopes
+        // that a client registered in that role gets from the start
+        this.addProtocolMappers(clientUuid, orgRightsIdToken, orgRightsAccessToken);
+        this.addBaseOptionalScopes(clientUuid);
+      }
+      else {
+        this.writeOrgRightsMapperConfig(clientUuid, orgRightsIdToken, orgRightsAccessToken);
       }
     }
 
-    if (result.isEmpty()) {
-      log.warn("No managed Keycloak clients found (neither via iam_admin_managed attribute"
-          + " nor authz-client-ids) — no authz artifacts will be created/deleted");
+    log.info("Client '{}' updated — oidcClient={}, resourceServer={}",
+        clientId, oidcClient, resourceServer);
+    return this.findManagedClient(clientId).orElseThrow(
+        () -> new KeycloakAdminException("Client '" + clientId + "' carries neither"
+            + " iam_admin_managed nor iam_admin_resource_server after update"));
+  }
+
+  /**
+   * Permanently deletes a client from Keycloak, together with its Authorization Services
+   * artifacts. The realm-level client scopes are shared between clients and are left intact.
+   *
+   * @param clientId the OAuth2 client_id
+   * @throws KeycloakAdminException if the client does not exist, or on any Keycloak API error
+   */
+  public void deleteManagedClient(final @NonNull String clientId) {
+    final Map<String, Object> client = this.fetchClientByClientId(clientId);
+    if (client == null) {
+      throw new KeycloakAdminException("Keycloak client not found: " + clientId);
+    }
+    final String clientUuid = getString(client, "id");
+    if (clientUuid == null) {
+      throw new KeycloakAdminException("Keycloak client '" + clientId + "' has no id");
+    }
+    this.adminDelete("/clients/" + clientUuid);
+    log.info("Managed client '{}' deleted from Keycloak", clientId);
+  }
+
+  /**
+   * Applies the settings the IAM Admin application owns onto a client, merging them into the
+   * current representation so that unrelated settings are preserved.
+   *
+   * <p>The two roles are written independently. The OIDC client role decides the client's shape —
+   * confidential with {@code private_key_jwt}, standard flow and Authorization Services when on;
+   * public with every flow disabled when off. The resource server role only adds a marker
+   * attribute; being an audience target requires no client settings of its own.</p>
+   *
+   * <p>{@link #MANAGED_ATTRIBUTE} is written whichever roles are set: it says the application
+   * administers this Keycloak client, not which role it plays.</p>
+   *
+   * <p>Turning the OIDC client role off disables Authorization Services, which makes Keycloak
+   * discard the client's policies and permissions.</p>
+   *
+   * <p>On a client carrying {@link #ALL_FUNCTIONS_ATTRIBUTE} the declared functions are ignored and
+   * {@code client_functions} is left as it is. That client handles every function, and its
+   * attribute is maintained by {@link #materializeAllFunctions(String)} as functions are created,
+   * not by whoever edits the client.</p>
+   *
+   * @param clientUuid the Keycloak UUID of the client
+   * @param current the current client representation
+   * @param name the display name, or {@code null}
+   * @param oidcClient whether the client obtains org-scoped tokens
+   * @param resourceServer whether the client may be named as an OAuth2 {@code resource} target
+   * @param redirectUris the redirect URIs; ignored unless {@code oidcClient}
+   * @param functions the functions the client handles
+   * @param jwksUri the JWKS URI, or {@code null}; ignored unless {@code oidcClient}
+   * @param jwksString the inline JWK Set, or {@code null}; ignored unless {@code oidcClient}
+   * @param serviceAccount whether the client keeps a service account user; recorded in
+   *     {@link #SERVICE_ACCOUNT_ATTRIBUTE}, never acted on. Ignored unless {@code oidcClient}
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  private void writeClientSettings(
+      final @NonNull String clientUuid,
+      final @NonNull Map<String, Object> current,
+      final @Nullable String name,
+      final boolean oidcClient,
+      final boolean resourceServer,
+      final @NonNull List<String> redirectUris,
+      final @NonNull Set<String> functions,
+      final @Nullable String jwksUri,
+      final @Nullable String jwksString,
+      final boolean serviceAccount) {
+
+    final Map<String, Object> body = new LinkedHashMap<>(current);
+    body.put("implicitFlowEnabled", false);
+    body.put("directAccessGrantsEnabled", false);
+    body.put("publicClient", !oidcClient);
+    body.put("standardFlowEnabled", oidcClient);
+    body.put("serviceAccountsEnabled", oidcClient);
+    body.put("authorizationServicesEnabled", oidcClient);
+    if (name != null) {
+      body.put("name", name);
     }
 
-    return new ArrayList<>(result);
+    final Map<String, Object> attributes = current.get("attributes") instanceof final Map<?, ?> attrs
+        ? new LinkedHashMap<>(castAttributes(attrs)) : new LinkedHashMap<>();
+    if (!"true".equals(attributes.get(ALL_FUNCTIONS_ATTRIBUTE))) {
+      attributes.put(CLIENT_FUNCTIONS_ATTRIBUTE, String.join(",", functions));
+    }
+
+    if (oidcClient) {
+      attributes.put(SERVICE_ACCOUNT_ATTRIBUTE, String.valueOf(serviceAccount));
+      // The root URL is never written. It is read to expand relative redirect URIs for display and
+      // is otherwise left exactly as the client has it, including having none.
+      body.put("redirectUris", redirectUris);
+      body.put("clientAuthenticatorType", "client-jwt");
+      if (jwksUri != null) {
+        attributes.put("use.jwks.url", "true");
+        attributes.put("jwks.url", jwksUri);
+        attributes.remove("use.jwks.string");
+        attributes.remove("jwks.string");
+      }
+      else {
+        attributes.put("use.jwks.string", "true");
+        attributes.put("jwks.string", jwksString);
+        attributes.remove("use.jwks.url");
+        attributes.remove("jwks.url");
+      }
+    }
+    else {
+      body.put("redirectUris", List.of());
+      attributes.remove(SERVICE_ACCOUNT_ATTRIBUTE);
+      attributes.remove("use.jwks.url");
+      attributes.remove("jwks.url");
+      attributes.remove("use.jwks.string");
+      attributes.remove("jwks.string");
+    }
+
+    // The application administers this client whichever role it plays, so the marker goes on
+    // unconditionally. The roles themselves are recorded separately.
+    attributes.put(MANAGED_ATTRIBUTE, "true");
+
+    // Written as an explicit "false" rather than removed: an absent value is what identifies a
+    // client from before this attribute existed, and resolveOidcClientRole reads the legacy
+    // meaning of iam_admin_managed for exactly those.
+    attributes.put(OIDC_CLIENT_ATTRIBUTE, String.valueOf(oidcClient));
+
+    if (resourceServer) {
+      attributes.put(RESOURCE_SERVER_ATTRIBUTE, "true");
+    }
+    else {
+      attributes.remove(RESOURCE_SERVER_ATTRIBUTE);
+    }
+
+    body.put("attributes", attributes);
+
+    this.adminPutWithBody("/clients/" + clientUuid, body);
+    log.debug("Client settings written for {} — oidcClient={}, resourceServer={}",
+        clientUuid, oidcClient, resourceServer);
+  }
+
+  /**
+   * Keeps or deletes the service account user Keycloak creates for a confidential client.
+   *
+   * @param clientUuid the Keycloak UUID of the client
+   * @param clientId the OAuth2 client_id, used for logging
+   * @param keep whether the service account user is wanted
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  private void handleServiceAccount(
+      final @NonNull String clientUuid, final @NonNull String clientId, final boolean keep) {
+
+    if (keep) {
+      log.debug("Service account kept for client '{}'", clientId);
+      return;
+    }
+    final String userId = this.findServiceAccountUserId(clientUuid);
+    if (userId == null) {
+      log.debug("No service account user found for client '{}' — nothing to delete", clientId);
+      return;
+    }
+    this.adminDelete("/users/" + userId);
+    log.debug("Service account user deleted for client '{}'", clientId);
+  }
+
+  /**
+   * Looks up the service account user of a client.
+   *
+   * <p>Keycloak answers {@code 404} for a client that has none, which is an expected outcome
+   * here rather than an error.</p>
+   *
+   * @param clientUuid the Keycloak UUID of the client
+   * @return the user id, or {@code null} if the client has no service account user
+   */
+  private @Nullable String findServiceAccountUserId(final @NonNull String clientUuid) {
+    try {
+      final Map<String, Object> user = this.adminGet(
+          "/clients/" + clientUuid + "/service-account-user", new ParameterizedTypeReference<>() {});
+      return user == null ? null : getString(user, "id");
+    }
+    catch (final KeycloakAdminException e) {
+      log.debug("No service account user for client {}: {}", clientUuid, e.getMessage());
+      return null;
+    }
+  }
+
+  /**
+   * Adds the protocol mappers a managed client needs.
+   *
+   * <p>The {@code resource-audience-mapper} depends on the {@code resource-aud-plugin} being
+   * deployed in Keycloak. When it is not, its creation fails and a WARN is logged — the client is
+   * still usable, but cannot target resource servers via the {@code resource} parameter.</p>
+   *
+   * @param clientUuid the Keycloak UUID of the client
+   * @param orgRightsIdToken whether {@code org_rights} is emitted in the ID token
+   * @param orgRightsAccessToken whether {@code org_rights} is emitted in the access token
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  private void addProtocolMappers(
+      final @NonNull String clientUuid,
+      final boolean orgRightsIdToken,
+      final boolean orgRightsAccessToken) {
+
+    final String path = "/clients/" + clientUuid + "/protocol-mappers/models";
+    final List<Map<String, Object>> existing = this.adminGet(path, new ParameterizedTypeReference<>() {});
+    final Set<String> present = namesOf(existing == null ? List.of() : existing);
+
+    if (!present.contains(ORG_RIGHTS_MAPPER)) {
+      this.adminPost(path, Map.of(
+          "name", ORG_RIGHTS_MAPPER,
+          "protocol", "openid-connect",
+          "protocolMapper", ORG_RIGHTS_MAPPER,
+          "consentRequired", false,
+          "config", Map.of(
+              "id.token.claim", String.valueOf(orgRightsIdToken),
+              "access.token.claim", String.valueOf(orgRightsAccessToken))));
+      log.debug("Added {} to client {}", ORG_RIGHTS_MAPPER, clientUuid);
+    }
+
+    if (!present.contains("scope-org-identifier-mapper")) {
+      this.adminPost(path, Map.of(
+          "name", "scope-org-identifier-mapper",
+          "protocol", "openid-connect",
+          "protocolMapper", "scope-org-identifier-mapper",
+          "consentRequired", false,
+          "config", Map.of("id.token.claim", "false", "access.token.claim", "true")));
+      log.debug("Added scope-org-identifier-mapper to client {}", clientUuid);
+    }
+
+    if (!present.contains("resource-audience-mapper")) {
+      try {
+        this.adminPost(path, Map.of(
+            "name", "resource-audience-mapper",
+            "protocol", "openid-connect",
+            "protocolMapper", "resource-audience-mapper",
+            "consentRequired", false,
+            "config", Map.of("id.token.claim", "false", "access.token.claim", "true")));
+        log.debug("Added resource-audience-mapper to client {}", clientUuid);
+      }
+      catch (final KeycloakAdminException e) {
+        log.warn("Could not add 'resource-audience-mapper' to client {} — is the resource-aud-plugin"
+            + " deployed and has Keycloak been rebuilt? {}", clientUuid, e.getMessage());
+      }
+    }
+  }
+
+  /**
+   * Writes the claim inclusion flags onto a client's existing {@code org-rights-mapper}.
+   *
+   * <p>A client that has no such mapper is left alone: {@link #addProtocolMappers} creates it with
+   * the wanted configuration, and a client that never received it is repaired there.</p>
+   *
+   * @param clientUuid the Keycloak UUID of the client
+   * @param orgRightsIdToken whether {@code org_rights} is emitted in the ID token
+   * @param orgRightsAccessToken whether {@code org_rights} is emitted in the access token
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  private void writeOrgRightsMapperConfig(
+      final @NonNull String clientUuid,
+      final boolean orgRightsIdToken,
+      final boolean orgRightsAccessToken) {
+
+    final String path = "/clients/" + clientUuid + "/protocol-mappers/models";
+    final List<Map<String, Object>> mappers = this.adminGet(path, new ParameterizedTypeReference<>() {});
+    if (mappers == null) {
+      return;
+    }
+    for (final Map<String, Object> mapper : mappers) {
+      if (!ORG_RIGHTS_MAPPER.equals(mapper.get("name"))) {
+        continue;
+      }
+      final String mapperId = getString(mapper, "id");
+      if (mapperId == null) {
+        log.debug("Mapper '{}' on client {} has no id — cannot update it", ORG_RIGHTS_MAPPER, clientUuid);
+        return;
+      }
+      final Map<String, Object> body = new LinkedHashMap<>(mapper);
+      final Map<String, Object> config = mapper.get("config") instanceof final Map<?, ?> current
+          ? new LinkedHashMap<>(castAttributes(current)) : new LinkedHashMap<>();
+      config.put("id.token.claim", String.valueOf(orgRightsIdToken));
+      config.put("access.token.claim", String.valueOf(orgRightsAccessToken));
+      body.put("config", config);
+      this.adminPutWithBody(path + "/" + mapperId, body);
+      log.debug("Configured {} on client {} — idToken={}, accessToken={}",
+          ORG_RIGHTS_MAPPER, clientUuid, orgRightsIdToken, orgRightsAccessToken);
+      return;
+    }
+    log.debug("Client {} has no '{}' — nothing to configure", clientUuid, ORG_RIGHTS_MAPPER);
+  }
+
+  /**
+   * The optional client scopes every managed client is given: the personal identity number and the
+   * organizational identity claims of the Swedish OIDC Claims Specification, and the phone number.
+   * Optional rather than default, so a client receives the identity claims it asks for and nothing
+   * else. The realm-level scopes themselves are created by {@code bootstrap-realm.sh}.
+   */
+  static final List<String> BASE_OPTIONAL_SCOPES = List.of(
+      "https://id.oidc.se/scope/naturalPersonNumber",
+      "https://id.oidc.se/scope/naturalPersonOrgId",
+      "phone");
+
+  /**
+   * Adds the optional client scopes every managed client needs, if the realm has them.
+   *
+   * @param clientUuid the Keycloak UUID of the client
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  private void addBaseOptionalScopes(final @NonNull String clientUuid) {
+    final Map<String, String> realmScopeIds = this.fetchRealmClientScopeIds();
+    for (final String scope : BASE_OPTIONAL_SCOPES) {
+      final String scopeId = realmScopeIds.get(scope);
+      if (scopeId == null) {
+        log.warn("Client scope '{}' not found in realm — skipping. Has the realm been bootstrapped?", scope);
+        continue;
+      }
+      this.adminPut("/clients/" + clientUuid + "/optional-client-scopes/" + scopeId);
+      log.debug("Added optional client scope '{}' to client {}", scope, clientUuid);
+    }
+  }
+
+  /**
+   * Fetches a client representation by its OAuth2 client_id.
+   *
+   * @param clientId the OAuth2 client_id
+   * @return the client representation, or {@code null} if no such client exists
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  private @Nullable Map<String, Object> fetchClientByClientId(final @NonNull String clientId) {
+    final URI uri = UriComponentsBuilder.fromUriString(this.adminApiBase + "/clients")
+        .queryParam("clientId", clientId)
+        .queryParam("exact", "true")
+        .build()
+        .toUri();
+    final List<Map<String, Object>> clients = this.adminGet(uri, new ParameterizedTypeReference<>() {});
+    return clients == null || clients.isEmpty() ? null : clients.getFirst();
+  }
+
+  /**
+   * Casts a client's attribute map to its declared type.
+   *
+   * @param attributes the raw attribute map
+   * @return the attribute map
+   */
+  @SuppressWarnings("unchecked")
+  private static @NonNull Map<String, Object> castAttributes(final @NonNull Map<?, ?> attributes) {
+    return (Map<String, Object>) attributes;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Artifact naming and reconciliation
+  // ---------------------------------------------------------------------------
+
+  /** The rights levels an org/function combination is expanded into. */
+  public static final List<String> RIGHT_LEVELS = List.of("read", "write", "admin");
+
+  /**
+   * Returns the OAuth2 client scope name for an org/function/level combination.
+   *
+   * @param orgIdentifier the organization identifier
+   * @param functionId the function identifier
+   * @param level the rights level
+   * @return the scope name, e.g. {@code 2021006883:demo:read}
+   */
+  public static @NonNull String scopeName(
+      final @NonNull String orgIdentifier, final @NonNull String functionId, final @NonNull String level) {
+    return orgIdentifier + ":" + functionId + ":" + level;
+  }
+
+  /**
+   * Returns the Authorization Services group policy name for an org/function/level combination.
+   *
+   * @param orgIdentifier the organization identifier
+   * @param functionId the function identifier
+   * @param level the rights level
+   * @return the policy name, e.g. {@code policy-2021006883-demo-read}
+   */
+  public static @NonNull String policyName(
+      final @NonNull String orgIdentifier, final @NonNull String functionId, final @NonNull String level) {
+    return "policy-" + orgIdentifier + "-" + functionId + "-" + level;
+  }
+
+  /**
+   * Returns the Authorization Services scope permission name for an org/function/level combination.
+   *
+   * @param orgIdentifier the organization identifier
+   * @param functionId the function identifier
+   * @param level the rights level
+   * @return the permission name, e.g. {@code permission-2021006883-demo-read}
+   */
+  public static @NonNull String permissionName(
+      final @NonNull String orgIdentifier, final @NonNull String functionId, final @NonNull String level) {
+    return "permission-" + orgIdentifier + "-" + functionId + "-" + level;
+  }
+
+  /**
+   * Returns the group paths that grant the given rights level on an org/function combination.
+   *
+   * <p>A higher level always qualifies for a lower one: {@code _admin} grants write and read,
+   * {@code _write} grants read. Both the org-wide groups and the function-specific groups are
+   * included.</p>
+   *
+   * @param orgIdentifier the organization identifier
+   * @param functionId the function identifier
+   * @param level the rights level
+   * @return the qualifying group paths
+   */
+  private static @NonNull List<String> qualifyingGroupPaths(
+      final @NonNull String orgIdentifier, final @NonNull String functionId, final @NonNull String level) {
+
+    final String org = "/orgs/" + orgIdentifier;
+    final String func = org + "/" + functionId;
+    return switch (level) {
+      case "read" -> List.of(
+          org + "/_read", org + "/_write", org + "/_admin",
+          func + "/_read", func + "/_write", func + "/_admin");
+      case "write" -> List.of(
+          org + "/_write", org + "/_admin",
+          func + "/_write", func + "/_admin");
+      case "admin" -> List.of(
+          org + "/_admin",
+          func + "/_admin");
+      default -> throw new KeycloakAdminException("Unknown rights level: " + level);
+    };
+  }
+
+  /**
+   * Fetches every realm-level OAuth2 client scope, keyed by name.
+   *
+   * <p>The returned map is mutable and is updated in place by
+   * {@link #ensureRealmClientScope(String, Map)}, so that a reconciliation run can create scopes
+   * without re-fetching.</p>
+   *
+   * @return mutable map of scope name to Keycloak UUID; never {@code null}
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  public @NonNull Map<String, String> fetchRealmClientScopeIds() {
+    final List<Map<String, Object>> scopes = this.adminGet(
+        "/client-scopes", new ParameterizedTypeReference<>() {});
+    final Map<String, String> result = new LinkedHashMap<>();
+    if (scopes != null) {
+      for (final Map<String, Object> scope : scopes) {
+        final String name = getString(scope, "name");
+        final String id = getString(scope, "id");
+        if (name != null && id != null) {
+          result.put(name, id);
+        }
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Returns the Keycloak UUID of the realm client scope with the given name, creating the scope if
+   * it does not exist.
+   *
+   * @param name the scope name
+   * @param realmScopeIds map of known scope names to UUIDs, updated when a scope is created
+   * @return the Keycloak UUID of the scope
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  public @NonNull String ensureRealmClientScope(
+      final @NonNull String name, final @NonNull Map<String, String> realmScopeIds) {
+
+    final String existing = realmScopeIds.get(name);
+    if (existing != null) {
+      return existing;
+    }
+    final String created = this.createClientScope(name);
+    realmScopeIds.put(name, created);
+    log.debug("Created realm client scope '{}' with id {}", name, created);
+    return created;
+  }
+
+  /**
+   * Fetches the Authorization Services artifacts and optional client scopes a client currently
+   * holds, so that reconciliation can determine what is missing without one lookup per artifact.
+   *
+   * @param clientUuid the Keycloak UUID of the client
+   * @return the client's current artifact state; never {@code null}
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  public @NonNull ClientArtifactState fetchClientArtifactState(final @NonNull String clientUuid) {
+    final String authzBase = "/clients/" + clientUuid + "/authz/resource-server/";
+    final Set<String> authzScopes = namesOf(this.fetchPaged(authzBase + "scope"));
+    final Set<String> policies = namesOf(this.fetchPaged(authzBase + "policy"));
+    final Set<String> permissions = namesOf(this.fetchPaged(authzBase + "permission"));
+
+    final List<Map<String, Object>> optional = this.adminGet(
+        "/clients/" + clientUuid + "/optional-client-scopes", new ParameterizedTypeReference<>() {});
+    final Set<String> optionalScopeIds = new LinkedHashSet<>();
+    if (optional != null) {
+      for (final Map<String, Object> scope : optional) {
+        final String id = getString(scope, "id");
+        if (id != null) {
+          optionalScopeIds.add(id);
+        }
+      }
+    }
+    return new ClientArtifactState(authzScopes, policies, permissions, optionalScopeIds);
+  }
+
+  /**
+   * Returns the organizations that exist under the {@code orgs} top-level group, together with the
+   * functions attached to each of them.
+   *
+   * @return map of organization identifier to attached function identifiers; never {@code null}
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  public @NonNull Map<String, Set<String>> fetchOrgFunctionTopology() {
+    final Map<String, Set<String>> topology = new LinkedHashMap<>();
+    final String orgsGroupId = this.findTopLevelGroupId("orgs");
+
+    for (final Map<String, Object> orgGroup : this.fetchGroupChildren(orgsGroupId)) {
+      final String orgGroupId = getString(orgGroup, "id");
+      final String orgIdentifier = getString(orgGroup, "name");
+      if (orgGroupId == null || orgIdentifier == null) {
+        continue;
+      }
+      final Set<String> functions = new LinkedHashSet<>();
+      for (final Map<String, Object> child : this.fetchGroupChildren(orgGroupId)) {
+        final String name = getString(child, "name");
+        if (name != null && !name.startsWith("_")) {
+          functions.add(name);
+        }
+      }
+      topology.put(orgIdentifier, functions);
+    }
+    log.debug("Org/function topology: {} organizations", topology.size());
+    return topology;
+  }
+
+  /**
+   * Creates whatever the given client is missing for an org/function combination: the realm client
+   * scopes, the Authorization Services scopes, the group policies, the scope permissions, and the
+   * optional client scope assignments.
+   *
+   * <p>The operation is idempotent — artifacts already present in {@code state} are left alone.</p>
+   *
+   * @param clientUuid the Keycloak UUID of the client
+   * @param orgIdentifier the organization identifier
+   * @param functionId the function identifier
+   * @param realmScopeIds map of known realm scope names to UUIDs, updated when a scope is created
+   * @param state the client's current artifact state, as returned by
+   *     {@link #fetchClientArtifactState(String)}
+   * @return the number of artifacts created
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  /**
+   * Counts the artifacts {@link #ensureFunctionArtifacts} would create for one org/function pair,
+   * without creating anything.
+   *
+   * <p>Reads the same two snapshots and applies the same four checks per right level, so a client
+   * this reports as {@code 0} is one that a reconciliation would leave untouched. Any change to
+   * what {@code ensureFunctionArtifacts} creates has to be mirrored here.</p>
+   *
+   * <p>A realm client scope that does not exist yet is not itself counted, matching
+   * {@code ensureFunctionArtifacts}, which creates it without counting it. Its absence does mean
+   * the optional binding cannot exist, and that binding is counted.</p>
+   *
+   * @param orgIdentifier the organization identifier
+   * @param functionId the function identifier
+   * @param realmScopeIds realm client scope name to Keycloak UUID
+   * @param state the artifacts the client currently holds
+   * @return the number of artifacts missing; {@code 0} if the pair is fully provisioned
+   */
+  public static int countMissingFunctionArtifacts(
+      final @NonNull String orgIdentifier,
+      final @NonNull String functionId,
+      final @NonNull Map<String, String> realmScopeIds,
+      final @NonNull ClientArtifactState state) {
+
+    int missing = 0;
+    for (final String level : RIGHT_LEVELS) {
+      final String scope = scopeName(orgIdentifier, functionId, level);
+      if (!state.authzScopeNames().contains(scope)) {
+        missing++;
+      }
+      if (!state.policyNames().contains(policyName(orgIdentifier, functionId, level))) {
+        missing++;
+      }
+      if (!state.permissionNames().contains(permissionName(orgIdentifier, functionId, level))) {
+        missing++;
+      }
+      final String scopeId = realmScopeIds.get(scope);
+      if (scopeId == null || !state.optionalScopeIds().contains(scopeId)) {
+        missing++;
+      }
+    }
+    return missing;
+  }
+
+  public int ensureFunctionArtifacts(
+      final @NonNull String clientUuid,
+      final @NonNull String orgIdentifier,
+      final @NonNull String functionId,
+      final @NonNull Map<String, String> realmScopeIds,
+      final @NonNull ClientArtifactState state) {
+
+    int created = 0;
+    for (final String level : RIGHT_LEVELS) {
+      final String scope = scopeName(orgIdentifier, functionId, level);
+      final String scopeId = this.ensureRealmClientScope(scope, realmScopeIds);
+
+      // KeyCloak Authorization Services maintains its own scope registry on each resource server,
+      // separate from OAuth2 client scopes. Authz scopes must exist before permissions can
+      // reference them.
+      if (!state.authzScopeNames().contains(scope)) {
+        this.createAuthzScope(clientUuid, scope);
+        created++;
+      }
+
+      final String policy = policyName(orgIdentifier, functionId, level);
+      String policyId = null;
+      if (!state.policyNames().contains(policy)) {
+        policyId = this.createGroupPolicy(clientUuid, policy,
+            qualifyingGroupPaths(orgIdentifier, functionId, level));
+        created++;
+      }
+
+      final String permission = permissionName(orgIdentifier, functionId, level);
+      if (!state.permissionNames().contains(permission)) {
+        if (policyId == null) {
+          policyId = this.findAuthzArtifactId(clientUuid, "policy", policy);
+        }
+        if (policyId == null) {
+          log.warn("Policy '{}' missing on client {} — cannot create permission '{}'",
+              policy, clientUuid, permission);
+        }
+        else {
+          this.createScopePermission(clientUuid, permission, scope, policyId);
+          created++;
+        }
+      }
+
+      if (!state.optionalScopeIds().contains(scopeId)) {
+        this.adminPut("/clients/" + clientUuid + "/optional-client-scopes/" + scopeId);
+        log.debug("Registered optional client scope '{}' on client {}", scope, clientUuid);
+        created++;
+      }
+    }
+    return created;
+  }
+
+  /**
+   * Removes the artifacts a client holds for an org/function combination: the scope permissions,
+   * the group policies, and the optional client scope assignments. The realm-level client scopes
+   * are shared between clients and are not touched.
+   *
+   * <p>The operation is idempotent — artifacts that are already absent are skipped.</p>
+   *
+   * @param clientUuid the Keycloak UUID of the client
+   * @param orgIdentifier the organization identifier
+   * @param functionId the function identifier
+   * @param realmScopeIds map of realm scope names to UUIDs
+   * @return the number of artifacts removed
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  public int removeClientFunctionArtifacts(
+      final @NonNull String clientUuid,
+      final @NonNull String orgIdentifier,
+      final @NonNull String functionId,
+      final @NonNull Map<String, String> realmScopeIds) {
+
+    int removed = 0;
+    for (final String level : RIGHT_LEVELS) {
+      final String permission = permissionName(orgIdentifier, functionId, level);
+      final String permissionId = this.findAuthzArtifactId(clientUuid, "permission", permission);
+      if (permissionId != null) {
+        this.adminDelete("/clients/" + clientUuid + "/authz/resource-server/permission/" + permissionId);
+        log.debug("Deleted permission '{}' on client {}", permission, clientUuid);
+        removed++;
+      }
+      else {
+        log.debug("Permission '{}' not found on client {} — skipping", permission, clientUuid);
+      }
+
+      final String policy = policyName(orgIdentifier, functionId, level);
+      final String policyId = this.findAuthzArtifactId(clientUuid, "policy", policy);
+      if (policyId != null) {
+        this.adminDelete("/clients/" + clientUuid + "/authz/resource-server/policy/" + policyId);
+        log.debug("Deleted policy '{}' on client {}", policy, clientUuid);
+        removed++;
+      }
+      else {
+        log.debug("Policy '{}' not found on client {} — skipping", policy, clientUuid);
+      }
+
+      final String scope = scopeName(orgIdentifier, functionId, level);
+      final String scopeId = realmScopeIds.get(scope);
+      if (scopeId == null) {
+        log.debug("Client scope '{}' not found — skipping optional scope removal", scope);
+        continue;
+      }
+      try {
+        this.adminDelete("/clients/" + clientUuid + "/optional-client-scopes/" + scopeId);
+        log.debug("Removed optional client scope '{}' from client {}", scope, clientUuid);
+        removed++;
+      }
+      catch (final KeycloakAdminException e) {
+        log.debug("Optional client scope '{}' not assigned to client {} — skipping: {}",
+            scope, clientUuid, e.getMessage());
+      }
+    }
+    return removed;
+  }
+
+  /**
+   * Looks up an Authorization Services artifact by exact name.
+   *
+   * @param clientUuid the Keycloak UUID of the client
+   * @param artifactType {@code policy} or {@code permission}
+   * @param name the artifact name
+   * @return the artifact's Keycloak UUID, or {@code null} if no such artifact exists
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  private @Nullable String findAuthzArtifactId(
+      final @NonNull String clientUuid, final @NonNull String artifactType, final @NonNull String name) {
+
+    final String encoded = URLEncoder.encode(name, StandardCharsets.UTF_8);
+    final List<Map<String, Object>> found = this.adminGet(
+        "/clients/" + clientUuid + "/authz/resource-server/" + artifactType + "?name=" + encoded + "&exact=true",
+        new ParameterizedTypeReference<>() {});
+    return found == null || found.isEmpty() ? null : getString(found.getFirst(), "id");
+  }
+
+  /**
+   * Pages through a Keycloak list endpoint and returns every entry.
+   *
+   * @param path relative path under the admin API base, without paging parameters
+   * @return the entries; never {@code null}
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  private @NonNull List<Map<String, Object>> fetchPaged(final @NonNull String path) {
+    final String separator = path.contains("?") ? "&" : "?";
+    final List<Map<String, Object>> all = new ArrayList<>();
+    int first = 0;
+    while (true) {
+      final List<Map<String, Object>> page = this.adminGet(
+          path + separator + "first=" + first + "&max=" + PAGE_SIZE, new ParameterizedTypeReference<>() {});
+      if (page == null || page.isEmpty()) {
+        break;
+      }
+      all.addAll(page);
+      if (page.size() < PAGE_SIZE) {
+        break;
+      }
+      first += PAGE_SIZE;
+    }
+    return all;
+  }
+
+  /**
+   * Collects the {@code name} field of each entry.
+   *
+   * @param entries the entries
+   * @return the names; never {@code null}
+   */
+  private static @NonNull Set<String> namesOf(final @NonNull List<Map<String, Object>> entries) {
+    final Set<String> names = new LinkedHashSet<>();
+    for (final Map<String, Object> entry : entries) {
+      final String name = getString(entry, "name");
+      if (name != null) {
+        names.add(name);
+      }
+    }
+    return names;
   }
 
   /**
@@ -1281,31 +2570,25 @@ public class KeycloakAdminClient {
   }
 
   /**
-   * Creates a group policy and a scope permission for a given client, org/func/level combination.
+   * Creates an Authorization Services group policy on the given client.
    *
-   * <p>Note: The permission endpoint expects scope references by <em>name</em>, not by UUID.
-   * The {@code scopeName} parameter is used for the permission body; {@code scopeId} is kept for future reference but
-   * is not sent to the permission endpoint.</p>
+   * <p>Note: unlike the group and scope creation endpoints, the policy endpoint does not return a
+   * {@code Location} header — the created policy is returned as a JSON body, and its {@code id} is
+   * extracted from there.</p>
    *
    * @param clientUuid the Keycloak UUID of the client
-   * @param orgIdentifier the organization identifier
-   * @param functionId the function identifier
-   * @param level the rights level ({@code read}, {@code write}, or {@code admin})
-   * @param scopeName the client scope name (e.g. {@code org:func:read})
-   * @param groupPaths the group paths that grant access at this level
+   * @param policyName the policy name
+   * @param groupPaths the group paths that grant access
+   * @return the Keycloak UUID of the created policy
    * @throws KeycloakAdminException on any API error
    */
-  private void createPolicyAndPermission(
+  private @NonNull String createGroupPolicy(
       final @NonNull String clientUuid,
-      final @NonNull String orgIdentifier,
-      final @NonNull String functionId,
-      final @NonNull String level,
-      final @NonNull String scopeName,
+      final @NonNull String policyName,
       final @NonNull List<String> groupPaths) {
 
-    final String policyName = "policy-" + orgIdentifier + "-" + functionId + "-" + level;
     final List<Map<String, String>> groupEntries = groupPaths.stream()
-        .map(p -> Map.of("path", p))
+        .map(path -> Map.of("path", path))
         .toList();
     final String policyId = this.adminPostForId(
         "/clients/" + clientUuid + "/authz/resource-server/policy/group",
@@ -1314,8 +2597,26 @@ public class KeycloakAdminClient {
             "logic", "POSITIVE",
             "decisionStrategy", "AFFIRMATIVE"));
     log.debug("Created policy '{}' with id: {}", policyName, policyId);
+    return policyId;
+  }
 
-    final String permissionName = "permission-" + orgIdentifier + "-" + functionId + "-" + level;
+  /**
+   * Creates an Authorization Services scope permission binding a scope to a policy.
+   *
+   * <p>Note: the permission endpoint expects scope references by <em>name</em>, not by UUID.</p>
+   *
+   * @param clientUuid the Keycloak UUID of the client
+   * @param permissionName the permission name
+   * @param scopeName the scope name the permission applies to
+   * @param policyId the Keycloak UUID of the policy to evaluate
+   * @throws KeycloakAdminException on any API error
+   */
+  private void createScopePermission(
+      final @NonNull String clientUuid,
+      final @NonNull String permissionName,
+      final @NonNull String scopeName,
+      final @NonNull String policyId) {
+
     this.adminPostForId(
         "/clients/" + clientUuid + "/authz/resource-server/permission/scope",
         Map.of("name", permissionName,
@@ -1522,37 +2823,97 @@ public class KeycloakAdminClient {
   }
 
   /**
+   * Looks up a user by organizational affiliation and returns their Keycloak UUID if found.
+   *
+   * @param orgAffiliation the organizational affiliation ({@code userID@organization-number})
+   * @return the Keycloak user UUID, or {@link Optional#empty()} if no such user exists
+   */
+  public Optional<String> findUserIdByOrgAffiliation(final @NonNull String orgAffiliation) {
+    final List<Map<String, Object>> users = this.adminGet(
+        "/users?q=orgAffiliation:" + orgAffiliation + "&exact=true",
+        new ParameterizedTypeReference<>() {});
+    if (users == null || users.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.ofNullable(getString(users.getFirst(), "id"));
+  }
+
+  /**
+   * Tells whether the given user ID is already taken as a Keycloak {@code username}.
+   *
+   * @param userId the user ID to check
+   * @return {@code true} if a user with this username exists
+   */
+  public boolean usernameExists(final @NonNull String userId) {
+    final List<Map<String, Object>> users = this.adminGet(
+        "/users?username=" + URLEncoder.encode(userId, StandardCharsets.UTF_8) + "&exact=true",
+        new ParameterizedTypeReference<>() {});
+    return users != null && !users.isEmpty();
+  }
+
+  /**
    * Creates a new user in the realm with the given details.
    *
    * <p>The {@code name} is split on the first space into {@code firstName} and {@code lastName}.
-   * If there is no space the whole string is used as {@code firstName}. A random UUID is supplied as {@code username}
-   * because Keycloak 26 requires it.</p>
+   * If there is no space the whole string is used as {@code firstName}.</p>
    *
+   * <p>The caller decides which values to pass — this method reads no configuration. A
+   * {@code userId} of {@code null} means that a random UUID is used as {@code username}, which
+   * Keycloak requires.</p>
+   *
+   * <p>An {@code orgAffiliation} brings the other two organizational identity attributes of the
+   * Swedish OIDC Claims Specification with it: {@code orgNumber} is the organization number part of
+   * the affiliation, and {@code orgName} is the legal name of the organization registered under that
+   * number, when there is one. The affiliation is the authoritative statement of which organization
+   * issued the identity, so the number is taken from it rather than from any organization the user
+   * is being given rights in. A lookup that finds nothing leaves {@code orgName} out; it never fails
+   * the creation. {@code orgUnit} is not written.</p>
+   *
+   * @param userId the {@code username} to assign, or {@code null} for a random UUID
    * @param name display name (split into first / last name)
    * @param email optional email address
-   * @param personalIdentityNumber 12-digit personal identity number
+   * @param personalIdentityNumber optional 12-digit personal identity number
+   * @param orgAffiliation optional organizational affiliation ({@code userID@organization-number})
    * @param phoneNumber optional phone number
+   * @param temporaryPassword optional initial password that the user must change at first login
    * @return the Keycloak UUID of the newly created user
    * @throws KeycloakAdminException on any Keycloak API error
    */
   public @NonNull String createUser(
+      final @Nullable String userId,
       final @NonNull String name,
       final @Nullable String email,
-      final @NonNull String personalIdentityNumber,
-      final @Nullable String phoneNumber) {
+      final @Nullable String personalIdentityNumber,
+      final @Nullable String orgAffiliation,
+      final @Nullable String phoneNumber,
+      final @Nullable String temporaryPassword) {
 
     final int spaceIdx = name.indexOf(' ');
     final String firstName = spaceIdx > 0 ? name.substring(0, spaceIdx) : name;
     final String lastName = spaceIdx > 0 ? name.substring(spaceIdx + 1) : "";
 
     final Map<String, List<String>> attributes = new LinkedHashMap<>();
-    attributes.put("personalIdentityNumber", List.of(personalIdentityNumber));
+    if (personalIdentityNumber != null && !personalIdentityNumber.isBlank()) {
+      attributes.put("personalIdentityNumber", List.of(personalIdentityNumber));
+    }
+    if (orgAffiliation != null && !orgAffiliation.isBlank()) {
+      attributes.put("orgAffiliation", List.of(orgAffiliation));
+      final String orgNumber = orgNumberOf(orgAffiliation);
+      if (orgNumber != null) {
+        attributes.put("orgNumber", List.of(orgNumber));
+        final String orgName = this.resolveOrganizationLegalName(orgNumber);
+        if (orgName != null) {
+          attributes.put("orgName", List.of(orgName));
+        }
+      }
+    }
+    // TODO: hsaId and efosId are written here when those eID attributes are implemented.
     if (phoneNumber != null && !phoneNumber.isBlank()) {
       attributes.put("phoneNumber", List.of(phoneNumber));
     }
 
     final Map<String, Object> body = new LinkedHashMap<>();
-    body.put("username", this.pnrUserids ? personalIdentityNumber : UUID.randomUUID().toString());
+    body.put("username", userId != null && !userId.isBlank() ? userId : UUID.randomUUID().toString());
     body.put("enabled", true);
     body.put("firstName", firstName);
     if (!lastName.isBlank()) {
@@ -1562,15 +2923,63 @@ public class KeycloakAdminClient {
       body.put("email", email);
     }
     body.put("attributes", attributes);
+    if (temporaryPassword != null && !temporaryPassword.isBlank()) {
+      body.put("credentials", List.of(Map.of(
+          "type", "password",
+          "value", temporaryPassword,
+          "temporary", true)));
+    }
 
     final String location = this.adminPost("/users", body);
     if (location == null) {
       throw new KeycloakAdminException("Keycloak did not return a Location header after user creation");
     }
     final String path = URI.create(location).getPath();
-    final String userId = path.substring(path.lastIndexOf('/') + 1);
-    log.debug("User '{}' created in Keycloak with id: {}", name, userId);
-    return userId;
+    final String createdId = path.substring(path.lastIndexOf('/') + 1);
+    log.debug("User '{}' created in Keycloak with id: {}", name, createdId);
+    return createdId;
+  }
+
+  /**
+   * Returns the organization number part of an organizational affiliation, i.e. what follows the
+   * {@code @}, or {@code null} when the value carries no organization number.
+   *
+   * @param orgAffiliation the organizational affiliation ({@code userID@organization-number})
+   * @return the organization number, or {@code null}
+   */
+  static @Nullable String orgNumberOf(final @NonNull String orgAffiliation) {
+    final int atIdx = orgAffiliation.lastIndexOf('@');
+    if (atIdx < 0 || atIdx == orgAffiliation.length() - 1) {
+      return null;
+    }
+    final String orgNumber = orgAffiliation.substring(atIdx + 1).trim();
+    return orgNumber.isEmpty() ? null : orgNumber;
+  }
+
+  /**
+   * Returns the legal name of the organization registered under the given organization number, or
+   * {@code null} when no such organization group exists or it carries no name of its own.
+   *
+   * <p>{@link #resolveLegalName} substitutes the organization identifier for a group that carries no
+   * name at all, and that placeholder is filtered out here: an {@code orgName} claim reading back
+   * the organization number says nothing, and an absent claim is better than a derived one. A
+   * Keycloak error is logged and swallowed for the same reason — the name is a convenience on the
+   * user, never a reason to refuse creating them.</p>
+   *
+   * @param orgNumber the organization number
+   * @return the legal name, or {@code null}
+   */
+  private @Nullable String resolveOrganizationLegalName(final @NonNull String orgNumber) {
+    try {
+      return this.fetchOrganizationByIdentifier(orgNumber)
+          .map(OrganizationInfo::legalName)
+          .filter(legalName -> !legalName.isBlank() && !legalName.equals(orgNumber))
+          .orElse(null);
+    }
+    catch (final RuntimeException e) {
+      log.warn("Could not resolve the organization '{}' for orgName: {}", orgNumber, e.getMessage());
+      return null;
+    }
   }
 
   /**
@@ -1801,7 +3210,7 @@ public class KeycloakAdminClient {
         existing.getOrDefault("attributes", Map.of()) instanceof final Map<?, ?> m
             ? new LinkedHashMap<>((Map<String, Object>) m) : new LinkedHashMap<>();
 
-    // Preserve personalIdentityNumber; update phoneNumber
+    // Preserve the eID attributes, which are immutable after creation; update phoneNumber
     if (phoneNumber != null && !phoneNumber.isBlank()) {
       existingAttrs.put("phoneNumber", List.of(phoneNumber));
     }
@@ -1837,19 +3246,22 @@ public class KeycloakAdminClient {
   /**
    * Updates the mutable attributes of an organization group in Keycloak.
    *
-   * <p>Only non-null parameters are applied. {@code null} for {@code nameSv}/{@code nameEn}
-   * means "do not change". An empty string for {@code contactEmail} or {@code contactPhone} means "clear the
-   * attribute".</p>
+   * <p>Only non-null parameters are applied. {@code null} means "do not change" throughout. An
+   * empty string for a display name, {@code contactEmail} or {@code contactPhone} means "clear the
+   * attribute"; the legal name is mandatory and cannot be cleared, so a blank value is rejected by
+   * the caller before it reaches here.</p>
    *
    * @param orgIdentifier the organization identifier
-   * @param nameSv new Swedish name, or {@code null} to leave unchanged
-   * @param nameEn new English name, or {@code null} to leave unchanged
+   * @param legalName new legal name, or {@code null} to leave unchanged
+   * @param nameSv new Swedish display name, {@code null} to leave unchanged, or {@code ""} to remove
+   * @param nameEn new English display name, {@code null} to leave unchanged, or {@code ""} to remove
    * @param contactEmail new contact email, or {@code null} to leave unchanged, or {@code ""} to clear
    * @param contactPhone new contact phone, or {@code null} to leave unchanged, or {@code ""} to clear
    * @throws KeycloakAdminException if the org group is not found or on API error
    */
   public void updateOrganization(
       final @NonNull String orgIdentifier,
+      final @Nullable String legalName,
       final @Nullable String nameSv,
       final @Nullable String nameEn,
       final @Nullable String contactEmail,
@@ -1871,11 +3283,25 @@ public class KeycloakAdminClient {
         existing.getOrDefault("attributes", Map.of()) instanceof final Map<?, ?> m
             ? new LinkedHashMap<>((Map<String, Object>) m) : new LinkedHashMap<>();
 
+    if (legalName != null) {
+      attrs.put(ORG_ATTR_NAME, List.of(legalName));
+    }
+    // A display name sent empty is removed rather than stored as an empty string.
     if (nameSv != null) {
-      attrs.put("organization_name#sv", List.of(nameSv));
+      if (nameSv.isBlank()) {
+        attrs.remove(ORG_ATTR_NAME_SV);
+      }
+      else {
+        attrs.put(ORG_ATTR_NAME_SV, List.of(nameSv));
+      }
     }
     if (nameEn != null) {
-      attrs.put("organization_name#en", List.of(nameEn));
+      if (nameEn.isBlank()) {
+        attrs.remove(ORG_ATTR_NAME_EN);
+      }
+      else {
+        attrs.put(ORG_ATTR_NAME_EN, List.of(nameEn));
+      }
     }
     if (contactEmail != null) {
       if (contactEmail.isBlank()) {
@@ -1992,77 +3418,29 @@ public class KeycloakAdminClient {
         .orElseThrow(() -> new KeycloakAdminException(
             "Function group '" + functionId + "' not found under org '" + orgIdentifier + "'"));
 
-    // Resolve client UUIDs and fetch all realm client scopes for scope cleanup
-    final List<String> clientUuids = this.resolveIamAdminManagedClientUuids();
-    final List<Map<String, Object>> allScopes = this.adminGet(
-        "/client-scopes", new ParameterizedTypeReference<>() {});
+    // Resolve the managed clients that handle this function, and the realm client scopes needed
+    // to unassign the optional client scopes
+    final List<ManagedClientInfo> clients = this.resolveManagedClientsForFunction(functionId);
+    final Map<String, String> realmScopeIds = this.fetchRealmClientScopeIds();
 
-    for (final String level : List.of("read", "write", "admin")) {
-      final String scopeName = orgIdentifier + ":" + functionId + ":" + level;
-      final String scopeId = allScopes == null ? null : allScopes.stream()
-          .filter(s -> scopeName.equals(getString(s, "name")))
-          .map(s -> getString(s, "id"))
-          .filter(Objects::nonNull)
-          .findFirst()
-          .orElse(null);
-
-      if (scopeId == null) {
-        log.warn("Client scope '{}' not found during detach cleanup — skipping", scopeName);
-        continue;
-      }
-
-      // Remove optional-client-scope assignment from each client before deleting the scope
-      for (final String clientUuid : clientUuids) {
-        try {
-          this.adminDelete("/clients/" + clientUuid + "/optional-client-scopes/" + scopeId);
-          log.debug("Removed optional client scope '{}' from client {}", scopeName, clientUuid);
-        }
-        catch (final KeycloakAdminException e) {
-          log.debug("Optional client scope '{}' not assigned to client {} — skipping: {}",
-              scopeName, clientUuid, e.getMessage());
-        }
-      }
-
-      // Delete the realm-level client scope
-      this.adminDelete("/client-scopes/" + scopeId);
-      log.debug("Deleted realm client scope '{}'", scopeName);
+    // Remove the permissions, policies and optional client scope assignments per client
+    for (final ManagedClientInfo client : clients) {
+      final int removed = this.removeClientFunctionArtifacts(
+          client.uuid(), orgIdentifier, functionId, realmScopeIds);
+      log.debug("Removed {} artifacts from client '{}' for '{}:{}'",
+          removed, client.clientId(), orgIdentifier, functionId);
     }
 
-    // Delete Authorization Services permissions and policies per client and level
-    for (final String clientUuid : clientUuids) {
-      for (final String level : List.of("read", "write", "admin")) {
-        final String permName = "permission-" + orgIdentifier + ":" + functionId + ":" + level;
-        final String encoded = URLEncoder.encode(permName, StandardCharsets.UTF_8);
-        final List<Map<String, Object>> perms = this.adminGet(
-            "/clients/" + clientUuid + "/authz/resource-server/permission?name=" + encoded + "&exact=true",
-            new ParameterizedTypeReference<>() {});
-        if (perms != null && !perms.isEmpty()) {
-          final String permId = getString(perms.getFirst(), "id");
-          if (permId != null) {
-            this.adminDelete("/clients/" + clientUuid + "/authz/resource-server/permission/" + permId);
-            log.debug("Deleted permission '{}' on client {}", permName, clientUuid);
-          }
-        }
-        else {
-          log.debug("Permission '{}' not found on client {} — skipping", permName, clientUuid);
-        }
-
-        final String policyName = "policy-" + orgIdentifier + "-" + functionId + "-" + level;
-        final String encodedPolicy = URLEncoder.encode(policyName, StandardCharsets.UTF_8);
-        final List<Map<String, Object>> policies = this.adminGet(
-            "/clients/" + clientUuid + "/authz/resource-server/policy?name=" + encodedPolicy + "&exact=true",
-            new ParameterizedTypeReference<>() {});
-        if (policies != null && !policies.isEmpty()) {
-          final String policyId = getString(policies.getFirst(), "id");
-          if (policyId != null) {
-            this.adminDelete("/clients/" + clientUuid + "/authz/resource-server/policy/" + policyId);
-            log.debug("Deleted policy '{}' on client {}", policyName, clientUuid);
-          }
-        }
-        else {
-          log.debug("Policy '{}' not found on client {} — skipping", policyName, clientUuid);
-        }
+    // Delete the realm-level client scopes, which are shared between clients
+    for (final String level : RIGHT_LEVELS) {
+      final String scope = scopeName(orgIdentifier, functionId, level);
+      final String scopeId = realmScopeIds.get(scope);
+      if (scopeId == null) {
+        log.warn("Client scope '{}' not found during detach cleanup — skipping", scope);
+        continue;
       }
+      this.adminDelete("/client-scopes/" + scopeId);
+      log.debug("Deleted realm client scope '{}'", scope);
     }
 
     this.adminDelete("/groups/" + funcGroupId);
@@ -2450,6 +3828,7 @@ public class KeycloakAdminClient {
         getString(raw, "lastName"),
         getString(raw, "email"),
         getFirstAttr(raw, "personalIdentityNumber"),
+        getFirstAttr(raw, "orgAffiliation"),
         getFirstAttr(raw, "phoneNumber"),
         id != null && superuserIds.contains(id),
         List.of());

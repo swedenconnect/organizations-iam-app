@@ -51,8 +51,10 @@ export async function createOrganization(org: Omit<Organization, 'id'>): Promise
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       organizationNumber: org.organizationNumber,
-      nameSv: org.nameSv,
-      nameEn: org.nameEn,
+      legalName: org.legalName,
+      // Display names are optional; an empty field stores nothing.
+      nameSv: org.nameSv ?? null,
+      nameEn: org.nameEn ?? null,
     }),
   });
   if (response.status === 409) {
@@ -72,8 +74,11 @@ export async function updateOrganization(id: string, org: Partial<Organization>)
     contactEmail: org.contactEmail ?? null,
     contactPhone: org.additionalData?.contactPhone ?? null,
   };
-  if (org.nameSv != null) body.nameSv = org.nameSv;
-  if (org.nameEn != null) body.nameEn = org.nameEn;
+  // Sending a name field at all is a name change, which only superusers may make. An empty display
+  // name removes it; the legal name is mandatory and is only sent when it has a value.
+  if (org.legalName != null) body.legalName = org.legalName;
+  if (org.nameSv !== undefined) body.nameSv = org.nameSv ?? '';
+  if (org.nameEn !== undefined) body.nameEn = org.nameEn ?? '';
 
   const response = await apiFetch(apiUrl(`api/organizations/${id}`), {
     method: 'PUT',
@@ -86,8 +91,9 @@ export async function updateOrganization(id: string, org: Partial<Organization>)
   return {
     id: data.orgIdentifier,
     organizationNumber: data.orgIdentifier,
-    nameSv: data.nameSv ?? '',
-    nameEn: data.nameEn ?? '',
+    legalName: data.legalName,
+    nameSv: data.nameSv ?? null,
+    nameEn: data.nameEn ?? null,
     contactEmail: data.contactEmail ?? undefined,
     additionalData: data.contactPhone
       ? { contactPhone: data.contactPhone }
@@ -117,8 +123,9 @@ export async function getOrganizationById(id: string): Promise<Organization | nu
   return {
     id: o.orgIdentifier,
     organizationNumber: o.orgIdentifier,
-    nameSv: o.nameSv ?? '',
-    nameEn: o.nameEn ?? '',
+    legalName: o.legalName,
+    nameSv: o.nameSv ?? null,
+    nameEn: o.nameEn ?? null,
     contactEmail: o.contactEmail ?? undefined,
     additionalData: o.contactPhone ? { contactPhone: o.contactPhone } : undefined,
   };

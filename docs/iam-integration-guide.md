@@ -48,16 +48,6 @@
 
     5.2. [Constructing the Redirect URL](#constructing-the-redirect-url)
 
-6. [**Using the Demo**](#using-the-demo)
-
-    6.1. [Prerequisites](#prerequisites)
-
-    6.2. [Registering demo-app and demo-service in Keycloak](#registering-demo-app-and-demo-service-in-keycloak)
-
-    6.3. [Setting Up the Demo Function](#setting-up-the-demo-function)
-
-    6.4. [Running the Demo](#running-the-demo)
-
 ---
 
 <a name="overview"></a>
@@ -67,18 +57,21 @@ This guide explains how to build applications that integrate with the IAM model.
 model is defined in full in [rights-model.md](rights-model.md); the summary below covers the concepts
 that are directly relevant when writing an application.
 
+For setting up the local environment and running the demo applications that illustrate these
+patterns, see [Local environment and Demo application](local-environment.md).
+
 **Functions** are named administrative domains. Each function represents an area of
 operation, for example `demo` or `sweden-connect`. An application is scoped to one or more
 functions. Functions are defined centrally in Keycloak and can be attached to any number
 of organizations.
 
 **Organizations** are identified by their ten-digit Swedish organizational number (e.g.
-`5590026042`). An organization participates in a function by having it attached, at which
+`2021006883`). An organization participates in a function by having it attached, at which
 point users can be granted rights on that function within that organization.
 
 **Rights** come in three levels: `read`, `write`, and `admin`. They are hierarchical:
 `admin` implies `write` and `read`; `write` implies `read`. A user may hold a right at
-organization level — covering every function *currently attached* to that organization — or on
+organization level, covering every function *currently attached* to that organization, or on
 a specific function within an organization.
 
 **The `org_rights` claim** is a JSON array present in ID tokens. It provides a structured
@@ -89,10 +82,10 @@ per attached function, so relying parties never have to know which functions an 
 has attached.
 
 **OAuth2 scopes for API access** follow the pattern `{orgId}:{function}:{right}`, for
-example `5590026042:demo:write`. When a client application needs to call a downstream API
+example `2021006883:demo:write`. When a client application needs to call a downstream API
 on behalf of a user, it requests a scope of this form. Keycloak evaluates the user's group
 membership at token issuance time and either grants or denies the scope. Resource servers
-can therefore trust the granted scopes directly — no further authorization callback to
+can therefore trust the granted scopes directly. No further authorization callback to
 Keycloak is required.
 
 **The `organization_identifier` claim** is present in access tokens and contains the
@@ -115,7 +108,11 @@ determine which organizations and functions the user may act on, and at what rig
 Register the application using the `add-oidc-client.sh` script. This script creates the
 client in Keycloak with `private_key_jwt` client authentication, adds the `org_rights`
 protocol mapper to the ID token, and adds the `scope-org-identifier-mapper` to the access
-token. See `compose/keycloak-scripts/README.md` for the full option reference.
+token. It also adds `https://id.oidc.se/scope/naturalPersonNumber`,
+`https://id.oidc.se/scope/naturalPersonOrgId` and `phone` as optional client scopes, so the
+application can ask for the personal identity number, the organizational identity claims
+(`orgAffiliation`, `orgName`, `orgNumber`) and the phone number. See
+`compose/keycloak-scripts/README.md` for the full option reference.
 
 ```bash
 ./compose/keycloak-scripts/add-oidc-client.sh \
@@ -127,7 +124,15 @@ token. See `compose/keycloak-scripts/README.md` for the full option reference.
     --redirect-uri '/login/oauth2/code/*'
 ```
 
-After registration, run `set-iam-admin-managed.sh` against the client:
+The script sets `iam_admin_managed=true` (the application administers this client) and
+`iam_admin_oidc_client=true` (it plays the OIDC client role) on the client itself, so no
+further step is needed. The IAM admin application uses these attributes to discover which
+clients require Authorization Services policies when a function is attached to or detached
+from an organization. Without them, the client would never receive the org-scoped scopes it
+needs to call downstream APIs.
+
+For a client that was registered by other means, `set-iam-admin-managed.sh` sets the same two
+attributes on an existing client:
 
 ```bash
 ./compose/keycloak-scripts/set-iam-admin-managed.sh \
@@ -137,10 +142,40 @@ After registration, run `set-iam-admin-managed.sh` against the client:
     --password keycloak
 ```
 
-This sets the `iam_admin_managed=true` attribute on the client. The IAM admin application
-uses this attribute to discover which clients require Authorization Services policies when
-a function is attached to or detached from an organization. Without it, the client will
-never receive the org-scoped scopes it needs to call downstream APIs.
+**Registering from the IAM admin application instead:**
+
+A superuser can register the same client from the IAM admin application's **Services** tab,
+without shell access to the Keycloak host. The application creates the client with the same
+settings the script applies, sets the same markers, and reconciles the client
+immediately.
+
+Either way, declare which functions the client handles by setting `client_functions`, either via
+the **Functions** field in the admin application, or with `set-client-functions.sh`. A
+client scoped to `demo` receives scopes only for organizations that have `demo` attached.
+
+To give a client a function it did not have at registration time, use `add-function.sh`, which
+appends to `client_functions` rather than replacing it:
+
+```bash
+./compose/keycloak-scripts/add-function.sh \
+    --realm orgiam \
+    --username admin \
+    --password keycloak \
+    --client-id https://my-app.example.com \
+    --function walletreg
+```
+
+The function has to exist first. Create it in the admin application's **Functions** tab.
+
+**If the realm already has functions attached to organizations**, a newly registered client
+starts out without the corresponding scopes, policies and permissions. Reconcile it to
+create them from the **Services** tab, or with:
+
+```bash
+curl -X POST https://iam-admin.example.com/api/clients/reconcile
+```
+
+Reconciliation is idempotent and safe to repeat.
 
 <a name="spring-boot-configuration"></a>
 ### 2.2. Spring Boot Configuration
@@ -148,7 +183,7 @@ never receive the org-scoped scopes it needs to call downstream APIs.
 The application authenticates to Keycloak using `private_key_jwt`. It holds a private key;
 Keycloak fetches the corresponding public key from the application's `/jwks` endpoint. The
 key material is configured via `iam.security.client.credential` using the
-`credentials-support` library format (JKS, PEM, or bundle reference — see
+`credentials-support` library format (JKS, PEM, or bundle reference; see
 `commons/iam-security/README.md` for all three styles).
 
 A minimal `application.yml` for a function-scoped application:
@@ -166,6 +201,8 @@ spring:
               - openid
               - profile
               - https://id.oidc.se/scope/naturalPersonNumber
+              # Add for the organizational identity claims (orgAffiliation, orgName, orgNumber):
+              # - https://id.oidc.se/scope/naturalPersonOrgId
             authorization-grant-type: authorization_code
             redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
             client-authentication-method: private_key_jwt
@@ -245,20 +282,20 @@ Add this dependency to the application's POM:
 
 When `spring-security-oauth2-client` is on the classpath, the starter auto-configures:
 
-- `OrgRightsOidcUserService` — an `OAuth2UserService` that parses the `org_rights` claim
+- `OrgRightsOidcUserService`: an `OAuth2UserService` that parses the `org_rights` claim
   from the ID token and populates the authenticated user's `GrantedAuthority` set.
   Automatically operates in function-scoped mode when `iam.security.function` is set.
-- `JWK oidcClientJwk` — loaded from `iam.security.client.credential` via
+- `JWK oidcClientJwk`: loaded from `iam.security.client.credential` via
   `JwkTransformerFunction`. Throws `IllegalStateException` at startup if the credential is
   not configured.
 - `NimbusJwtClientAuthenticationParametersConverter` beans for the `authorization_code`,
-  `refresh_token`, and `client_credentials` grant types — for signing `private_key_jwt`
+  `refresh_token`, and `client_credentials` grant types, used for signing `private_key_jwt`
   client assertions.
-- `RestClientRefreshTokenTokenResponseClient` — a token response client for the refresh
+- `RestClientRefreshTokenTokenResponseClient`: a token response client for the refresh
   token grant, pre-configured with `private_key_jwt` authentication. Wired into the
   auto-configured `OAuth2AuthorizedClientManager` so that expired access tokens are
   refreshed transparently without any per-application configuration.
-- `ResourceParameterConverter` — adds the `resource` parameter (RFC 8707) to
+- `ResourceParameterConverter`: adds the `resource` parameter (RFC 8707) to
   authorization code token requests based on
   `iam.security.client.registrations.{id}.resource` properties. Must be wired onto the
   `RestClientAuthorizationCodeTokenResponseClient` via `addParametersConverter()`.
@@ -288,7 +325,7 @@ http.oauth2Login(oauth -> oauth
 );
 ```
 
-The `authCodeJwtConverter` bean is auto-configured by the starter — inject it directly
+The `authCodeJwtConverter` bean is auto-configured by the starter, so inject it directly
 rather than re-creating it.
 
 <a name="authority-model"></a>
@@ -300,17 +337,17 @@ The iam-security library supports two authority modes. The mode is determined by
 **Function-scoped mode** (`iam.security.function` is set)
 
 The starter filters the `org_rights` claim to entries naming the configured function. Rights
-granted at the organization level require no special handling here — the Keycloak protocol
+granted at the organization level require no special handling here. The Keycloak protocol
 mapper has already expanded them into one entry per function attached to the organization, so
 they match only if the configured function is actually attached. When several entries match
 the same organization, the highest effective right is used. The resulting authorities are
-`FunctionScopedAuthority` instances with the simplified form `{orgId}:{right}` — the function
+`FunctionScopedAuthority` instances with the simplified form `{orgId}:{right}`, where the function
 identifier is implicit.
 
-Example: a user was granted `read` at the organization level of `5590026042` (which has `demo`
+Example: a user was granted `read` at the organization level of `2021006883` (which has `demo`
 and `walletreg` attached) plus `write` on `demo`. The claim carries
 `{ "function": "demo", "right": "write" }` and `{ "function": "walletreg", "right": "read" }`,
-so a `demo`-scoped application derives the authority `5590026042:write`.
+so a `demo`-scoped application derives the authority `2021006883:write`.
 
 The `org_level_right` field of the claim is ignored when building authorities: it is provenance,
 not a grant. An org-level admin on an organization where the configured function is not attached
@@ -322,7 +359,7 @@ Use this mode for applications that serve a single function.
 
 All organizational rights are included as `OrganizationalAuthority` instances with the form
 `{orgId}:{functionId}:{right}`. Every `functionId` names a function attached to the
-organization — there is no wildcard form. Use this mode for applications that deal with
+organization. There is no wildcard form. Use this mode for applications that deal with
 multiple functions, such as the IAM admin application.
 
 **Superusers** receive the single authority `ROLE_SUPERUSER` in both modes. Applications
@@ -343,8 +380,8 @@ authority checks.
 ### 2.5. Forcing Re-authentication
 
 By default, Keycloak reuses an existing SSO session when the application redirects to the
-login page. For applications where this is not desired — where the user must always
-authenticate explicitly — the iam-security starter provides
+login page. For applications where this is not desired, and the user must always
+authenticate explicitly, the iam-security starter provides
 `PromptLoginAuthorizationRequestResolver`.
 
 This class adds `prompt=login` to every Keycloak authorization request, forcing
@@ -381,25 +418,25 @@ for the full pattern.
 
 A client application that needs to call a downstream API on behalf of the user uses a
 separate authorization code flow to obtain an org-scoped access token. This is a pure
-OAuth 2.0 flow — the `openid` scope is not requested, so no ID token is issued.
+OAuth 2.0 flow: the `openid` scope is not requested, so no ID token is issued.
 
 The same Keycloak client registration handles both the OIDC login flow (which produces the
 ID token with `org_rights`) and the OAuth API flow (which produces the org-scoped access
 token). No separate Keycloak client is needed.
 
-Keycloak enforces entitlement at token issuance time — if the user does not hold the
+Keycloak enforces entitlement at token issuance time. If the user does not hold the
 required right on the requested organization and function, the token request is denied and
 no token is issued.
 
 <a name="keycloak-registration-oauth"></a>
 ### 3.1. Keycloak Registration
 
-Use the same `add-oidc-client.sh` and `set-iam-admin-managed.sh` commands described in
-Section 2.1. The `iam_admin_managed` attribute is required: it tells the IAM admin
-application to create the org-scoped Keycloak scopes and their Authorization Services
-policies when a function is attached to an organization. Without these policies, Keycloak
-will deny any token request for a `{orgId}:{function}:{right}` scope regardless of the
-user's group membership.
+Use the same `add-oidc-client.sh` command described in Section 2.1, which sets
+`iam_admin_managed` and `iam_admin_oidc_client` itself. The `iam_admin_oidc_client` attribute
+is required: it tells the IAM admin application to create the org-scoped Keycloak scopes and
+their Authorization Services policies when a function is attached to an organization. Without
+these policies, Keycloak will deny any token request for a `{orgId}:{function}:{right}` scope
+regardless of the user's group membership.
 
 <a name="spring-boot-configuration-oauth"></a>
 ### 3.2. Spring Boot Configuration
@@ -444,7 +481,7 @@ The `{org}` and `{function}` placeholders are resolved at runtime from `OAuthCli
 which the resource server validates.
 
 The iam-security starter auto-configures an `OAuth2AuthorizedClientManager` bean of type
-`DefaultOAuth2AuthorizedClientManager`. This manager is request-bound — it has access to
+`DefaultOAuth2AuthorizedClientManager`. This manager is request-bound, so it has access to
 `HttpServletRequest` and `HttpServletResponse` and can redirect the browser to Keycloak when
 no valid token is cached for the current session. It is pre-configured with a
 `contextAttributesMapper` that resolves scope placeholders (`{org}`, `{function}`) from
@@ -492,7 +529,7 @@ oAuthClientContext.clear();
 
 The `contextAttributesMapper` on `OAuth2AuthorizedClientManager` reads from
 `OAuthClientContext` at token acquisition time and resolves `{org}` and `{function}` in
-the placeholder scope. If either value is missing, the token request fails — the
+the placeholder scope. If either value is missing, the token request fails: the
 application must ensure the context is populated before any resource server call is made.
 
 <a name="calling-the-resource-server"></a>
@@ -506,14 +543,14 @@ resource server the token is bound to.
 import static org.springframework.security.oauth2.client.web.client
     .RequestAttributeClientRegistrationIdResolver.clientRegistrationId;
 
-// GET — use read registration
+// GET: use read registration
 MyData result = restClient.get()
     .uri("https://my-service.example.com/api/{orgId}/data", orgId)
     .attributes(clientRegistrationId("my-service-read"))
     .retrieve()
     .body(MyData.class);
 
-// PUT — use write registration
+// PUT: use write registration
 restClient.put()
     .uri("https://my-service.example.com/api/{orgId}/data", orgId)
     .attributes(clientRegistrationId("my-service-write"))
@@ -529,7 +566,7 @@ initiates a new authorization code flow to Keycloak with the resolved scope and 
 parameter, redirecting the user transparently. On return, the token is cached and the
 original request is retried.
 
-The right level — `read` or `write` — is a business decision per call site, not derived
+The right level, `read` or `write`, is a business decision per call site, not derived
 from the HTTP method. Select the registration that matches the operation being performed.
 
 **SPA + REST backend**
@@ -538,7 +575,7 @@ When the application has a JavaScript SPA frontend that calls the Spring backend
 `fetch`, the `ClientAuthorizationRequiredException` thrown by
 `OAuth2ClientHttpRequestInterceptor` must be caught in the controller and translated into
 an HTTP `401` response with a JSON body containing the authorization URL. Using a `302`
-redirect does not work because the Fetch API treats redirects as opaque — the `Location`
+redirect does not work because the Fetch API treats redirects as opaque, so the `Location`
 header is not accessible to JavaScript, so the frontend cannot determine where to navigate.
 
 ```java
@@ -565,7 +602,7 @@ async function apiFetch(url: string, options?: RequestInit): Promise<Response> {
     const body = await resp.json();
     if (body.authorizationUrl) {
       window.location.href = body.authorizationUrl;
-      return new Promise(() => {}); // never resolves — page is navigating away
+      return new Promise(() => {}); // never resolves, the page is navigating away
     }
   }
   return resp;
@@ -575,7 +612,7 @@ async function apiFetch(url: string, options?: RequestInit): Promise<Response> {
 **Preserving pending writes across redirects.** If the user submits a form and the backend
 returns `401` (no write token cached), the SPA should save the pending data in
 `sessionStorage` before navigating. After the OAuth2 redirect cycle, the SPA reloads and
-can detect the pending data, restore the form, and retry the save automatically — so the
+can detect the pending data, restore the form, and retry the save automatically. So the
 user does not have to re-enter data.
 
 The SPA router must not intercept `/oauth2/**` or `/login/oauth2/**` paths. These must
@@ -585,7 +622,7 @@ The request cache must be configured to skip API paths (`/api/**`) and OAuth2 ca
 paths (`/callback/oauth2/**`) so that after the OAuth callback, Spring redirects to `/`
 rather than attempting to restore the XHR request or the callback URL itself. If the
 callback path is saved and then restored, the browser is redirected back to it after the
-token exchange completes — but without the `code` and `state` parameters, resulting in
+token exchange completes, but without the `code` and `state` parameters, which results in
 a 404:
 
 ```java
@@ -622,7 +659,7 @@ When an application uses both `oauth2Login` (OIDC user authentication) and `oaut
 configuration step is required.
 
 Spring Security's `OAuth2LoginAuthenticationFilter` listens by default on
-`/login/oauth2/code/*` — a wildcard that matches ALL registrations' callback paths,
+`/login/oauth2/code/*`, which is a wildcard matching ALL registrations' callback paths,
 including those used by OAuth2 API flows. When the browser is redirected back from
 Keycloak after an API token flow, `OAuth2LoginAuthenticationFilter` intercepts the
 callback and tries to process it as an OIDC login response. This fails because API
@@ -649,7 +686,7 @@ For clarity, it is recommended that OAuth2 API registrations use a distinct call
 base path (e.g. `/callback/oauth2/code/{registrationId}`) rather than sharing
 `/login/oauth2/code/` with the OIDC registration. This makes the separation explicit
 and avoids any ambiguity. If separate base paths are used, the Keycloak client must
-allow both patterns as redirect URIs — pass `--redirect-uri` twice to
+allow both patterns as redirect URIs: pass `--redirect-uri` twice to
 `add-oidc-client.sh`:
 
 ```bash
@@ -732,7 +769,12 @@ parameter. If the function is not supported, the token request is rejected with 
 `invalid_target` error (RFC 8707). If `--functions` is omitted, the resource server is
 treated as function-universal and accepts all functions.
 
-Do not run `set-iam-admin-managed.sh` for resource servers — they never request scopes and
+That fallback applies only while the attribute is unset. A resource server serving every
+function, including the ones not created yet, carries `iam_admin_all_functions=true` instead,
+as the IAM admin application itself does. See
+[Registering a Client](registering-a-client.md#clients-handling-all-functions).
+
+Do not run `set-iam-admin-managed.sh` for resource servers. They never request scopes and
 do not need Authorization Services policies.
 
 <a name="spring-boot-configuration-rs"></a>
@@ -760,10 +802,10 @@ belongs in `application-local.yml`.
 
 Three checks are mandatory (see also [OAuth Resource Servers](rights-model.md#oauth-resource-servers)):
 
-**1. Signature and expiry** — handled automatically by the `NimbusJwtDecoder` that Spring
+**1. Signature and expiry**: handled automatically by the `NimbusJwtDecoder` that Spring
 Boot creates from `issuer-uri`. No additional configuration is needed.
 
-**2. Audience** — the `aud` claim is a multi-valued array containing the resource server's
+**2. Audience**: the `aud` claim is a multi-valued array containing the resource server's
 client ID and the function identifier (e.g., `["https://my-service.example.com", "demo"]`).
 The resource server must verify that its own client ID is present in the array.
 Configure this as an additional validator on the decoder:
@@ -778,7 +820,7 @@ decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
     audienceValidator));
 ```
 
-**3. Scope entitlement** — `OrgRightsScopeConverter` reads `{orgId}:{functionId}:{right}`
+**3. Scope entitlement**: `OrgRightsScopeConverter` reads `{orgId}:{functionId}:{right}`
 entries from the `scope` claim and produces `OrganizationalAuthority` granted authorities.
 It is auto-configured by the starter; inject it directly.
 
@@ -833,8 +875,8 @@ Return `403 Forbidden` if the check fails.
 <a name="delegating-administration-to-the-iam-admin-app"></a>
 ## 5. Delegating Administration to the IAM Admin App
 
-Application users who need to manage their organization's settings — such as attaching
-functions, managing users, or adjusting rights — do so through the IAM admin application.
+Application users who need to manage their organization's settings, such as attaching
+functions, managing users, or adjusting rights, do so through the IAM admin application.
 An application can offer a "Delegate administration" button that takes the user there
 directly, reusing the existing Keycloak session.
 
@@ -853,13 +895,13 @@ The endpoint accepts two optional query parameters:
 | Parameter | Description |
 |---|---|
 | `org` | Ten-digit organization identifier. If present, the IAM admin app verifies that the user has admin rights on this organization before granting access. |
-| `func` | Function identifier (e.g. `demo`). If present, the IAM admin app verifies that the user has admin rights on this function and restricts the session to only this function — the user can only view and manage rights for this function, not for other functions in the organization. |
+| `func` | Function identifier (e.g. `demo`). If present, the IAM admin app verifies that the user has admin rights on this function and restricts the session to only this function, the user can only view and manage rights for this function, not for other functions in the organization. |
 
 <a name="constructing-the-redirect-url"></a>
 ### 5.2. Constructing the Redirect URL
 
 The calling application needs two configuration properties pointing to the IAM admin app.
-The property names are application-specific — the demo-app uses the prefix
+The property names are application-specific. The demo-app uses the prefix
 `demo.app.iam-admin`:
 
 ```yaml
@@ -879,7 +921,7 @@ The redirect URL is composed as:
 Example:
 
 ```
-https://local.dev.swedenconnect.se:17005/sso/login?org=5590026042&func=demo
+https://local.dev.swedenconnect.se:17005/sso/login?org=2021006883&func=demo
 ```
 
 The recommended pattern is for the backend to construct and return this URL via an API
@@ -905,141 +947,6 @@ When `func` is included, the IAM admin application restricts the user's session 
 specified function. The user can view and manage user rights for that function only.
 The function management page (create/delete functions) is not available in a
 function-restricted session.
-
----
-
-<a name="using-the-demo"></a>
-## 6. Using the Demo
-
-The `demo/` directory contains two applications that illustrate all of the integration
-patterns described in this guide:
-
-- **`demo-app`** (port 16990) — an OIDC relying party and OAuth client, scoped to the
-  `demo` function. Authenticates users, displays organization info and contact data, and
-  delegates administration to the IAM admin app.
-- **`demo-service`** (port 16995) — a pure OAuth resource server. Exposes GET and PUT
-  endpoints for organization contact data (address, telephone number, email address) with
-  in-memory storage.
-
-<a name="prerequisites"></a>
-### 6.1. Prerequisites
-
-The `orgiam` Keycloak realm must be bootstrapped. If it has not been set up yet:
-
-```bash
-./compose/keycloak-scripts/bootstrap-realm.sh \
-    --realm orgiam \
-    --username admin \
-    --password keycloak \
-    --display-name "Organizations and Users IAM"
-```
-
-At least one superuser account must exist to log in to the IAM admin application:
-
-```bash
-./compose/keycloak-scripts/create-admin-user.sh \
-    --realm orgiam \
-    --username admin \
-    --password keycloak \
-    --new-username diggadmin \
-    --new-password changeme
-```
-
-All Keycloak provider JARs must be deployed and Keycloak rebuilt before running. See
-`compose/keycloak-scripts/README.md` for installation instructions.
-
-<a name="registering-demo-app-and-demo-service-in-keycloak"></a>
-### 6.2. Registering demo-app and demo-service in Keycloak
-
-Register `demo-app` as an OIDC client. The `--no-org-rights-access-token` flag is passed
-because the demo-app does not need `org_rights` in access tokens — it uses the ID token
-for UI decisions and requests org-scoped access tokens separately for API calls to
-demo-service:
-
-```bash
-./compose/keycloak-scripts/add-oidc-client.sh \
-    --realm orgiam \
-    --username admin \
-    --password keycloak \
-    --client-id https://local.dev.swedenconnect.se:16990 \
-    --name "Demo App" \
-    --redirect-uri '/login/oauth2/code/*' \
-    --redirect-uri '/callback/oauth2/code/*' \
-    --no-org-rights-access-token
-```
-
-Mark it as IAM-admin-managed so the IAM admin application will manage its Authorization
-Services policies:
-
-```bash
-./compose/keycloak-scripts/set-iam-admin-managed.sh \
-    --realm orgiam \
-    --client-id https://local.dev.swedenconnect.se:16990 \
-    --username admin \
-    --password keycloak
-```
-
-Register `demo-service` as a passive resource server:
-
-```bash
-./compose/keycloak-scripts/add-resource-server.sh \
-    --realm orgiam \
-    --username admin \
-    --password keycloak \
-    --client-id https://local.dev.swedenconnect.se:16995 \
-    --name "Demo Service" \
-    --functions demo
-```
-
-<a name="setting-up-the-demo-function"></a>
-### 6.3. Setting Up the Demo Function
-
-Log in to the IAM admin application at `https://local.dev.swedenconnect.se:17005` as a superuser.
-
-1. Navigate to **Functions** and create a new function with identifier `demo`, Swedish name
-   `Demo`, English name `Demo`.
-
-2. Navigate to **Organizations** and create or select an organization.
-
-3. On the organization's detail page, click **Attach function** and select `demo`. The IAM
-   admin application will automatically create the three Keycloak scopes
-   (`{orgId}:demo:read`, `{orgId}:demo:write`, `{orgId}:demo:admin`) and their
-   Authorization Services policies on all `iam_admin_managed` clients — including
-   `https://local.dev.swedenconnect.se:16990`.
-
-4. Navigate to **Users** and select or create the user who will log in to the demo. Assign
-   a right on `demo` for the organization — for example `write`.
-
-<a name="running-the-demo"></a>
-### 6.4. Running the Demo
-
-Start both applications with the `local` Spring profile active. The `local` profile enables
-TLS, sets the correct port, and points to the local Keycloak instance.
-
-```bash
-# Terminal 1 — demo-service (port 16995)
-cd demo/demo-service
-mvn spring-boot:run -Dspring-boot.run.profiles=local
-
-# Terminal 2 — demo-app backend (port 16990)
-cd demo/demo-app/backend
-mvn spring-boot:run -Dspring-boot.run.profiles=local
-```
-
-Open `https://local.dev.swedenconnect.se:16990` in a browser. Click **Log in** to authenticate
-via Keycloak. After a successful login the application displays the organization's name,
-the user's right level, and a contact data card. Changes to address, telephone number, and
-email address are saved to `demo-service` via an access token scoped to
-`{orgId}:demo:write`.
-
-Click **Delegate administration** to open the IAM admin application. If the user is already
-authenticated in the same Keycloak realm, no re-authentication prompt is shown.
-
-Because `demo-app` passes `func=demo` in the redirect URL, the IAM admin application
-restricts the session to the `demo` function. The administrator can only manage user rights
-for `demo`, not for other functions that may be attached to the same organization. To access
-the full IAM admin application without function restrictions, log in directly at
-`https://local.dev.swedenconnect.se:17005`.
 
 ---
 

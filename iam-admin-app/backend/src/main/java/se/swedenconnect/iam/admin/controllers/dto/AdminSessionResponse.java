@@ -25,6 +25,7 @@ import java.util.Set;
  * JSON response body for {@code GET /api/session}.
  *
  * @author Martin Lindström
+ * @author Felix Hellman
  */
 public record AdminSessionResponse(
     boolean superuser,
@@ -32,6 +33,8 @@ public record AdminSessionResponse(
     @Nullable String orgConstraint,
     boolean allowFunctionRemoval,
     boolean allowOrgRights,
+    boolean allowAdminAssigningAdmin,
+    @NonNull UserRegistrationResponse userRegistration,
     @NonNull List<FunctionResponse> functions,
     @NonNull List<OrgRightResponse> orgRights,
     @NonNull Set<String> adminOrgIdentifiers) {

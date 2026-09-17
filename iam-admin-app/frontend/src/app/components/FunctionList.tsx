@@ -15,6 +15,7 @@ import {
 import { Pencil, Trash2, Search, Boxes } from 'lucide-react';
 import { useLanguage } from '@/app/contexts/LanguageContext';
 import { useState } from 'react';
+import { resolveOrgName } from '@/utils';
 
 interface FunctionListProps {
   functions: FunctionType[];
@@ -41,9 +42,7 @@ export function FunctionList({
   const [searchTerm, setSearchTerm] = useState('');
   const [confirmDeleteFunc, setConfirmDeleteFunc] = useState<FunctionType | null>(null);
 
-  const getOrgName = (org: Organization) => {
-    return language === 'sv' ? org.nameSv : org.nameEn;
-  };
+  const getOrgName = (org: Organization) => resolveOrgName(org, language);
 
   const getDisplayName = (func: FunctionType): string =>
     (language === 'sv' ? func.nameSv : func.nameEn) ||

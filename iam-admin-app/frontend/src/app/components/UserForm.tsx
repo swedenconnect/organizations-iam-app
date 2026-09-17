@@ -7,7 +7,24 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Badge } from '@/app/components/ui/badge';
 import { useLanguage } from '@/app/contexts/LanguageContext';
 import { Building2, Boxes, X } from 'lucide-react';
-import { formatPersonalIdentityNumber } from '@/utils';
+import { formatPersonalIdentityNumber, resolveOrgName } from '@/utils';
+import { UserIdTakenError } from '@/services/userService';
+import { useUserRegistration } from '@/app/contexts/UserRegistrationContext';
+import {
+  EMPTY_IDENTITY_VALUES,
+  IdentityErrors,
+  IdentityValues,
+  UserIdentityFields,
+  identityPayload,
+  validateIdentityValues,
+} from '@/app/components/UserIdentityFields';
+
+/** What the form hands over on save. The identity values are only set when creating a user. */
+export type UserFormValues = Omit<User, 'id'> & {
+  id?: string;
+  userId?: string;
+  temporaryPassword?: string;
+};
 
 type PendingOp =
   | { kind: 'remove'; orgIdentifier: string; functionId: string | null; right: 'read' | 'write' | 'admin' }
@@ -19,8 +36,11 @@ interface UserFormProps {
   functions: FunctionType[];
   isOpen: boolean;
   currentUserId: string;
+  /** When false, the admin right is read-only: it cannot be granted, changed or removed here. */
+  canAssignAdmin: boolean;
   onClose: () => void;
-  onSave: (user: Omit<User, 'id'> & { id?: string }) => void;
+  /** Rejects with a UserIdTakenError when the chosen user ID is already in use. */
+  onSave: (user: UserFormValues) => Promise<void> | void;
   onRemoveRight: (
     userId: string,
     orgIdentifier: string,
@@ -36,11 +56,13 @@ interface UserFormProps {
   ) => void;
 }
 
-export function UserForm({ user, organizations, functions, isOpen, currentUserId, onClose, onSave, onRemoveRight, onChangeRight }: UserFormProps) {
+export function UserForm({ user, organizations, functions, isOpen, currentUserId, canAssignAdmin, onClose, onSave, onRemoveRight, onChangeRight }: UserFormProps) {
   const { t, language } = useLanguage();
+  const settings = useUserRegistration();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [personalIdentityNumber, setPersonalIdentityNumber] = useState('');
+  const [identity, setIdentity] = useState<IdentityValues>(EMPTY_IDENTITY_VALUES);
+  const [identityErrors, setIdentityErrors] = useState<IdentityErrors>({});
   const [phoneNumber, setPhoneNumber] = useState('');
   const [emailError, setEmailError] = useState('');
   const [phoneError, setPhoneError] = useState('');
@@ -58,14 +80,14 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
     if (user) {
       setName(user.name);
       setEmail(user.email);
-      setPersonalIdentityNumber(user.personalIdentityNumber);
       setPhoneNumber(user.phoneNumber || '');
     } else {
       setName('');
       setEmail('');
-      setPersonalIdentityNumber('');
       setPhoneNumber('');
     }
+    setIdentity(EMPTY_IDENTITY_VALUES);
+    setIdentityErrors({});
     setEmailError('');
     setPhoneError('');
     setStagedRights(user?.rights ?? []);
@@ -75,6 +97,15 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate the identity values (create mode only)
+    if (!user) {
+      const errors = validateIdentityValues(identity, settings, t);
+      setIdentityErrors(errors);
+      if (Object.keys(errors).length > 0) {
+        return;
+      }
+    }
 
     // Validate email
     const atIdx = email.indexOf('@');
@@ -114,13 +145,23 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
         }
       }
     } else {
-      // Create mode: include personalIdentityNumber
-      onSave({
-        name,
-        email,
-        personalIdentityNumber,
-        phoneNumber: resolvedPhone,
-      });
+      // Create mode: include the identity values the settings allow
+      const payload = identityPayload(identity, settings);
+      try {
+        await onSave({
+          name,
+          email,
+          personalIdentityNumber: payload.personalIdentityNumber ?? '',
+          orgAffiliation: payload.orgAffiliation,
+          userId: payload.userId,
+          temporaryPassword: payload.temporaryPassword,
+          phoneNumber: resolvedPhone,
+        });
+      } catch (err) {
+        if (err instanceof UserIdTakenError) {
+          setIdentityErrors({ userId: t('validation.userIdTaken') });
+        }
+      }
     }
   };
 
@@ -154,9 +195,7 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
   const orgRights = stagedRights.filter(r => r.functionId === null);
   const funcRights = stagedRights.filter(r => r.functionId !== null);
 
-  const getOrgName = (org: Organization) => {
-    return language === 'sv' ? org.nameSv : org.nameEn;
-  };
+  const getOrgName = (org: Organization) => resolveOrgName(org, language);
 
   const isSelf = user !== null && user.id === currentUserId;
 
@@ -181,25 +220,34 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
             />
           </div>
 
-          {/* Personal identity number — read-only in edit mode, editable in create mode */}
+          {/* Identities — read-only in edit mode, collected in create mode */}
           {user ? (
-            <div className="space-y-2">
-              <Label>{t('users.uniqueIdentity')}</Label>
-              <div className="px-3 py-2 text-sm bg-gray-50 border rounded-md text-gray-700">
-                {formatPersonalIdentityNumber(user.personalIdentityNumber)}
-              </div>
-            </div>
+            <>
+              {user.personalIdentityNumber && (
+                <div className="space-y-2">
+                  <Label>{t('users.uniqueIdentity')}</Label>
+                  <div className="px-3 py-2 text-sm bg-gray-50 border rounded-md text-gray-700">
+                    {formatPersonalIdentityNumber(user.personalIdentityNumber)}
+                  </div>
+                </div>
+              )}
+              {user.orgAffiliation && (
+                <div className="space-y-2">
+                  <Label>{t('users.orgAffiliation')}</Label>
+                  <div className="px-3 py-2 text-sm bg-gray-50 border rounded-md text-gray-700">
+                    {user.orgAffiliation}
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
-            <div className="space-y-2">
-              <Label htmlFor="personalIdentityNumber">{t('users.uniqueIdentity')} *</Label>
-              <Input
-                id="personalIdentityNumber"
-                value={personalIdentityNumber}
-                onChange={(e) => setPersonalIdentityNumber(e.target.value)}
-                placeholder="12 digits"
-                required
-              />
-            </div>
+            <UserIdentityFields
+              settings={settings}
+              values={identity}
+              errors={identityErrors}
+              idPrefix="userForm"
+              onChange={(values) => { setIdentity(values); setIdentityErrors({}); }}
+            />
           )}
 
           {/* Email */}
@@ -253,7 +301,7 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
                         return (
                           <div key={i} className="flex items-center justify-between bg-white p-2 rounded border">
                             <span className="text-sm">{orgName}</span>
-                            {isSelf ? (
+                            {isSelf || (!canAssignAdmin && r.right === 'admin') ? (
                               <Badge variant={getRoleBadgeVariant(r.right)}>{t(`role.${r.right}`)}</Badge>
                             ) : (
                               <div className="flex items-center gap-1">
@@ -269,7 +317,7 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
                                   >
                                     <option value="read">{t('role.read')}</option>
                                     <option value="write">{t('role.write')}</option>
-                                    <option value="admin">{t('role.admin')}</option>
+                                    {canAssignAdmin && <option value="admin">{t('role.admin')}</option>}
                                   </select>
                                 ) : (
                                   <Badge
@@ -320,7 +368,7 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
                               <p className="text-sm font-medium">{orgName}</p>
                               <p className="text-xs text-gray-500">{func ? (language === 'sv' ? func.nameSv : func.nameEn) || (language === 'sv' ? func.nameEn : func.nameSv) || func.name : r.functionId}</p>
                             </div>
-                            {isSelf ? (
+                            {isSelf || (!canAssignAdmin && r.right === 'admin') ? (
                               <Badge variant={getRoleBadgeVariant(r.right)}>{t(`role.${r.right}`)}</Badge>
                             ) : (
                               <div className="flex items-center gap-1">
@@ -336,7 +384,7 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
                                   >
                                     <option value="read">{t('role.read')}</option>
                                     <option value="write">{t('role.write')}</option>
-                                    <option value="admin">{t('role.admin')}</option>
+                                    {canAssignAdmin && <option value="admin">{t('role.admin')}</option>}
                                   </select>
                                 ) : (
                                   <Badge

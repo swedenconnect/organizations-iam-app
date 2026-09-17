@@ -150,7 +150,10 @@ import os, json
 client = json.loads(os.environ['CURRENT_JSON'])
 if not client.get('attributes'):
     client['attributes'] = {}
+# The script's purpose is to hand an existing client the OIDC client role, so both go on:
+# iam_admin_managed to say the application administers it, iam_admin_oidc_client for the role.
 client['attributes']['iam_admin_managed'] = 'true'
+client['attributes']['iam_admin_oidc_client'] = 'true'
 print(json.dumps(client))
 ")
 STATUS=$(api_put "/${REALM}/clients/${CLIENT_UUID}" "${UPDATED}")

@@ -59,7 +59,7 @@ class FetchFunctionRightsHoldersTest {
 
   private KeycloakAdminClient client;
 
-  private static final String ORG = "5590026042";
+  private static final String ORG = "2021006883";
   private static final String FUNC = "demo";
 
   @BeforeEach
@@ -224,7 +224,7 @@ class FetchFunctionRightsHoldersTest {
 
   private static UserInfo user(
       final String id, final String firstName, final String lastName, final String pin) {
-    return new UserInfo(id, "user-" + id, firstName, lastName, null, pin, null, false, List.of());
+    return new UserInfo(id, "user-" + id, firstName, lastName, null, pin, null, null, false, List.of());
   }
 
 }

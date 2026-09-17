@@ -17,7 +17,7 @@
 # add-resource-server.sh
 #
 # Register a resource server (audience-only client) in Keycloak.
-# Resource servers are public clients with all grant flows disabled — they
+# Resource servers are public clients with all grant flows disabled, so they
 # exist only to represent an OAuth2 audience and carry a client_functions
 # attribute that the resource-aud plugin validates at token issuance time.
 #
@@ -156,7 +156,7 @@ TOKEN=$(get_token)
 echo "    Token obtained."
 
 # ---------------------------------------------------------------------------
-# Step 1 — Resolve or create client
+# Step 1: Resolve or create client
 # ---------------------------------------------------------------------------
 
 echo "==> Resolving client '${CLIENT_ID}'..."
@@ -203,7 +203,7 @@ print(clients[0]['id'] if clients else '')
 fi
 
 # ---------------------------------------------------------------------------
-# Step 2 — Sync settings (always runs — read-merge-write)
+# Step 2: Sync settings (always runs, read-merge-write)
 # ---------------------------------------------------------------------------
 
 echo "==> Syncing client settings..."
@@ -224,9 +224,17 @@ client['authorizationServicesEnabled'] = False
 if name:
     client['name'] = name
 
+if not client.get('attributes'):
+    client['attributes'] = {}
+# iam_admin_managed says the IAM Admin application administers this Keycloak client, whichever
+# role it plays, so it goes on a resource server too. The explicit 'false' on
+# iam_admin_oidc_client matters: an absent value means a client written before that attribute
+# existed, and for those the application reads iam_admin_managed as the OIDC client role.
+client['attributes']['iam_admin_managed'] = 'true'
+client['attributes']['iam_admin_oidc_client'] = 'false'
+client['attributes']['iam_admin_resource_server'] = 'true'
+
 if functions:
-    if not client.get('attributes'):
-        client['attributes'] = {}
     client['attributes']['client_functions'] = functions
 
 print(json.dumps(client))

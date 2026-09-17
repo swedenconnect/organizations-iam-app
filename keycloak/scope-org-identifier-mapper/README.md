@@ -10,10 +10,10 @@ The mapper inspects the space-separated granted scope string in the access token
 
 The claim is added to the **access token only** — not the ID token or UserInfo response.
 
-**Example:** a token granted the scope `5590026042:walletreg:write` will contain:
+**Example:** a token granted the scope `2021006883:walletreg:write` will contain:
 
 ```json
-"organization_identifier": "5590026042"
+"organization_identifier": "2021006883"
 ```
 
 Resource servers can read `organization_identifier` directly from the token without parsing the scope string, and can use it to enforce that an operation targets the correct organization (see `docs/keycloak-setup.md` section 3.3).

@@ -51,7 +51,9 @@ import java.util.List;
  *
  * <p>In both cases the user must hold at least one {@code admin} right within the effective
  * (possibly constrained) claim. If authorization fails, an {@link OAuth2AuthenticationException}
- * is thrown; the error reason is stored in the session for downstream display.</p>
+ * is thrown; the reason is stored in the session as a {@link LoginRejection}, i.e. a message code
+ * and its arguments, for
+ * {@link se.swedenconnect.iam.admin.controllers.LoginErrorController} to turn into text.</p>
  *
  * <p>Being a {@code @Component} ensures this bean is picked up by Spring, suppressing the
  * auto-configured starter bean via its {@code @ConditionalOnMissingBean}.</p>
@@ -65,6 +67,7 @@ public class OrgRightsOidcUserService extends se.swedenconnect.iam.security.clie
   public static final String SSO_ACTIVE_ATTR = "sso.login.active";
   public static final String SSO_ORG_ATTR = "sso.org";
   public static final String SSO_FUNC_ATTR = "sso.func";
+  /** Session attribute holding the {@link LoginRejection} for the most recent rejected login. */
   public static final String AUTH_ERROR_ATTR = "auth_error_description";
 
   private final OidcUserService delegate = new OidcUserService();
@@ -98,7 +101,7 @@ public class OrgRightsOidcUserService extends se.swedenconnect.iam.security.clie
 
     if (!claim.superuser() && claim.orgEntries().isEmpty()) {
       log.info("Login rejected for '{}': org_rights claim is absent or empty", subject);
-      storeError(session, "No organizational rights found in token");
+      storeError(session, LoginRejection.noOrganizationalRights());
       throw new OAuth2AuthenticationException(
           new OAuth2Error("access_denied"), "No org_rights claim");
     }
@@ -108,7 +111,7 @@ public class OrgRightsOidcUserService extends se.swedenconnect.iam.security.clie
     }
     catch (final InsufficientRightsException e) {
       log.info("Login rejected for '{}': {}", subject, e.getMessage());
-      storeError(session, e.getMessage());
+      storeError(session, LoginRejection.insufficientAdminRights(orgConstraint, funcConstraint));
       throw new OAuth2AuthenticationException(new OAuth2Error("access_denied"), e.getMessage());
     }
 
@@ -126,9 +129,9 @@ public class OrgRightsOidcUserService extends se.swedenconnect.iam.security.clie
     return session != null ? (String) session.getAttribute(key) : null;
   }
 
-  private static void storeError(final @Nullable HttpSession session, final String description) {
+  private static void storeError(final @Nullable HttpSession session, final @NonNull LoginRejection rejection) {
     if (session != null) {
-      session.setAttribute(AUTH_ERROR_ATTR, description);
+      session.setAttribute(AUTH_ERROR_ATTR, rejection);
     }
   }
 

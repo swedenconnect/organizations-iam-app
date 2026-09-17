@@ -6,7 +6,7 @@
   <parent>
     <groupId>se.swedenconnect.iam</groupId>
     <artifactId>iam-parent</artifactId>
-    <version>0.9.3-SNAPSHOT</version>
+    <version>0.9.6-SNAPSHOT</version>
   </parent>
 
   <groupId>se.swedenconnect.iam.keycloak</groupId>
@@ -33,6 +33,10 @@
     <module>org-rights-mapper</module>
     <module>scope-org-identifier-mapper</module>
     <module>resource-aud-plugin</module>
+    <!-- Builds last: it assembles the other modules' output into the distribution ZIP. -->
+    <module>plugin-distribution</module>
+    <!-- Assembles the realm administration scripts into a ZIP of their own. -->
+    <module>scripts</module>
     <module>idp-user-matcher</module>
   </modules>
 

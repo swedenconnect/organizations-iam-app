@@ -16,11 +16,15 @@ a Spring Boot admin application.
   model: organizations, functions, users, rights, the `org_rights` claim, and
   org-scoped API tokens.
 
-### Integration
+### Integration and Development
 
 - [IAM Integration Guide](iam-integration-guide.md) — How to build OIDC relying
   parties, OAuth clients, and resource servers that integrate with this system.
   Includes Spring Boot configuration and the `iam-security` library.
+
+- [Local environment and Demo application](local-environment.md) — Setting up the
+  local Docker Compose environment from a fresh checkout and running the demo
+  applications that illustrate the integration patterns.
 
 - [IAM Security Library](iam-security.md) — Reference documentation for the
   `iam-security-base` and `iam-security-spring-boot-starter` modules.
@@ -36,10 +40,19 @@ a Spring Boot admin application.
 - [IAM Admin Application Configuration](iam-admin-configuration.md) — Configuration
   reference for the IAM admin application.
 
+- [Registering a Client](registering-a-client.md) — Step-by-step registration of an
+  OIDC client or resource server, through the admin application, the scripts, or the
+  REST API.
+
+- [Export and Import](export-import.md) – Bulk-export and -import of organizations, functions, and users to/from a single JSON file.
+
 ### Operations
 
 - [Keycloak Setup](keycloak-setup.md) — Step-by-step Keycloak realm configuration,
   client registration, and automation scripts.
+
+- [Building a Release Docker Image](docker-release.md) — How snapshot and versioned
+  Docker images are built and published, and how to cut a release by pushing a tag.
 
 ---
 

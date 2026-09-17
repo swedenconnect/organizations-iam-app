@@ -40,7 +40,9 @@ services:
       - ./config/postgres/psql:/docker-entrypoint-initdb.d:ro
 
   iam-admin-app:
-    image: ghcr.io/swedenconnect/iam-admin-app:latest
+    # Built locally by compose/build-services.sh
+    image: iam-admin-app:latest
+    pull_policy: never
     depends_on:
       keycloak:
         condition: service_healthy
@@ -117,7 +119,9 @@ services:
       JAVA_OPTS: "-Djava.net.preferIPv4Stack=true -Dorg.apache.xml.security.ignoreLineBreaks=true"
 
   iam-demo-app:
-    image: ghcr.io/swedenconnect/iam-demo-app:latest
+    # Built locally by compose/build-services.sh
+    image: iam-demo-app:latest
+    pull_policy: never
     depends_on:
       keycloak:
         condition: service_healthy
@@ -143,7 +147,9 @@ services:
       JAVA_TOOL_OPTIONS: "-Djava.net.preferIPv4Stack=true -Dorg.apache.xml.security.ignoreLineBreaks=true -Djavax.net.ssl.trustStore=/opt/common/trust.jks -Djavax.net.ssl.trustStorePassword=secret"
 
   iam-demo-service:
-    image: ghcr.io/swedenconnect/iam-demo-service:latest
+    # Built locally by compose/build-services.sh
+    image: iam-demo-service:latest
+    pull_policy: never
     container_name: iam-demo-service
     ports:
       - "16995:16995"
@@ -164,16 +170,6 @@ services:
       SPRING_PROFILES_ACTIVE: compose
       JAVA_OPTS: "-Djava.net.preferIPv4Stack=true -Dorg.apache.xml.security.ignoreLineBreaks=true -Djavax.net.ssl.trustStore=/opt/common/trust.jks -Djavax.net.ssl.trustStorePassword=secret"
       JAVA_TOOL_OPTIONS: "-Djava.net.preferIPv4Stack=true -Dorg.apache.xml.security.ignoreLineBreaks=true -Djavax.net.ssl.trustStore=/opt/common/trust.jks -Djavax.net.ssl.trustStorePassword=secret"
-
-  keycloak-setup:
-    image: keycloak/keycloak:26.5.7
-    networks:
-      - swedenconnect-local
-    volumes:
-      - ./config/keycloak/scripts:/scripts
-    entrypoint: [""]
-    profiles:
-      - setup
 
   keycloak:
     image: keycloak/keycloak:26.5.7

@@ -156,7 +156,9 @@ public class MeController {
 
         final String nameEn = attrs.get("name#en") instanceof final String s ? s : null;
         final String nameSv = attrs.get("name#sv") instanceof final String s ? s : null;
-        final String orgName = nameEn != null ? nameEn : (nameSv != null ? nameSv : orgId);
+        final String legalName = attrs.get("legal_name") instanceof final String s ? s : null;
+        final String orgName = nameEn != null ? nameEn
+            : (nameSv != null ? nameSv : (legalName != null ? legalName : orgId));
 
         entries.add(new OrgEntry(orgId, orgName, "admin"));
       }
@@ -182,11 +184,15 @@ public class MeController {
       if (!(orgId instanceof String orgIdStr)) {
         continue;
       }
+      // Display name for this app's language, then the display name in the other language, then the
+      // legal name. Display names are optional, the legal name is not.
       String name = null;
       if (map.get("organization_name#en") instanceof String en && !en.isBlank()) {
         name = en;
       } else if (map.get("organization_name#sv") instanceof String sv && !sv.isBlank()) {
         name = sv;
+      } else if (map.get("organization_legal_name") instanceof String legal && !legal.isBlank()) {
+        name = legal;
       }
       names.put(orgIdStr, name != null ? name : orgIdStr);
     }

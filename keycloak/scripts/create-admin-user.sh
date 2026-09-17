@@ -160,7 +160,7 @@ TOKEN=$(get_token)
 echo "    Token obtained."
 
 # ---------------------------------------------------------------------------
-# Step 1 — Create user (idempotent)
+# Step 1: Create user (idempotent)
 # ---------------------------------------------------------------------------
 
 echo "==> Looking up user '${NEW_USERNAME}' in realm '${REALM}'..."
@@ -172,7 +172,7 @@ print(users[0]['id'] if users else '')
 " 2>/dev/null || echo "")
 
 if [ -n "${USER_ID}" ]; then
-  echo "    User '${NEW_USERNAME}' already exists (ID: ${USER_ID}) — skipping creation."
+  echo "    User '${NEW_USERNAME}' already exists (ID: ${USER_ID}), skipping creation."
 else
   echo "==> Creating user '${NEW_USERNAME}'..."
   CREATE_BODY=$(python3 -c '
@@ -188,7 +188,7 @@ print(json.dumps(body))
 
   USER_ID=$(api_create "/${REALM}/users" "${CREATE_BODY}")
   if [ -z "${USER_ID}" ]; then
-    # Location header not captured — fall back to lookup
+    # Location header not captured, falling back to a lookup
     USER_ID=$(api_get "/${REALM}/users?username=${NEW_USERNAME_ENC}&exact=true&max=1" | python3 -c "
 import sys, json
 users = json.load(sys.stdin)
@@ -201,7 +201,7 @@ print(users[0]['id'] if users else '')
 fi
 
 # ---------------------------------------------------------------------------
-# Step 2 — Set password
+# Step 2: Set password
 # ---------------------------------------------------------------------------
 
 echo "==> Setting password for '${NEW_USERNAME}'..."
@@ -213,7 +213,7 @@ STATUS=$(api_put "/${REALM}/users/${USER_ID}/reset-password" "${PASS_BODY}")
 [ "${STATUS}" = "204" ] && echo "    Password set." || { echo "ERROR: Unexpected HTTP status: ${STATUS}" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
-# Step 3 — Assign superuser realm role
+# Step 3: Assign superuser realm role
 # ---------------------------------------------------------------------------
 
 echo "==> Assigning 'superuser' realm role to '${NEW_USERNAME}'..."

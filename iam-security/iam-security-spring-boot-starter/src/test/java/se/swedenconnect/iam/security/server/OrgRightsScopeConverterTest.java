@@ -44,7 +44,7 @@ class OrgRightsScopeConverterTest {
   void validOrgScopes_parsedToAuthorities() {
     final Jwt jwt = Jwt.withTokenValue("token")
         .header("alg", "none")
-        .claim("scope", "5590026042:demo:write 5561234567:demo:read")
+        .claim("scope", "2021006883:demo:write 5561234567:demo:read")
         .build();
 
     final List<OrganizationalAuthority> authorities = this.orgAuthorities(jwt);
@@ -52,20 +52,20 @@ class OrgRightsScopeConverterTest {
     assertThat(authorities).hasSize(2);
     assertThat(authorities)
         .extracting(GrantedAuthority::getAuthority)
-        .containsExactlyInAnyOrder("5590026042:demo:write", "5561234567:demo:read");
+        .containsExactlyInAnyOrder("2021006883:demo:write", "5561234567:demo:read");
   }
 
   @Test
   void mixedScopes_onlyOrgScopesParsed() {
     final Jwt jwt = Jwt.withTokenValue("token")
         .header("alg", "none")
-        .claim("scope", "openid profile 5590026042:demo:write")
+        .claim("scope", "openid profile 2021006883:demo:write")
         .build();
 
     final List<OrganizationalAuthority> authorities = this.orgAuthorities(jwt);
 
     assertThat(authorities).hasSize(1);
-    assertThat(authorities.getFirst().getAuthority()).isEqualTo("5590026042:demo:write");
+    assertThat(authorities.getFirst().getAuthority()).isEqualTo("2021006883:demo:write");
   }
 
   @Test
@@ -96,7 +96,7 @@ class OrgRightsScopeConverterTest {
   void invalidFormat_silentlyIgnored() {
     final Jwt jwt = Jwt.withTokenValue("token")
         .header("alg", "none")
-        .claim("scope", "5590026042:write")
+        .claim("scope", "2021006883:write")
         .build();
 
     final List<OrganizationalAuthority> authorities = this.orgAuthorities(jwt);
@@ -108,13 +108,13 @@ class OrgRightsScopeConverterTest {
   void singleValidScope_parsedCorrectly() {
     final Jwt jwt = Jwt.withTokenValue("token")
         .header("alg", "none")
-        .claim("scope", "5590026042:*:admin")
+        .claim("scope", "2021006883:*:admin")
         .build();
 
     final List<OrganizationalAuthority> authorities = this.orgAuthorities(jwt);
 
     assertThat(authorities).hasSize(1);
-    assertThat(authorities.getFirst().getAuthority()).isEqualTo("5590026042:*:admin");
+    assertThat(authorities.getFirst().getAuthority()).isEqualTo("2021006883:*:admin");
   }
 
 }

@@ -14,84 +14,96 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+# install-keycloak-plugins.sh
+#
+# Builds the Keycloak plugin modules and installs the provider JARs of the current build into
+# the compose SPI directory, which the Keycloak container mounts as its providers directory.
+#
+# The JARs come from the distribution ZIP that keycloak/plugin-distribution assembles, so what
+# is installed is exactly the provider set that module declares. Nothing is collected from
+# build output, so a JAR left behind by an earlier build is not installed.
+#
+# Usage:
+#   ./install-keycloak-plugins.sh
+#
+# The KEY_CLOAK_PLUGIN_DIR variable may point at the keycloak module root. It defaults to the
+# keycloak directory of this repository.
 
 set -euo pipefail
-
-OIDC_SWEDEN_PLUGIN_GROUP="se.oidc.keycloak"
-OIDC_SWEDEN_PLUGIN_ARTIFACT="oidc-sweden-claims-plugin"
-OIDC_SWEDEN_PLUGIN_VERSION="1.0.1"
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 SPI_DIR="${SCRIPT_DIR}/../config/keycloak/spi"
 
 KEY_CLOAK_PLUGIN_DIR="${KEY_CLOAK_PLUGIN_DIR:-${SCRIPT_DIR}/../../keycloak}"
+DIST_TARGET_DIR="${KEY_CLOAK_PLUGIN_DIR}/plugin-distribution/target"
 
 # ---------------------------------------------------------------------------
-# 1. Build local plugins
+# 1. Build the plugin modules and the distribution ZIP
 # ---------------------------------------------------------------------------
+#
+# The ZIP of a previous run is removed first. A failed build has to stop the script rather
+# than leave an older ZIP to be installed as if it were current.
 
-echo "==> Building local Keycloak plugins..."
-pushd "${KEY_CLOAK_PLUGIN_DIR}" > /dev/null
-mvn -q clean package -DskipTests
-popd > /dev/null
+echo "==> Building the Keycloak plugins and the distribution ZIP..."
+rm -f "${DIST_TARGET_DIR}"/*-plugins.zip
 
-# ---------------------------------------------------------------------------
-# 2. Collect local plugin JARs (exclude original-*.jar shades and test JARs)
-# ---------------------------------------------------------------------------
-
-echo "==> Collecting local plugin JARs..."
-LOCAL_JARS=$(find "${KEY_CLOAK_PLUGIN_DIR}" \
-  -path "*/target/*.jar" \
-  ! -name "original-*.jar" \
-  ! -name "*-tests.jar" \
-  ! -name "*-sources.jar")
-
-# ---------------------------------------------------------------------------
-# 3. Resolve the external OIDC Sweden claims plugin
-# ---------------------------------------------------------------------------
-
-OIDC_SWEDEN_COORDINATES="${OIDC_SWEDEN_PLUGIN_GROUP}:${OIDC_SWEDEN_PLUGIN_ARTIFACT}:${OIDC_SWEDEN_PLUGIN_VERSION}"
-
-TEMP_DIR=$(mktemp -d)
-trap 'rm -rf "${TEMP_DIR}"' EXIT
-
-EXTERNAL_JAR="${TEMP_DIR}/${OIDC_SWEDEN_PLUGIN_ARTIFACT}-${OIDC_SWEDEN_PLUGIN_VERSION}.jar"
-
-# Check local Maven cache before downloading from Maven Central.
-M2_GROUP_PATH="${OIDC_SWEDEN_PLUGIN_GROUP//.//}"
-M2_CACHED_JAR="${HOME}/.m2/repository/${M2_GROUP_PATH}/${OIDC_SWEDEN_PLUGIN_ARTIFACT}/${OIDC_SWEDEN_PLUGIN_VERSION}/${OIDC_SWEDEN_PLUGIN_ARTIFACT}-${OIDC_SWEDEN_PLUGIN_VERSION}.jar"
-
-if [[ -f "${M2_CACHED_JAR}" ]]; then
-  echo "==> Using cached ${OIDC_SWEDEN_COORDINATES} from local Maven repository..."
-  cp "${M2_CACHED_JAR}" "${EXTERNAL_JAR}"
-else
-  echo "==> Downloading ${OIDC_SWEDEN_COORDINATES} from Maven Central..."
-  mvn -q dependency:copy \
-    -Dartifact="${OIDC_SWEDEN_COORDINATES}" \
-    -DoutputDirectory="${TEMP_DIR}" \
-    -Dmdep.useBaseVersion=true
-fi
-
-if [[ ! -f "${EXTERNAL_JAR}" ]]; then
-  echo "ERROR: Expected JAR not found: ${EXTERNAL_JAR}" >&2
+if ! ( cd "${KEY_CLOAK_PLUGIN_DIR}" && mvn -q clean package -DskipTests ); then
+  echo "ERROR: The build failed. No JARs were installed." >&2
   exit 1
 fi
 
 # ---------------------------------------------------------------------------
-# 4. Install all JARs into spi/
+# 2. Locate the ZIP the build produced
 # ---------------------------------------------------------------------------
 
+shopt -s nullglob
+DIST_ZIPS=( "${DIST_TARGET_DIR}"/*-plugins.zip )
+shopt -u nullglob
+
+if [ ${#DIST_ZIPS[@]} -eq 0 ]; then
+  echo "ERROR: The build produced no plugin distribution ZIP in ${DIST_TARGET_DIR}." >&2
+  exit 1
+fi
+if [ ${#DIST_ZIPS[@]} -gt 1 ]; then
+  echo "ERROR: Several distribution ZIPs found in ${DIST_TARGET_DIR}:" >&2
+  printf '       %s\n' "${DIST_ZIPS[@]}" >&2
+  exit 1
+fi
+
+DIST_ZIP="${DIST_ZIPS[0]}"
+echo "    $(basename "${DIST_ZIP}")"
+
+# ---------------------------------------------------------------------------
+# 3. Install the JARs from the ZIP into the SPI directory
+# ---------------------------------------------------------------------------
+
+TEMP_DIR=$(mktemp -d)
+trap 'rm -rf "${TEMP_DIR}"' EXIT
+
+unzip -q "${DIST_ZIP}" -d "${TEMP_DIR}"
+
+# The ZIP holds a single top level directory with the JARs in it.
+shopt -s nullglob
+UNPACKED_JARS=( "${TEMP_DIR}"/*/*.jar )
+shopt -u nullglob
+
+if [ ${#UNPACKED_JARS[@]} -eq 0 ]; then
+  echo "ERROR: No JARs found in $(basename "${DIST_ZIP}")." >&2
+  exit 1
+fi
+
 echo "==> Installing JARs into ${SPI_DIR}..."
+mkdir -p "${SPI_DIR}"
 rm -f "${SPI_DIR}"/*.jar
 
-for jar in ${LOCAL_JARS}; do
+for jar in "${UNPACKED_JARS[@]}"; do
   cp "${jar}" "${SPI_DIR}/"
   echo "    + $(basename "${jar}")"
 done
 
-cp "${EXTERNAL_JAR}" "${SPI_DIR}/"
-echo "    + $(basename "${EXTERNAL_JAR}")"
-
 echo ""
 echo "==> Done. JARs installed in ${SPI_DIR}:"
 ls -1 "${SPI_DIR}"/*.jar | xargs -I{} basename {}
+echo ""
+echo "    Restart Keycloak to load them:"
+echo "      docker compose -f compose/docker-compose.yml restart keycloak"

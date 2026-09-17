@@ -2,8 +2,12 @@
 export interface Organization {
   id: string;
   organizationNumber: string;
-  nameSv: string;
-  nameEn: string;
+  /** The name registered at Bolagsverket. Mandatory, and the fallback whenever no display name is set. */
+  legalName: string;
+  /** Optional Swedish display name. */
+  nameSv?: string | null;
+  /** Optional English display name. */
+  nameEn?: string | null;
   contactEmail?: string;
   additionalData?: Record<string, string>;
 }
@@ -11,11 +15,27 @@ export interface Organization {
 export interface User {
   id: string;
   personalIdentityNumber: string;
+  /** Organizational affiliation on the format userID@organization-number. */
+  orgAffiliation?: string;
   name: string;
   email: string;
   phoneNumber?: string;
   superuser?: boolean;
   rights?: UserRightData[];
+}
+
+/** The values POST /api/users accepts. Which of them the backend honours is decided by the
+ *  iam.admin.user-registration settings delivered on the session. */
+export interface CreateUserInput {
+  name: string;
+  email: string;
+  /** The Keycloak user ID (username) to assign. Only honoured when allowSelectUserId is set. */
+  userId?: string;
+  personalIdentityNumber?: string;
+  orgAffiliation?: string;
+  phoneNumber?: string;
+  /** Initial password that the user must change at first login. */
+  temporaryPassword?: string;
 }
 
 export interface FunctionType {
@@ -67,6 +87,7 @@ export interface UserOrgRight {
 
 export interface OrganizationData {
   orgIdentifier: string;
+  legalName: string;
   nameSv: string | null;
   nameEn: string | null;
   groupId: string;
@@ -88,6 +109,7 @@ export interface UserData {
   lastName: string | null;
   email: string | null;
   personalIdentityNumber: string | null;
+  orgAffiliation?: string | null;
   phoneNumber?: string | null;
   superuser: boolean;
   rights: UserRightData[];
@@ -109,12 +131,134 @@ export interface UserPage {
   totalPages: number;
 }
 
+export interface ManagedClient {
+  id: string;
+  oidcClient: boolean;
+  resourceServer: boolean;
+  clientId: string;
+  name: string | null;
+  functions: string[];
+  // Set by script only. The client handles every function in the realm, including the ones not
+  // created yet, so `functions` is a snapshot of what exists rather than the limit.
+  allFunctions: boolean;
+  redirectUris: string[];
+  jwksUri: string | null;
+  jwksString: string | null;
+  serviceAccount: boolean;
+  orgRightsIdToken: boolean;
+  orgRightsAccessToken: boolean;
+  enabled: boolean;
+}
+
+export interface ManagedClientInput {
+  clientId: string;
+  name: string;
+  oidcClient: boolean;
+  resourceServer: boolean;
+  functions: string[];
+  redirectUris: string[];
+  jwksUri: string | null;
+  jwksString: string | null;
+  orgRightsIdToken: boolean;
+  orgRightsAccessToken: boolean;
+}
+
+export interface ReconciliationReport {
+  clients: number;
+  created: number;
+  removed: number;
+  errors: string[];
+}
+
+// Export/import bundle (superuser-only). The same shape is used for both directions:
+// GET /api/export returns it, and POST /api/import/dry-run accepts it as a file upload.
+// Every key is snake_case, and a localized value is carried as one key per language, tagged
+// after a '#', the same form the Keycloak group attributes use.
+
+export interface BundleFunctionEntry {
+  id: string;
+  'name#sv'?: string | null;
+  'name#en'?: string | null;
+  'description#sv'?: string | null;
+  'description#en'?: string | null;
+}
+
+export interface BundleUserRightEntry {
+  org_identifier: string;
+  function_id?: string | null;
+  right: 'admin' | 'write' | 'read';
+}
+
+export interface BundleOrganizationEntry {
+  org_identifier: string;
+  legal_name: string;
+  'name#sv'?: string | null;
+  'name#en'?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  attached_functions: string[];
+}
+
+export interface BundleUserEntry {
+  name: string;
+  /** The Keycloak username. Honoured on import only when the deployment allows a chosen user ID. */
+  username?: string | null;
+  email?: string | null;
+  personal_identity_number?: string | null;
+  org_affiliation?: string | null;
+  phone_number?: string | null;
+  rights: BundleUserRightEntry[];
+}
+
+export interface ImportExportBundle {
+  schema_version: string;
+  exported_at?: string | null;
+  functions: BundleFunctionEntry[];
+  organizations: BundleOrganizationEntry[];
+  users: BundleUserEntry[];
+}
+
+/** Outcome of one entry from an ImportExportBundle. `key` is a function id, org identifier, or
+ *  a user's personal_identity_number/org_affiliation. `status` is 'new'/'skipped_duplicate'/'error'
+ *  in a dry-run preview, and 'created'/'skipped_duplicate'/'error' in a final import report. */
+export interface ImportItemOutcome {
+  key: string;
+  status: 'new' | 'created' | 'skipped_duplicate' | 'error';
+  reason?: string | null;
+}
+
+export interface ImportPreviewReport {
+  batch_id: string;
+  functions: ImportItemOutcome[];
+  organizations: ImportItemOutcome[];
+  users: ImportItemOutcome[];
+}
+
+export interface ImportReport {
+  functions: ImportItemOutcome[];
+  organizations: ImportItemOutcome[];
+  users: ImportItemOutcome[];
+}
+
+/** The iam.admin.user-registration settings, telling the create-user forms what to render. */
+export interface UserRegistrationSettings {
+  allowSelectUserId: boolean;
+  allowTemporaryPassword: boolean;
+  eidAttributeRequired: boolean;
+  personalNumberEnabled: boolean;
+  hsaIdEnabled: boolean;
+  orgAffiliationEnabled: boolean;
+  efosIdEnabled: boolean;
+}
+
 export interface AdminSessionData {
   superuser: boolean;
   functionConstraint: string | null;
   orgConstraint: string | null;
   allowFunctionRemoval: boolean;
   allowOrgRights: boolean;
+  allowAdminAssigningAdmin: boolean;
+  userRegistration: UserRegistrationSettings;
   functions: FunctionData[];
   orgRights: UserOrgRight[];
   adminOrgIdentifiers: string[];

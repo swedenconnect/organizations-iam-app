@@ -1,0 +1,45 @@
+<assembly xmlns="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.3"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.3 https://maven.apache.org/xsd/assembly-1.1.3.xsd">
+  <id>scripts</id>
+
+  <formats>
+    <format>zip</format>
+  </formats>
+
+  <!--
+    Everything lands under one directory, so unpacking never scatters scripts. The name carries
+    no version: the directory is what a Keycloak host keeps the scripts in, and a version in the
+    path would have to be chased through every command line after an upgrade.
+  -->
+  <includeBaseDirectory>true</includeBaseDirectory>
+  <baseDirectory>keycloak-scripts</baseDirectory>
+
+  <fileSets>
+
+    <!--
+      Every script in the folder, by pattern rather than by name, so one added later is in the
+      ZIP without a change here. add-iam-admin-app.sh calls add-oidc-client.sh through its own
+      directory, which is why they must stay executable and stay together.
+    -->
+    <fileSet>
+      <directory>${project.basedir}</directory>
+      <outputDirectory>/</outputDirectory>
+      <includes>
+        <include>*.sh</include>
+      </includes>
+      <fileMode>0755</fileMode>
+    </fileSet>
+
+    <fileSet>
+      <directory>${project.basedir}</directory>
+      <outputDirectory>/</outputDirectory>
+      <includes>
+        <include>README.md</include>
+      </includes>
+      <fileMode>0644</fileMode>
+    </fileSet>
+
+  </fileSets>
+
+</assembly>

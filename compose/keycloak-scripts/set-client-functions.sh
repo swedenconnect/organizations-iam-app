@@ -14,12 +14,45 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+# set-client-functions.sh
+#
+# Convenience wrapper for the local Docker Compose environment. It calls
+# keycloak/scripts/set-client-functions.sh, the single implementation of this script, with the
+# compose Keycloak URL and its CA certificate already supplied. Every other argument is
+# passed through unchanged.
+#
+# Requires curl and python3 on the host, since the script runs here rather than inside a
+# container.
+#
+# Against any other Keycloak, call keycloak/scripts/set-client-functions.sh directly.
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMPOSE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# The URL the compose Keycloak is published on, and the certificate it serves.
+KC_URL="https://local.dev.swedenconnect.se:17000"
 
-# Pass all arguments through unchanged to the inner script.
-docker compose -f "${COMPOSE_DIR}/docker-compose.yml" run --rm keycloak-setup \
-  /scripts/set-client-functions.sh "$@"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+TARGET="${REPO_ROOT}/keycloak/scripts/set-client-functions.sh"
+CACERT="${REPO_ROOT}/compose/config/common/tls.crt"
+
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  cat <<EOF
+Set the client_functions attribute on an existing client.
+
+Runs against the compose Keycloak at ${KC_URL}.
+
+Usage: $0 [OPTIONS]
+
+Options: every option of the underlying script. Run
+  ${TARGET} --help
+for the full list. Do not pass --url or --cacert: this wrapper supplies them.
+EOF
+  exit 0
+fi
+
+[ -x "${TARGET}" ] || { echo "ERROR: ${TARGET} not found or not executable." >&2; exit 1; }
+[ -r "${CACERT}" ] || { echo "ERROR: CA certificate ${CACERT} not readable." >&2; exit 1; }
+
+exec "${TARGET}" --url "${KC_URL}" --cacert "${CACERT}" "$@"

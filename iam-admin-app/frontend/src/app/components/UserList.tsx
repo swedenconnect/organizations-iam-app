@@ -16,7 +16,7 @@ import {
 import { Pencil, Trash2, Users, Mail, Phone, Search, Building2, Boxes, ChevronDown, ChevronRight, ShieldCheck, X } from 'lucide-react';
 import { useLanguage } from '@/app/contexts/LanguageContext';
 import { useState } from 'react';
-import { formatPersonalIdentityNumber } from '@/utils';
+import { formatPersonalIdentityNumber, resolveOrgName } from '@/utils';
 
 function groupRightsByOrg(rights: UserRightData[]) {
   const map = new Map<string, { orgRights: UserRightData[]; funcRights: UserRightData[] }>();
@@ -60,7 +60,7 @@ function checkDeleteSafety(
       );
       if (!otherAdminExists) {
         const org = organizations.find((o) => o.id === right.orgIdentifier);
-        const name = org ? (language === 'sv' ? org.nameSv : org.nameEn) : right.orgIdentifier;
+        const name = org ? resolveOrgName(org, language) : right.orgIdentifier;
         if (!reasons.includes(name)) reasons.push(name);
       }
     } else {
@@ -94,6 +94,8 @@ interface UserListProps {
   functions: FunctionType[];
   currentUserId: string;
   isSuperuser: boolean;
+  /** When false, the admin right is read-only: it cannot be granted, changed or removed here. */
+  canAssignAdmin: boolean;
   onEdit: (user: User) => void;
   onDeleteUser: (userId: string) => void;
   onRemoveRight: (
@@ -111,7 +113,7 @@ interface UserListProps {
   ) => void;
 }
 
-export function UserList({ users, organizations, functions, currentUserId, isSuperuser, onEdit, onDeleteUser, onRemoveRight, onChangeRight }: UserListProps) {
+export function UserList({ users, organizations, functions, currentUserId, isSuperuser, canAssignAdmin, onEdit, onDeleteUser, onRemoveRight, onChangeRight }: UserListProps) {
   const { t, language } = useLanguage();
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
@@ -136,9 +138,7 @@ export function UserList({ users, organizations, functions, currentUserId, isSup
     reasons: string[];
   } | null>(null);
 
-  const getOrgName = (org: Organization) => {
-    return language === 'sv' ? org.nameSv : org.nameEn;
-  };
+  const getOrgName = (org: Organization) => resolveOrgName(org, language);
 
   const getRoleBadgeVariant = (role: string): 'default' | 'secondary' | 'outline' => {
     if (role === 'admin') return 'default';
@@ -333,7 +333,7 @@ export function UserList({ users, organizations, functions, currentUserId, isSup
                                   return (
                                     <div key={i} className="flex items-center justify-between bg-white p-2 rounded border mb-1">
                                       <span className="text-sm">{orgName}</span>
-                                      {isSelf ? (
+                                      {isSelf || (!canAssignAdmin && r.right === 'admin') ? (
                                         <Badge variant={getRoleBadgeVariant(r.right)}>{t(`role.${r.right}`)}</Badge>
                                       ) : (
                                         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
@@ -350,7 +350,7 @@ export function UserList({ users, organizations, functions, currentUserId, isSup
                                             >
                                               <option value="read">{t('role.read')}</option>
                                               <option value="write">{t('role.write')}</option>
-                                              <option value="admin">{t('role.admin')}</option>
+                                              {canAssignAdmin && <option value="admin">{t('role.admin')}</option>}
                                             </select>
                                           ) : (
                                             <Badge
@@ -404,7 +404,7 @@ export function UserList({ users, organizations, functions, currentUserId, isSup
                                         <p className="text-sm font-medium">{orgName}</p>
                                         <p className="text-xs text-gray-500">{func ? (language === 'sv' ? func.nameSv : func.nameEn) || (language === 'sv' ? func.nameEn : func.nameSv) || func.name : r.functionId}</p>
                                       </div>
-                                      {isSelf ? (
+                                      {isSelf || (!canAssignAdmin && r.right === 'admin') ? (
                                         <Badge variant={getRoleBadgeVariant(r.right)}>{t(`role.${r.right}`)}</Badge>
                                       ) : (
                                         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
@@ -421,7 +421,7 @@ export function UserList({ users, organizations, functions, currentUserId, isSup
                                             >
                                               <option value="read">{t('role.read')}</option>
                                               <option value="write">{t('role.write')}</option>
-                                              <option value="admin">{t('role.admin')}</option>
+                                              {canAssignAdmin && <option value="admin">{t('role.admin')}</option>}
                                             </select>
                                           ) : (
                                             <Badge

@@ -30,6 +30,7 @@ import se.swedenconnect.iam.admin.controllers.dto.AdminSessionResponse;
 import se.swedenconnect.iam.admin.controllers.dto.FunctionResponse;
 import se.swedenconnect.iam.admin.controllers.dto.FunctionRightResponse;
 import se.swedenconnect.iam.admin.controllers.dto.OrgRightResponse;
+import se.swedenconnect.iam.admin.controllers.dto.UserRegistrationResponse;
 import se.swedenconnect.iam.admin.keycloak.AdminSessionBootstrapHandler;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
 import se.swedenconnect.iam.admin.keycloak.model.FunctionInfo;
@@ -47,6 +48,7 @@ import java.util.List;
  * rule already protects this endpoint.</p>
  *
  * @author Martin Lindström
+ * @author Felix Hellman
  */
 @RestController
 @RequestMapping("/api")
@@ -87,10 +89,24 @@ public class SessionController {
         data.orgConstraint(),
         this.properties.isAllowFunctionRemoval(),
         this.properties.isAllowOrgRights(),
+        this.properties.isAllowAdminAssigningAdmin(),
+        toUserRegistrationResponse(this.properties.getUserRegistration()),
         data.functions().stream().map(SessionController::toFunctionResponse).toList(),
         toOrgRights(data.claim()),
         data.adminOrgIdentifiers()
     );
+  }
+
+  private static UserRegistrationResponse toUserRegistrationResponse(
+      final IamAdminProperties.UserRegistration settings) {
+    return new UserRegistrationResponse(
+        settings.isAllowSelectUserId(),
+        settings.isAllowTemporaryPassword(),
+        settings.isEidAttributeRequired(),
+        settings.isPersonalNumberEnabled(),
+        settings.isHsaIdEnabled(),
+        settings.isOrgAffiliationEnabled(),
+        settings.isEfosIdEnabled());
   }
 
   private static List<OrgRightResponse> toOrgRights(final OrgRightsClaim claim) {

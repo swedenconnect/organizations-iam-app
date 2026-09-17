@@ -58,7 +58,7 @@ class ListRightsHoldersControllerTest {
 
   private IamServiceOrganizationController controller;
 
-  private static final String ORG = "5590026042";
+  private static final String ORG = "2021006883";
   private static final String FUNC = "demo";
 
   @BeforeEach

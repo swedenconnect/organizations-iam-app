@@ -7,7 +7,7 @@
   <parent>
     <groupId>se.swedenconnect.iam.demo</groupId>
     <artifactId>demo</artifactId>
-    <version>0.9.3-SNAPSHOT</version>
+    <version>0.9.6-SNAPSHOT</version>
   </parent>
 
   <artifactId>demo-service</artifactId>
@@ -24,6 +24,11 @@
       <distribution>repo</distribution>
     </license>
   </licenses>
+
+  <properties>
+    <!-- Architecture for jib:dockerBuild@local. Override with -Djib.local.architecture=arm64 on Apple Silicon. -->
+    <jib.local.architecture>amd64</jib.local.architecture>
+  </properties>
 
   <dependencies>
 
@@ -127,6 +132,15 @@
               <goal>dockerBuild</goal>
             </goals>
             <configuration>
+              <from>
+                <!-- Override with -Djib.local.architecture=arm64 on Apple Silicon -->
+                <platforms>
+                  <platform>
+                    <os>linux</os>
+                    <architecture>${jib.local.architecture}</architecture>
+                  </platform>
+                </platforms>
+              </from>
               <to>
                 <image>iam-demo-service</image>
               </to>

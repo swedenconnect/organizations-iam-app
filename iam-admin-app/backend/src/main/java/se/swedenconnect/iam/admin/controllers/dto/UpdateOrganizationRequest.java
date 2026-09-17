@@ -20,9 +20,13 @@ import org.jspecify.annotations.Nullable;
 /**
  * Request body for updating an organization's mutable fields.
  *
+ * <p>Omitting a field leaves it unchanged. Sending {@code legalName} blank is a validation error,
+ * since a legal name is mandatory. Sending a display name empty removes it.</p>
+ *
  * @author Martin Lindström
  */
 public record UpdateOrganizationRequest(
+    @Nullable String legalName,
     @Nullable String nameSv,
     @Nullable String nameEn,
     @Nullable String contactEmail,

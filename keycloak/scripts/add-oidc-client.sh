@@ -38,6 +38,8 @@ REALM=""
 CLIENT_ID=""
 NAME=""
 REDIRECT_URIS=()
+ROOT_URL=""
+ROOT_URL_SET="false"
 JWKS_URL=""
 SERVICE_ACCOUNT="false"
 ORG_RIGHTS_ID_TOKEN="true"
@@ -66,6 +68,8 @@ Options:
   --client-id <id>                 Client ID (e.g. https://my-app.example.com)
   --name <name>                    Display name shown in the Keycloak admin UI
   --redirect-uri <pattern>         Redirect URI pattern (repeatable)
+  --root-url <url>                 Client root URL. Written only when given here or
+                                   when a redirect URI is a path (see below)
   --jwks-url <url>                 JWKS endpoint URL (default: <client-id>/jwks)
   --service-account                Keep the service account and assign
                                    realm-management roles
@@ -78,6 +82,12 @@ Options:
 All parameters are optional on the command line; missing required values
 will be prompted for interactively. --redirect-uri may be specified
 multiple times.
+
+The client root URL is only used by Keycloak to resolve redirect URIs given as
+paths. If at least one --redirect-uri starts with '/' and --root-url was not
+given, the root URL is prompted for, with the client ID as the default. If every
+redirect URI is a complete URI and --root-url was not given, no root URL is
+written and any root URL already on the client is left as it is.
 EOF
 }
 
@@ -96,6 +106,7 @@ while [ $# -gt 0 ]; do
     --client-id)                    CLIENT_ID="$2";           shift 2 ;;
     --name)                         NAME="$2";                shift 2 ;;
     --redirect-uri)                 REDIRECT_URIS+=("$2");    shift 2 ;;
+    --root-url)                     ROOT_URL="$2"; ROOT_URL_SET="true"; shift 2 ;;
     --jwks-url)                     JWKS_URL="$2";            shift 2 ;;
     --service-account)              SERVICE_ACCOUNT="true";   shift ;;
     --no-org-rights-id-token)       ORG_RIGHTS_ID_TOKEN="false";    shift ;;
@@ -137,6 +148,24 @@ if [ ${#REDIRECT_URIS[@]} -eq 0 ]; then
     echo "ERROR: at least one redirect URI is required." >&2
     exit 1
   fi
+fi
+
+# The root URL only matters when a redirect URI is given as a path, which Keycloak then
+# resolves against it. Ask for it once in that case, defaulting to the client ID. When
+# every redirect URI is complete, no root URL is written at all.
+if [ "${ROOT_URL_SET}" = "false" ]; then
+  for _URI in "${REDIRECT_URIS[@]}"; do
+    case "${_URI}" in
+      /*)
+        read -r -p "Root URL (redirect URIs given as paths resolve against it) [${CLIENT_ID}]: " ROOT_URL
+        if [ -z "${ROOT_URL}" ]; then
+          ROOT_URL="${CLIENT_ID}"
+        fi
+        ROOT_URL_SET="true"
+        break
+        ;;
+    esac
+  done
 fi
 
 # Derive default JWKS URL from client ID if not provided
@@ -246,7 +275,7 @@ fi
 echo "    Token obtained."
 
 # ---------------------------------------------------------------------------
-# Step 1 — Resolve or create client
+# Step 1: Resolve or create client
 # ---------------------------------------------------------------------------
 
 echo "==> Resolving client '${CLIENT_ID}'..."
@@ -278,7 +307,7 @@ print(json.dumps({
 
   CLIENT_UUID=$(api_create "/${REALM}/clients" "${CREATE_BODY}")
   if [ -z "${CLIENT_UUID}" ]; then
-    # Location header not captured — fall back to lookup
+    # Location header not captured, falling back to a lookup
     CLIENT_UUID=$(api_get "/${REALM}/clients?clientId=${CLIENT_ID_ENC}&max=1" | python3 -c "
 import sys, json
 clients = json.load(sys.stdin)
@@ -294,7 +323,7 @@ print(clients[0]['id'] if clients else '')
 fi
 
 # ---------------------------------------------------------------------------
-# Step 2 — Configure client (read-merge-write to avoid clobbering settings)
+# Step 2: Configure client (read-merge-write to avoid clobbering settings)
 # ---------------------------------------------------------------------------
 
 echo "==> Configuring client settings..."
@@ -305,14 +334,19 @@ UPDATED_CLIENT=$(
   CURRENT_JSON="${CURRENT_CLIENT}" \
   _NAME="${NAME}" \
   _JWKS_URL="${JWKS_URL}" \
-  _ROOT_URL="${CLIENT_ID}" \
+  _ROOT_URL="${ROOT_URL}" \
+  _ROOT_URL_SET="${ROOT_URL_SET}" \
   _REDIRECT_URIS="${REDIRECT_URIS_JSON}" \
+  _SERVICE_ACCOUNT="${SERVICE_ACCOUNT}" \
   python3 -c "
 import os, json
 client = json.loads(os.environ['CURRENT_JSON'])
 redirect_uris = json.loads(os.environ['_REDIRECT_URIS'])
 
-client['rootUrl'] = os.environ['_ROOT_URL']
+# Left untouched unless this invocation has a root URL to write, so that a client
+# registered with complete redirect URIs keeps whatever root URL it already has
+if os.environ['_ROOT_URL_SET'] == 'true':
+    client['rootUrl'] = os.environ['_ROOT_URL']
 client['redirectUris'] = redirect_uris
 client['clientAuthenticatorType'] = 'client-jwt'
 client['standardFlowEnabled'] = True
@@ -323,7 +357,13 @@ client['serviceAccountsEnabled'] = True
 
 if not client.get('attributes'):
     client['attributes'] = {}
+# iam_admin_managed says the IAM Admin application administers this Keycloak client, whichever
+# role it plays. iam_admin_oidc_client carries the OIDC client role itself.
 client['attributes']['iam_admin_managed'] = 'true'
+client['attributes']['iam_admin_oidc_client'] = 'true'
+# The IAM Admin application reads this rather than serviceAccountsEnabled, which Keycloak
+# turns back on by itself whenever Authorization Services are enabled
+client['attributes']['iam_admin_service_account'] = os.environ['_SERVICE_ACCOUNT']
 client['attributes']['use.jwks.url'] = 'true'
 client['attributes']['jwks.url'] = os.environ['_JWKS_URL']
 
@@ -342,7 +382,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 3 — Handle service account
+# Step 3: Handle service account
 # ---------------------------------------------------------------------------
 
 SA_USER_ID=$(api_get "/${REALM}/clients/${CLIENT_UUID}/service-account-user" | python3 -c "
@@ -382,7 +422,7 @@ except:
 " 2>/dev/null || echo "")
 
     if [ -z "${ROLE_ID}" ]; then
-      echo "    Role '${ROLE_NAME}' not found — skipping."
+      echo "    Role '${ROLE_NAME}' not found, skipping."
       continue
     fi
 
@@ -394,22 +434,22 @@ print(json.dumps([{'id': sys.argv[1], 'name': sys.argv[2]}]))
     STATUS=$(api_post "/${REALM}/users/${SA_USER_ID}/role-mappings/clients/${RM_UUID}" "${ROLE_BODY}")
     case "${STATUS}" in
       204) echo "    Assigned: ${ROLE_NAME}" ;;
-      409) echo "    Role '${ROLE_NAME}' already assigned — skipping." ;;
-      *)   echo "    Role '${ROLE_NAME}': unexpected status ${STATUS} — skipping." ;;
+      409) echo "    Role '${ROLE_NAME}' already assigned, skipping." ;;
+      *)   echo "    Role '${ROLE_NAME}': unexpected status ${STATUS}, skipping." ;;
     esac
   done
 else
   echo "==> Removing service account user (not requested)..."
   if [ -n "${SA_USER_ID}" ]; then
     STATUS=$(api_delete "/${REALM}/users/${SA_USER_ID}")
-    [ "${STATUS}" = "204" ] && echo "    Deleted." || echo "    Already absent or status: ${STATUS} — skipping."
+    [ "${STATUS}" = "204" ] && echo "    Deleted." || echo "    Already absent or status: ${STATUS}, skipping."
   else
-    echo "    Service account user not found — skipping."
+    echo "    Service account user not found, skipping."
   fi
 fi
 
 # ---------------------------------------------------------------------------
-# Step 4 — Add protocol mappers
+# Step 4: Add protocol mappers
 # ---------------------------------------------------------------------------
 
 MAPPERS_RESP=$(api_get "/${REALM}/clients/${CLIENT_UUID}/protocol-mappers/models")
@@ -425,7 +465,7 @@ print('yes' if any(m.get('name') == '${name}' for m in mappers) else 'no')
 
 echo "==> Adding org-rights protocol mapper..."
 if [ "$(has_mapper org-rights-mapper)" = "yes" ]; then
-  echo "    Already exists — skipping."
+  echo "    Already exists, skipping."
 else
   ORG_RIGHTS_BODY=$(python3 -c '
 import json, sys
@@ -448,7 +488,7 @@ fi
 
 echo "==> Adding scope-org-identifier-mapper..."
 if [ "$(has_mapper scope-org-identifier-mapper)" = "yes" ]; then
-  echo "    Already exists — skipping."
+  echo "    Already exists, skipping."
 else
   STATUS=$(api_post "/${REALM}/clients/${CLIENT_UUID}/protocol-mappers/models" \
     '{"name":"scope-org-identifier-mapper","protocol":"openid-connect","protocolMapper":"scope-org-identifier-mapper","consentRequired":false,"config":{"id.token.claim":"false","access.token.claim":"true"}}')
@@ -457,7 +497,7 @@ fi
 
 echo "==> Adding resource-audience-mapper..."
 if [ "$(has_mapper resource-audience-mapper)" = "yes" ]; then
-  echo "    Already exists — skipping."
+  echo "    Already exists, skipping."
 else
   STATUS=$(api_post "/${REALM}/clients/${CLIENT_UUID}/protocol-mappers/models" \
     '{"name":"resource-audience-mapper","protocol":"openid-connect","protocolMapper":"resource-audience-mapper","consentRequired":false,"config":{"id.token.claim":"false","access.token.claim":"true"}}')
@@ -476,7 +516,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 5 — Add optional client scopes
+# Step 5: Add optional client scopes
 # ---------------------------------------------------------------------------
 
 PNR_SCOPE="https://id.oidc.se/scope/naturalPersonNumber"
@@ -487,6 +527,14 @@ import sys, json
 scopes = json.load(sys.stdin)
 nxt = next((s['id'] for s in scopes if s.get('name') == '${PNR_SCOPE}'), '')
 print(nxt)
+" 2>/dev/null || echo "")
+
+ORG_ID_SCOPE="https://id.oidc.se/scope/naturalPersonOrgId"
+ORG_ID_SCOPE_ID=$(echo "${ALL_SCOPES}" | ORG_ID_SCOPE="${ORG_ID_SCOPE}" python3 -c "
+import os, sys, json
+scopes = json.load(sys.stdin)
+name = os.environ['ORG_ID_SCOPE']
+print(next((s['id'] for s in scopes if s.get('name') == name), ''))
 " 2>/dev/null || echo "")
 
 PHONE_SCOPE_ID=$(echo "${ALL_SCOPES}" | python3 -c "
@@ -501,7 +549,15 @@ if [ -z "${PNR_SCOPE_ID}" ]; then
   echo "    WARNING: Scope not found in realm '${REALM}'. Run bootstrap-realm.sh first."
 else
   STATUS=$(api_put_empty "/${REALM}/clients/${CLIENT_UUID}/optional-client-scopes/${PNR_SCOPE_ID}")
-  [ "${STATUS}" = "204" ] && echo "    Added." || echo "    Already present or status: ${STATUS} — skipping."
+  [ "${STATUS}" = "204" ] && echo "    Added." || echo "    Already present or status: ${STATUS}, skipping."
+fi
+
+echo "==> Adding '${ORG_ID_SCOPE}' as optional client scope..."
+if [ -z "${ORG_ID_SCOPE_ID}" ]; then
+  echo "    WARNING: Scope not found in realm '${REALM}'. Run bootstrap-realm.sh first."
+else
+  STATUS=$(api_put_empty "/${REALM}/clients/${CLIENT_UUID}/optional-client-scopes/${ORG_ID_SCOPE_ID}")
+  [ "${STATUS}" = "204" ] && echo "    Added." || echo "    Already present or status: ${STATUS}, skipping."
 fi
 
 echo "==> Adding 'phone' as optional client scope..."
@@ -509,7 +565,7 @@ if [ -z "${PHONE_SCOPE_ID}" ]; then
   echo "    WARNING: Scope 'phone' not found in realm '${REALM}'. Run bootstrap-realm.sh first."
 else
   STATUS=$(api_put_empty "/${REALM}/clients/${CLIENT_UUID}/optional-client-scopes/${PHONE_SCOPE_ID}")
-  [ "${STATUS}" = "204" ] && echo "    Added." || echo "    Already present or status: ${STATUS} — skipping."
+  [ "${STATUS}" = "204" ] && echo "    Added." || echo "    Already present or status: ${STATUS}, skipping."
 fi
 
 # ---------------------------------------------------------------------------
@@ -525,6 +581,11 @@ echo "      Client ID          : ${CLIENT_ID}"
 echo "      Client UUID        : ${CLIENT_UUID}"
 echo "      JWKS URL           : ${JWKS_URL}"
 echo "      Redirect URIs      : ${REDIRECT_URIS[*]}"
+if [ "${ROOT_URL_SET}" = "true" ]; then
+  echo "      Root URL           : ${ROOT_URL}"
+else
+  echo "      Root URL           : not set (left unchanged)"
+fi
 echo "      Service account    : ${SERVICE_ACCOUNT}"
 echo "      org-rights ID token: ${ORG_RIGHTS_ID_TOKEN}"
 echo "      org-rights acc.tok.: ${ORG_RIGHTS_ACCESS_TOKEN}"

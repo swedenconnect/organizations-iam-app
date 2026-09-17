@@ -179,18 +179,18 @@ public class OrganizationController {
     }
 
     final String orgNumber = req.organizationNumber();
-    final String nameSv = req.nameSv();
-    final String nameEn = req.nameEn();
+    final String legalName = req.legalName();
+    // Display names are optional; blank is the same as absent and stores nothing.
+    final String nameSv = blankToNull(req.nameSv());
+    final String nameEn = blankToNull(req.nameEn());
 
     if (!orgNumber.matches("^\\d{10}$")) {
       log.info("POST /api/organizations — rejected: invalid organization number '{}'", orgNumber);
       return ResponseEntity.badRequest().body("organizationNumber must be exactly 10 digits");
     }
-    if (nameSv.isBlank()) {
-      return ResponseEntity.badRequest().body("nameSv must not be blank");
-    }
-    if (nameEn.isBlank()) {
-      return ResponseEntity.badRequest().body("nameEn must not be blank");
+    if (legalName == null || legalName.isBlank()) {
+      log.info("POST /api/organizations — rejected: legalName is blank for '{}'", orgNumber);
+      return ResponseEntity.badRequest().body("legalName must not be blank");
     }
 
     if (this.organizationService.exists(orgNumber)) {
@@ -198,14 +198,16 @@ public class OrganizationController {
       return ResponseEntity.status(409).build();
     }
 
-    this.organizationService.create(orgNumber, nameSv, nameEn);
+    this.organizationService.create(orgNumber, legalName, nameSv, nameEn);
     log.info("POST /api/organizations — organization '{}' created successfully", orgNumber);
 
-    return ResponseEntity.status(201).body(Map.of(
-        "id", orgNumber,
-        "organizationNumber", orgNumber,
-        "nameSv", nameSv,
-        "nameEn", nameEn));
+    final LinkedHashMap<String, Object> body = new LinkedHashMap<>();
+    body.put("id", orgNumber);
+    body.put("organizationNumber", orgNumber);
+    body.put("legalName", legalName);
+    body.put("nameSv", nameSv);
+    body.put("nameEn", nameEn);
+    return ResponseEntity.status(201).body(body);
   }
 
   /**
@@ -236,8 +238,8 @@ public class OrganizationController {
 
     final boolean isSuperuser = data.currentUserIsSuperuser();
 
-    final boolean hasNameChange = (req.nameSv() != null && !req.nameSv().isBlank())
-        || (req.nameEn() != null && !req.nameEn().isBlank());
+    // Sending any name field at all, blank included, is a name change and is reserved to superusers.
+    final boolean hasNameChange = req.legalName() != null || req.nameSv() != null || req.nameEn() != null;
     if (!isSuperuser && hasNameChange) {
       log.info("PUT /api/organizations/{} — rejected: non-superuser attempted name change", orgIdentifier);
       return ResponseEntity.status(403).build();
@@ -248,18 +250,17 @@ public class OrganizationController {
       return ResponseEntity.status(403).build();
     }
 
-    if (isSuperuser) {
-      if (req.nameSv() != null && req.nameSv().isBlank()) {
-        return ResponseEntity.badRequest().body("nameSv must not be blank");
-      }
-      if (req.nameEn() != null && req.nameEn().isBlank()) {
-        return ResponseEntity.badRequest().body("nameEn must not be blank");
-      }
+    // A legal name is mandatory, so it may be omitted but not emptied. Display names may be emptied,
+    // which removes them.
+    if (isSuperuser && req.legalName() != null && req.legalName().isBlank()) {
+      log.info("PUT /api/organizations/{} — rejected: legalName must not be blank", orgIdentifier);
+      return ResponseEntity.badRequest().body("legalName must not be blank");
     }
 
     try {
       final OrganizationInfo updated = this.organizationService.update(
           orgIdentifier,
+          isSuperuser ? req.legalName() : null,
           isSuperuser ? req.nameSv() : null,
           isSuperuser ? req.nameEn() : null,
           req.contactEmail(),
@@ -268,8 +269,9 @@ public class OrganizationController {
 
       final LinkedHashMap<String, Object> responseBody = new LinkedHashMap<>();
       responseBody.put("orgIdentifier", updated.orgIdentifier());
-      responseBody.put("nameSv", updated.name().get("sv"));
-      responseBody.put("nameEn", updated.name().get("en"));
+      responseBody.put("legalName", updated.legalName());
+      responseBody.put("nameSv", updated.displayName("sv"));
+      responseBody.put("nameEn", updated.displayName("en"));
       responseBody.put("contactEmail", updated.contactEmail());
       responseBody.put("contactPhone", updated.contactPhone());
       return ResponseEntity.ok(responseBody);
@@ -340,6 +342,7 @@ public class OrganizationController {
     final List<OrganizationResponse> filtered = response.content().stream()
         .map(o -> new OrganizationResponse(
             o.orgIdentifier(),
+            o.legalName(),
             o.nameSv(),
             o.nameEn(),
             o.groupId(),
@@ -354,12 +357,17 @@ public class OrganizationController {
   private static OrganizationResponse toResponse(final OrganizationInfo o) {
     return new OrganizationResponse(
         o.orgIdentifier(),
-        o.name().get("sv"),
-        o.name().get("en"),
+        o.legalName(),
+        o.displayName("sv"),
+        o.displayName("en"),
         o.groupId(),
         o.attachedFunctions(),
         o.contactEmail(),
         o.contactPhone());
+  }
+
+  private static @Nullable String blankToNull(final @Nullable String value) {
+    return value == null || value.isBlank() ? null : value;
   }
 
   /**

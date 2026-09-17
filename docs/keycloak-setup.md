@@ -26,6 +26,10 @@ For an overview of the rights model and key concepts, see
 
     2.4b. [The `phone_number` Claim and Scope](#the-phone_number-claim-and-scope)
 
+    2.4c. [The Organizational Identity Claims and the `naturalPersonOrgId` Scope](#the-organizational-identity-claims)
+
+    2.4d. [The OIDC Sweden User Profile Attributes](#the-oidc-sweden-user-profile)
+
     2.5. [The `org_rights` Protocol Mapper](#the-org_rights-protocol-mapper)
 
     2.6. [The Admin Application Client](#the-admin-application-client)
@@ -38,6 +42,8 @@ For an overview of the rights model and key concepts, see
 
     2.9. [Scope Creation and Authorization Policies](#scope-creation-and-authorization-policies)
 
+    2.10. [Managed Clients and Reconciliation](#managed-clients-and-reconciliation)
+
 - [**Appendix A: Step-by-Step Setup with Examples**](#appendix-a-step-by-step-setup-with-examples)
 
 - [**Appendix B: Keycloak Admin REST API Reference**](#appendix-b-keycloak-admin-rest-api-reference)
@@ -47,18 +53,62 @@ For an overview of the rights model and key concepts, see
 <a name="automated-setup-via-scripts"></a>
 ## 1. Automated Setup via Scripts
 
-The `compose/keycloak-scripts/` directory contains wrapper scripts that automate the steps described in this document. See the
-[Keycloak Scripts README](../compose/keycloak-scripts/README.md) for usage.
+The `keycloak/scripts/` directory contains scripts that automate the steps described in this
+document. They call the Keycloak Admin REST API and work against any reachable Keycloak, so
+the same scripts serve a local instance, a test server and a production installation. Every
+command in this document uses them. See the
+[Keycloak Admin Scripts README](../keycloak/scripts/README.md) for the full option reference.
 
 Key scripts:
 
-- `bootstrap-realm.sh` — Creates the realm with all base configuration (sections 2.1–2.5 below)
-- `create-admin-user.sh` — Creates the initial superuser account
-- `add-oidc-client.sh` — Registers an OIDC/OAuth client
-- `add-resource-server.sh` — Registers a resource server
-- `set-client-functions.sh` — Assigns function identifiers to a resource server
-- `set-iam-admin-managed.sh` — Marks a client as IAM-admin-managed
-- `install-keycloak-plugins.sh` — Builds and installs Keycloak provider JARs
+- `bootstrap-realm.sh`: creates the realm with all base configuration (sections 2.1 to 2.5 below)
+- `create-admin-user.sh`: creates the initial superuser account
+- `add-oidc-client.sh`: registers an OIDC or OAuth client
+- `add-resource-server.sh`: registers a resource server
+- `set-client-functions.sh`: assigns function identifiers to a resource server
+- `set-iam-admin-managed.sh`: marks a client as IAM-admin-managed
+- `set-iam-admin-resource-server.sh`: marks an existing client as a resource server
+
+They need `curl` and `python3` on the machine they are run from, and each takes `--url`, the
+base URL of the Keycloak to configure. The provider JARs have to be deployed to that Keycloak
+first, and Keycloak rebuilt and restarted; `get-keycloak-plugins.sh` in the same directory
+fetches the JARs for a given version of this project as one
+[distribution ZIP](../keycloak/README.md#plugin-distribution).
+
+Everything in section 2 is then created by one command:
+
+```bash
+./keycloak/scripts/bootstrap-realm.sh \
+    --url https://keycloak.example.com \
+    --realm orgiam \
+    --username admin \
+    --password <admin-password> \
+    --display-name "Organizations and Users IAM"
+```
+
+followed by the initial administrator account:
+
+```bash
+./keycloak/scripts/create-admin-user.sh \
+    --url https://keycloak.example.com \
+    --realm orgiam \
+    --username admin \
+    --password <admin-password> \
+    --new-username diggadmin \
+    --new-password <new-password>
+```
+
+Both are idempotent. Add `--cacert <file>` when the server presents a certificate the host
+does not already trust.
+
+> **Working in the local Docker Compose environment?** The wrappers in
+> [`compose/keycloak-scripts/`](../compose/keycloak-scripts/README.md) call these same
+> scripts with the compose URL and CA certificate already supplied, so the first command
+> above shortens to
+> `./compose/keycloak-scripts/bootstrap-realm.sh --realm orgiam --username admin --password keycloak`.
+> That directory also holds `install-keycloak-plugins.sh`, which installs the provider JARs
+> into the compose Keycloak. See [Provider JARs](../keycloak/README.md#provider-jars) for what
+> those are.
 
 ---
 
@@ -111,16 +161,22 @@ No other realm roles are used. All other authorization is derived from group mem
 ### 2.4. The `personalIdentityNumber` Claim and Scope
 
 The personal identity number is emitted by the **OIDC Sweden** protocol mapper
-(`swedish-oidc-claims-mapper`), a custom mapper JAR deployed to Keycloak. The mapper is
+(`oidc-sweden-claims-mapper`), a custom mapper JAR deployed to Keycloak. The mapper is
 scope-driven: it checks which client scopes were applied to the session and emits claims
 accordingly. For the personal identity number, it checks for the presence of the scope
 `https://id.oidc.se/scope/naturalPersonNumber` among the applied scopes.
 
-The `personalIdentityNumber` user profile attribute is defined under
-**Realm settings → User Profile** with:
+The scope is what governs release, not the attribute. The `personalIdentityNumber` user
+profile attribute is defined under **Realm settings → User Profile** with:
 
-- **Enabled when:** Scopes are requested — `https://id.oidc.se/scope/naturalPersonNumber`
+- **Enabled when:** Always
+- **Attribute group:** `oidc-sweden-natural-person`
 - **Permissions:** Admins can edit; admins and users can view.
+- **Multivalued:** No, and not required.
+
+See [Section 2.4c](#the-oidc-sweden-user-profile) for the whole set of attributes, and note
+that the JAR creates none of them: everything below is put in the realm by
+`bootstrap-realm.sh`.
 
 **Client Scope:**
 
@@ -170,7 +226,7 @@ claim when the `phone` scope is requested.
 The `phoneNumber` user profile attribute is defined under
 **Realm settings → User Profile** with:
 
-- **Enabled when:** Scopes are requested — `phone`
+- **Enabled when:** Scopes are requested: `phone`
 - **Permissions:** Admins can edit; admins and users can view.
 - **Required:** No (optional attribute).
 
@@ -210,6 +266,76 @@ See [A.5e](#a5e-add-phone-scope-to-clients) for step-by-step instructions.
 
 ---
 
+<a name="the-organizational-identity-claims"></a>
+### 2.4c. The Organizational Identity Claims and the `naturalPersonOrgId` Scope
+
+An organizational identity says which organization issued a user's identity, and what that
+user is called within it. The Swedish OIDC Claims Specification defines four claims for it,
+all released together when the scope `https://id.oidc.se/scope/naturalPersonOrgId` is
+requested:
+
+| Claim | User attribute | Content |
+|---|---|---|
+| `https://id.oidc.se/claim/orgAffiliation` | `orgAffiliation` | `userID@organization-number`, the user's identity within the organization |
+| `https://id.oidc.se/claim/orgName` | `orgName` | The registered name of the organization |
+| `https://id.oidc.se/claim/orgNumber` | `orgNumber` | The organization number, 10 digits |
+| `https://id.oidc.se/claim/orgUnit` | `orgUnit` | An organizational unit within the organization |
+
+The same `oidc-sweden-claims-mapper` emits these, so the scope must carry the mapper and be
+applied to the session, exactly as for `naturalPersonNumber`.
+
+**Client Scope:**
+
+| Setting | Value |
+|---|---|
+| Name | `https://id.oidc.se/scope/naturalPersonOrgId` |
+| Protocol | `openid-connect` |
+| Include in token scope | `true` |
+| Mapper | `oidc-sweden-claims-mapper`, into ID token, access token and UserInfo |
+
+**What the IAM admin application writes:**
+
+The administrator enters the `orgAffiliation` when the user is created, and the application
+derives the rest from it. `orgNumber` is the organization number part of the affiliation, and
+`orgName` is the legal name of the organization group registered under that number, when such
+a group exists. The affiliation is the authoritative statement of which organization issued
+the identity, so the number is taken from it rather than from the organization the user is
+being given rights in; the two need not be the same. Where no organization group matches, or
+it carries no legal name, `orgName` is left out rather than guessed. `orgUnit` is never
+written.
+
+All three are written when the user is created and are not maintained afterwards, as with
+every other identity attribute on a user.
+
+<a name="the-oidc-sweden-user-profile"></a>
+### 2.4d. The OIDC Sweden User Profile Attributes
+
+The `oidc-sweden-claims-plugin` JAR registers the two protocol mapper types and an info
+endpoint, and nothing else. It creates no client scope and no user profile attribute in any
+realm. `bootstrap-realm.sh` is what puts them there, and a realm that has not been
+bootstrapped releases none of these claims.
+
+The realm sets no unmanaged attribute policy, so an attribute that is not declared is
+silently dropped when a user is written. The declarations follow the plugin's own
+definitions: two attribute groups and ten attributes, each viewable by admin and user,
+editable by admin only, single-valued and not required.
+
+| Attribute group | Attributes |
+|---|---|
+| (none) | `middleName`, `birthdate` |
+| `oidc-sweden-natural-person` | `personalIdentityNumber`, `coordinationNumber`, `coordinationNumberLevel`, `previousCoordinationNumber` |
+| `oidc-sweden-org-id` | `orgAffiliation`, `orgName`, `orgNumber`, `orgUnit` |
+
+Bootstrapping adds only what is missing, and never rewrites an attribute that is already
+there. A realm bootstrapped by an earlier version of the script therefore keeps its
+`personalIdentityNumber` definition, including the `naturalPersonNumber` scope selector that
+version put on it. The selector has no counterpart in the specification; remove it under
+**Realm settings → User profile** if the attribute should follow the definitions above.
+
+The IAM admin application writes `personalIdentityNumber`, `orgAffiliation`, `orgNumber` and
+`orgName`. The remaining attributes are declared so that a token can carry them when an
+identity provider or another administrative route supplies them.
+
 <a name="the-org_rights-protocol-mapper"></a>
 ### 2.5. The `org_rights` Protocol Mapper
 
@@ -229,14 +355,15 @@ directory, or configured as a Script Mapper if scripting is enabled.
 
 * Group all relevant memberships by organization identifier. For each organization:
 
-  - Load the org group's attributes to obtain `organization_identifier`, `organization_name#sv`,
-      `organization_name#en`.
+  - Load the org group's attributes to obtain `organization_identifier`, the untagged
+      `organization_name` holding the legal name, and the optional display names
+      `organization_name#sv` and `organization_name#en`.
   - For each membership at path `orgs/{identifier}/{function}/_admin`, `/_write`, or
       `/_read`, add a `{ "function": "<function>", "right": "<right>" }` entry to the
       `functions` array for this org.
-  - For a membership at path `orgs/{identifier}/_admin`, `/_write`, or `/_read` — a right
-      granted at the organization level — record the right in the `org_level_right` field and
-      **expand** it: add one `{ "function": "<function>", "right": "<right>" }` entry for every
+  - For a membership at path `orgs/{identifier}/_admin`, `/_write`, or `/_read`, which is a
+      right granted at the organization level, record the right in the `org_level_right` field
+      and **expand** it: add one `{ "function": "<function>", "right": "<right>" }` entry for every
       function currently attached to the organization. The attached functions are the org
       group's sub-groups other than `_admin`, `_write` and `_read`.
   - Emit one record per organization containing all collected function entries.
@@ -245,7 +372,7 @@ directory, or configured as a Script Mapper if scripting is enabled.
    organization. Where they meet on the same function the **highest** right wins
    (`admin` > `write` > `read`), so exactly one entry per function is emitted.
 
-* `org_level_right` is provenance only — it must not be treated as granting access. All
+* `org_level_right` is provenance only and must not be treated as granting access. All
    effective rights are in the `functions` array, which lists only attached functions. An
    organization with no attached functions therefore yields an entry with `org_level_right` set
    and `"functions": []`; that entry is still emitted so the organization remains enumerable.
@@ -276,8 +403,9 @@ Create a client with the following settings:
 | Service accounts | Enabled |
 | All other flows | Disabled |
 | `iam_admin_managed` attribute | `true` |
+| `iam_admin_oidc_client` attribute | `true` |
 
-**Client authentication — `private_key_jwt`:**
+**Client authentication with `private_key_jwt`:**
 
 The client authenticates to Keycloak's token endpoint using a signed JWT assertion. The
 application holds a private key; Keycloak fetches the corresponding public key from the
@@ -308,18 +436,21 @@ Assign the following roles from the `realm-management` client to the service acc
 
 **Protocol mappers on this client:**
 
-- `org_rights` mapper — ID token and access token
-- `personalIdentityNumber` claim — via the `https://id.oidc.se/scope/naturalPersonNumber`
+- `org_rights` mapper: ID token and access token
+- `personalIdentityNumber` claim: via the `https://id.oidc.se/scope/naturalPersonNumber`
   optional client scope (included when the client requests the scope)
-- `organization_identifier` claim — via a dedicated Script or User Attribute mapper that
+- organizational identity claims via the `https://id.oidc.se/scope/naturalPersonOrgId`
+  optional client scope (included when the client requests the scope)
+- `organization_identifier` claim: via a dedicated Script or User Attribute mapper that
   extracts the org identifier from the granted `{org}:{function}:{right}` scope; present in
   access tokens only
-- `resource-audience-mapper` — sets the `aud` claim based on the `resource` parameter and
+- `resource-audience-mapper`: sets the `aud` claim based on the `resource` parameter and
   the function from the granted scope; present in access tokens only
 
 **Scopes:**
 
 - Add `https://id.oidc.se/scope/naturalPersonNumber` as an **optional** scope.
+- Add `https://id.oidc.se/scope/naturalPersonOrgId` as an **optional** scope.
 - Add `phone` as an **optional** scope.
 - Add `{org}:{function}:{right}` scopes as **optional** scopes as they are created.
 
@@ -347,9 +478,10 @@ Create a client with the following settings:
 | Client authenticator | `Signed Jwt` (`private_key_jwt`) |
 | Standard flow | Enabled |
 | All other flows | Disabled |
-| `iam_admin_managed` attribute | `true` (if managed by the IAM admin app) |
+| `iam_admin_managed` attribute | `true` (if administered by the IAM admin app) |
+| `iam_admin_oidc_client` attribute | `true` (if administered by the IAM admin app) |
 
-**Client authentication — `private_key_jwt`:**
+**Client authentication with `private_key_jwt`:**
 
 As with the Admin Application client, this client uses `private_key_jwt`. Configure the
 Keycloak client identically: set **Client Authenticator** to `Signed Jwt` on the
@@ -358,21 +490,24 @@ Credentials tab, then set the **JWKS URL** on the Keys tab to the application's
 
 **Protocol mappers on this client:**
 
-- `org_rights` mapper — ID token only (not access token)
-- `personalIdentityNumber` claim — via the `https://id.oidc.se/scope/naturalPersonNumber`
+- `org_rights` mapper: ID token only (not access token)
+- `personalIdentityNumber` claim: via the `https://id.oidc.se/scope/naturalPersonNumber`
   optional client scope
-- `organization_identifier` claim — access token only, extracted from the granted scope
-- `resource-audience-mapper` — access token only, sets `aud` to
+- organizational identity claims via the `https://id.oidc.se/scope/naturalPersonOrgId`
+  optional client scope
+- `organization_identifier` claim: access token only, extracted from the granted scope
+- `resource-audience-mapper`: access token only, sets `aud` to
   `[resource_server_client_id, function]`
 
 **Scopes:**
 
 - Add `https://id.oidc.se/scope/naturalPersonNumber` as an **optional** scope.
+- Add `https://id.oidc.se/scope/naturalPersonOrgId` as an **optional** scope.
 - Add `phone` as an **optional** scope.
 - Add `{org}:{function}:{right}` scopes as **optional** scopes as they are created.
 
-Use `add-oidc-client.sh` from `compose/keycloak-scripts/` to automate registration. See the
-[Keycloak Scripts README](../compose/keycloak-scripts/README.md) for details.
+Use `keycloak/scripts/add-oidc-client.sh` to automate registration. See the
+[Keycloak Admin Scripts README](../keycloak/scripts/README.md) for details.
 
 <a name="example-resource-server-registration"></a>
 ### 2.8. Example Resource Server Registration
@@ -405,12 +540,18 @@ at token issuance time that the function extracted from the requested scope matc
 `client_functions` attribute. If the attribute is absent or empty, the resource server is
 treated as function-universal and accepts all functions.
 
-Set the attribute using `add-resource-server.sh` with the `--functions` flag, or via
-`set-client-functions.sh` after registration.
+That fallback applies only while the attribute is unset, so a resource server serving every
+function, including the ones not created yet, carries `iam_admin_all_functions=true` instead
+(see [2.10](#managed-clients-and-reconciliation)).
+
+Set the attribute using `add-resource-server.sh` with the `--functions` flag, `add-function.sh`
+to add one to a client that already has some, `set-client-functions.sh` to replace the whole
+list, or from the IAM admin application's **Services** tab (see
+[2.10](#managed-clients-and-reconciliation)).
 
 No protocol mappers, no client scopes, and no service account roles are needed. The service
 validates incoming Bearer tokens by verifying the signature against Keycloak's JWKS endpoint,
-checking the `aud` claim (a multi-valued array — see the [Rights Model](rights-model.md#oauth-resource-servers)),
+checking the `aud` claim (a multi-valued array, see [Rights Model](rights-model.md#oauth-resource-servers)),
 and inspecting the `scope` and `organization_identifier` claims itself.
 
 <a name="the-resource-audience-mapper-and-client-policy"></a>
@@ -419,7 +560,7 @@ and inspecting the `scope` and `organization_identifier` claims itself.
 The `resource-aud-plugin` provides two Keycloak components that work together to handle the
 OAuth 2.0 `resource` parameter (RFC 8707):
 
-**Resource Audience Mapper** — a protocol mapper added to each OAuth client that calls
+**Resource Audience Mapper** is a protocol mapper added to each OAuth client that calls
 resource servers. It reads the `resource` parameter from the token request (or from an auth
 session note if the parameter was provided on the authorization request), extracts the
 function identifier from the granted scope, and sets the `aud` claim to a multi-valued
@@ -429,14 +570,25 @@ array: `[resource_server_client_id, function]`. If no `resource` parameter is pr
 The mapper is added automatically by `add-oidc-client.sh` to every registered OIDC/OAuth
 client. It is configured with **Add to access token: ON** and **Add to ID token: OFF**.
 
-**Resource Function Executor** — a Client Policy Executor that validates the `resource`
+**Resource Function Executor** is a Client Policy Executor that validates the `resource`
 parameter against the target resource server's `client_functions` attribute. If the
 resource server does not support the function extracted from the requested scope, the
 request is rejected with an `invalid_target` error (RFC 8707).
 
+The same executor also enforces **scope entitlement** on token requests. A scope of the form
+`{org}:{function}:{right}` is granted only if the user is a member of a qualifying group under
+`/orgs/{org}` (or holds the `superuser` realm role); otherwise the token request is rejected
+with an `invalid_scope` error. This is what stops any authenticated user of a managed client
+from obtaining any organization's scope. Keycloak itself grants optional client scopes to
+whoever requests them, and does not evaluate the Authorization Services permissions during
+standard token issuance. See
+[Scope Creation and Authorization Policies](#scope-creation-and-authorization-policies) for the
+qualifying groups.
+
 The executor is activated via a Client Policy profile and policy, which are created
 automatically by `bootstrap-realm.sh`. The policy applies to all confidential clients in
-the realm.
+the realm. **A realm whose client policy is missing this executor performs no entitlement
+check at all**, so verify it is present after upgrading Keycloak or restoring a realm.
 
 **Client Policy configuration (created by `bootstrap-realm.sh`):**
 
@@ -467,13 +619,156 @@ for the full list per right level). The policy uses `Decision Strategy: AFFIRMAT
 
 A **Permission** must then be created linking each scope to its policy.
 
-These policies and permissions must be created on **all** OIDC/OAuth clients that will
-request these scopes. In the local development setup, this includes
-`https://local.dev.swedenconnect.se:17005` (IAM Admin App) and any other registered client.
-The scopes must also be added as optional client scopes on all such clients.
+These policies and permissions are created on every **managed client** that handles the
+function in question. See [2.10](#managed-clients-and-reconciliation). In the local
+development setup this includes `https://local.dev.swedenconnect.se:17005` (IAM Admin App)
+and any other managed client. The scopes are also added as optional client scopes on those
+clients.
 
-This creation is the responsibility of the admin application and must be done as part of the
-"attach function to organization" operation.
+This creation is the responsibility of the admin application and is done as part of the
+"attach function to organization" operation. The artifacts are named as follows, and the
+names are the contract between creation and removal:
+
+| Artifact | Name |
+|---|---|
+| Client scope and Authorization Services scope | `{org}:{function}:{right}` |
+| Group policy | `policy-{org}-{function}-{right}` |
+| Scope permission | `permission-{org}-{function}-{right}` |
+
+---
+
+<a name="managed-clients-and-reconciliation"></a>
+### 2.10. Managed Clients and Reconciliation
+
+A **managed client** is a client the IAM admin application maintains the scopes, policies
+and permissions for. A client is managed when, and only when, it carries the attribute
+`iam_admin_oidc_client=true`.
+
+Every client the application administers, in either role, additionally carries
+`iam_admin_managed=true`. In Keycloak everything registered is a "client" whichever role it
+plays, so that attribute says only that this application administers it; the two role attributes
+say what it does.
+
+> **Clients registered before 0.9.3** carry `iam_admin_managed=true` with its former meaning, the
+> OIDC client role, and no `iam_admin_oidc_client`. They keep working: where the role attribute is
+> absent the application reads `iam_admin_managed` as the role. Each client is migrated the next
+> time it is written, and no realm surgery is needed. See
+> [Registering a Client](registering-a-client.md#choose-the-client-roles).
+
+A client plays one or both of two **roles**, which are independent and set per client under
+the **Services** tab:
+
+| | OIDC client role | Resource server role |
+|---|---|---|
+| Role attribute | `iam_admin_oidc_client=true` | `iam_admin_resource_server=true` |
+| What it does | Logs users in and requests org-scoped tokens | May be named in the OAuth2 `resource` parameter, and appears in `aud` |
+| Keycloak shape | confidential, `client-jwt`, standard flow, Authorization Services | none of its own |
+| Needs redirect URIs and client keys | Yes | No |
+| Holds scopes, policies, permissions | Yes | No |
+| Reconciled | Yes | No, since there is nothing to reconcile |
+| Role of `client_functions` | Which functions it receives artifacts for | Which functions it accepts as a `resource` target |
+
+A client with **both** roles takes the OIDC client shape and carries both markers. That is
+the shape for a service that answers requests *and* calls another service onwards. Enabling
+the OIDC client role on an existing resource server adds the protocol mappers and base
+optional scopes it did not have; disabling it turns Authorization Services off, which makes
+Keycloak discard that client's policies and permissions.
+
+Each marker has a script that sets it on an existing client and changes nothing else:
+`set-iam-admin-managed.sh` sets `iam_admin_managed=true` and `iam_admin_oidc_client=true`, and
+`set-iam-admin-resource-server.sh` sets `iam_admin_resource_server=true`. Because the two
+roles are independent, either script may be run against a client already holding the other
+marker, leaving it with both.
+
+A resource server registered with `add-resource-server.sh` carries the marker as well, so
+scripted and application-registered resource servers are indistinguishable. Resource
+servers registered before this attribute existed are invisible to the application until the
+attribute is set on them. `set-iam-admin-resource-server.sh` sets it without touching
+anything else about the client.
+
+Managed clients can be registered from the IAM admin application itself (superusers only,
+under the **Services** tab), or with `add-oidc-client.sh` followed by
+`set-iam-admin-managed.sh`. Both routes produce the same client. See
+[Registering a Client](registering-a-client.md) for a step-by-step walkthrough of each.
+
+The IAM admin application's own client is the exception: it carries both roles plus the
+all-functions marker described below, and is registered with `add-iam-admin-app.sh` rather
+than `add-oidc-client.sh`.
+
+**The `client_functions` attribute:**
+
+`client_functions` is a comma-separated list of function identifiers that restricts which
+functions a client receives artifacts for. A client with `client_functions=demo` is given
+scopes, policies and permissions only for organizations that have `demo` attached, and not for
+every function in the realm.
+
+`client_functions` is the complete list of functions a client handles: **an empty or absent
+attribute means no functions, not all of them**. A client that declares none receives no
+scopes, policies or permissions for any organization, and users can obtain no org-scoped
+token from it.
+
+A client may be registered without any functions. It is then simply inert until functions
+are assigned to it. The admin application shows such clients as *unscoped* and logs a
+warning naming them on every reconciliation run.
+
+To add a function to a client that already has some, use `add-function.sh`, which appends and
+keeps the rest. `set-client-functions.sh` replaces the whole list.
+
+**The `iam_admin_all_functions` attribute:**
+
+One case cannot be expressed as a list: a client that handles every function *including the
+ones not created yet*. The IAM admin application is that case. Its `/iam-api` endpoints are a
+resource server for every function, and no fixed `client_functions` value can describe a
+function that does not exist yet.
+
+`iam_admin_all_functions=true` marks such a client. Only
+[`add-iam-admin-app.sh`](../keycloak/scripts/README.md#add-iam-admin-app) sets it; neither the
+**Services** tab nor `POST /api/clients` can, in the same way as the service account
+attribute.
+
+The marker has two effects:
+
+- The admin application reads it directly. Such a client is never *unscoped*, receives
+  artifacts for every organization and every function attached to it, and never has any of
+  them pruned.
+- `client_functions` is nevertheless kept materialized to the functions that exist. Creating a
+  function appends it to every marked client, and re-running `add-iam-admin-app.sh` re-seeds
+  the attribute from scratch. Editing such a client through the form or the API leaves the
+  attribute untouched.
+
+The materialization is needed because `resource-aud-plugin` runs inside Keycloak. It validates
+the OAuth2 `resource` parameter against the raw `client_functions` attribute and knows nothing
+of the marker, so a token request naming a marked client as its resource would be rejected with
+`invalid_target` for any function the attribute does not list. The marker is what the
+application acts on; the materialized list is what Keycloak acts on.
+
+Reconciliation removes the scopes a client holds that are not defined by a function group
+for that client, so attach the function groups before reconciling. Reconciliation does not
+run in the background unless `iam.admin.client-reconciliation.enabled` is set.
+
+The same attribute is read by the `resource-aud-plugin` when the client is named in the
+OAuth2 `resource` parameter (see [2.8b](#the-resource-audience-mapper-and-client-policy)).
+
+**Reconciliation:**
+
+Reconciliation compares the artifacts a managed client holds against the ones it should
+hold, and creates whatever is missing. It runs:
+
+- when a client is created or updated in the admin application;
+- when a function is attached to or detached from an organization;
+- on demand, from the **Services** tab or via `POST /api/clients/reconcile`;
+- on a schedule, when `iam.admin.client-reconciliation.enabled` is set.
+
+It is what repairs a client registered *after* functions were already attached to
+organizations, such a client would otherwise be missing every scope and policy, so users
+could never obtain a token from it no matter what rights they hold. It also repairs the
+result of a partial failure or a manual edit in the Keycloak admin console.
+
+Reconciliation both creates and removes: it creates the artifacts for the functions a client
+handles, and removes the ones for the functions it no longer handles, so narrowing a client's
+`client_functions` takes effect on the next run. Every operation checks for existence before acting, so a run that finds nothing missing
+makes no changes, and concurrent runs on several application instances converge to the same
+state.
 
 ---
 
@@ -484,10 +779,10 @@ This appendix walks through the complete initial setup of the `orgiam` realm, fo
 the creation of:
 
 - Function: `demo` (Demo)
-- Organization: `5590026042` — Litsec AB
-- Attaching `demo` to Litsec AB
+- Organization: `2021006883`, Digg - Myndigheten för Digital förvaltning
+- Attaching `demo` to Digg - Myndigheten för Digital förvaltning
 - Superuser: Internal admin without a personal identity number
-- Regular user: `196911292032` — Martin Lindström, with `write` on `demo` under Litsec AB
+- Regular user: `196911292032`, Martin Lindström, with `write` on `demo` under Digg - Myndigheten för Digital förvaltning
 
 ---
 
@@ -523,21 +818,39 @@ In **Realm settings → Login**:
 
 - Disable **Forgot password** (unless needed)
 
-In **Realm settings → User profile**:
+In **Realm settings → User profile → Attribute groups**, click "Create attributes group"
+twice and create:
 
-* Click "Create attribute":
+| Name | Display header |
+|---|---|
+| `oidc-sweden-natural-person` | OIDC Sweden: Natural Person |
+| `oidc-sweden-org-id` | OIDC Sweden: Organisational Identity |
 
-  - Assign the name `personalIdentityNumber`.
-  - Set the display name to "Personal Identity Number".
-  - Multi-valued: OFF
-  - **Enabled when:** Scopes are requested — enter `https://id.oidc.se/scope/naturalPersonNumber`
-  - Permissions should be set so that only admins can edit, but both users and admins can view.
+Then, in **Realm settings → User profile → Attributes**, click "Create attribute" once per
+row below. Every one of them is single-valued, not required, **Enabled when: Always**, and
+with permissions set so that only admins can edit while both users and admins can view.
 
-> **Note:** Setting "Enabled when" to the `naturalPersonNumber` scope ensures the attribute
-> is only surfaced in tokens when the client explicitly requests that scope. The scope
-> `https://id.oidc.se/scope/naturalPersonNumber` must be created as a Client Scope in the
-> realm (see [A.4](#a4-create-the-personalidentitynumber-client-scope)) before it can be
-> referenced here.
+| Name | Display name | Attribute group |
+|---|---|---|
+| `middleName` | Middle Name | (none) |
+| `birthdate` | Date of Birth | (none) |
+| `personalIdentityNumber` | Personal Identity Number | `oidc-sweden-natural-person` |
+| `coordinationNumber` | Coordination Number | `oidc-sweden-natural-person` |
+| `coordinationNumberLevel` | Coordination Number Level | `oidc-sweden-natural-person` |
+| `previousCoordinationNumber` | Previous Coordination Number | `oidc-sweden-natural-person` |
+| `orgAffiliation` | Organizational Affiliation | `oidc-sweden-org-id` |
+| `orgName` | Organization Name | `oidc-sweden-org-id` |
+| `orgNumber` | Organization Number | `oidc-sweden-org-id` |
+| `orgUnit` | Organizational Unit | `oidc-sweden-org-id` |
+
+> **Note:** The groups must exist before the attributes: an attribute naming a group that has
+> not been created is rejected. Which claims a token carries is decided by the client scopes
+> in [A.4](#a4-create-the-oidc-sweden-client-scopes), not by these attributes, so none of them
+> carries an "Enabled when" scope selector. An attribute that is not declared here is dropped
+> when a user is written, because the realm sets no unmanaged attribute policy.
+
+> **Note:** `bootstrap-realm.sh` creates all of the above. Doing it by hand is only necessary
+> when setting a realm up without the script.
 
 ---
 
@@ -569,40 +882,41 @@ Navigate to **Groups** in the left menu.
 
 ---
 
-### A.4. Create the `personalIdentityNumber` Client Scope
+### A.4. Create the OIDC Sweden Client Scopes
 
-> **Prerequisite:** The `swedish-oidc-claims-mapper` JAR must be deployed to Keycloak before
-> this mapper type becomes available. See
-> `keycloak/swedish-oidc-claims-mapper/README.md` for build and installation instructions.
+> **Prerequisite:** The `oidc-sweden-claims-plugin` JAR must be deployed to Keycloak before
+> these mapper types become available. The JAR registers the mapper types and nothing else, so
+> the scopes below must be created whether or not it is deployed. It ships in the
+> [distribution ZIP](../keycloak/README.md#plugin-distribution) along with every other provider
+> JAR: for the local Compose environment
+> `compose/keycloak-scripts/install-keycloak-plugins.sh` installs the whole set, and for any
+> other Keycloak `keycloak/scripts/get-keycloak-plugins.sh` fetches it.
 
-1. Navigate to **Client scopes**.
-2. Click **Create client scope**.
-3. Name: `https://id.oidc.se/scope/naturalPersonNumber`
-4. Protocol: `OpenID Connect`
-5. Display on consent screen: `ON`
-6. Click **Save**.
+Create one client scope per row. For each: **Clients scopes → Create client scope**, protocol
+`OpenID Connect`, **Display on consent screen** `ON`, **Include in token scope** `ON`.
 
-Now add the OIDC Sweden mapper:
+| Name | Mapper to add |
+|---|---|
+| `https://id.oidc.se/scope/naturalPersonInfo` | `natural-person-info-mapper` |
+| `https://id.oidc.se/scope/naturalPersonNumber` | `oidc-sweden-claims-mapper` |
+| `https://id.oidc.se/scope/naturalPersonOrgId` | `oidc-sweden-claims-mapper` |
 
-1. Go to the **Mappers** tab of this scope.
+For each scope, add its mapper:
+
+1. Go to the **Mappers** tab of the scope.
 2. Click **Configure a new mapper**.
-3. Select **OIDC Sweden** from the list.
-4. Fill in:
-    - Name: `swedish-oidc-claims-mapper`
-    - Add to ID token: `ON`
-    - Add to access token: `ON`
-    - Add to userinfo: `ON`
+3. Select the mapper named in the table above.
+4. Set **Add to ID token**, **Add to access token** and **Add to userinfo** to `ON`.
 5. Click **Save**.
 
-The mapper reads the `personalIdentityNumber` user attribute and emits it as
-`https://id.oidc.se/claim/personalIdentityNumber` whenever this scope is applied to a
-session.
+The mappers read the user profile attributes from
+[A.1](#a1-create-the-realm) and emit the corresponding OIDC Sweden claims whenever the scope
+carrying them is applied to a session: the personal identity number under
+`naturalPersonNumber`, and the organizational identity claims under `naturalPersonOrgId`.
 
-> **Note:** This scope must exist in the realm before configuring the `personalIdentityNumber`
-> user profile attribute with "Enabled when: Scopes are requested". If you have already
-> created the user profile attribute without this setting, go back to
-> **Realm settings → User profile → personalIdentityNumber → Enabled when** and set it to
-> this scope now.
+> **Note:** A scope without its mapper is silently useless, since it will emit no claim at
+> all. `bootstrap-realm.sh` creates all three scopes with their mappers and reports any scope
+> it finds without one.
 
 ---
 
@@ -630,14 +944,20 @@ The application exposes its public key at `/jwks`. Keycloak fetches and caches t
 this URL when processing the first token request. Ensure the application is running and the
 endpoint is reachable before attempting a login.
 
-**Set the `iam_admin_managed` attribute:**
+**Set the iam-admin marker attributes:**
 
-Run the following script to mark this client as managed by the IAM admin application (see
-`keycloak/scripts/README.md` for details):
+Run the following script to give this client the OIDC client role, which sets both
+`iam_admin_managed=true` and `iam_admin_oidc_client=true` (see
+[keycloak/scripts/README.md](../keycloak/scripts/README.md) for details):
 
 ```bash
-./compose/keycloak-scripts/set-iam-admin-managed.sh <realm> \
-    https://local.dev.swedenconnect.se:17005 <admin-username> <admin-password>
+./keycloak/scripts/set-iam-admin-managed.sh \
+    --url https://local.dev.swedenconnect.se:17000 \
+    --cacert compose/config/common/tls.crt \
+    --realm orgiam \
+    --client-id https://local.dev.swedenconnect.se:17005 \
+    --username admin \
+    --password keycloak
 ```
 
 **Assign service account roles:**
@@ -647,13 +967,16 @@ Run the following script to mark this client as managed by the IAM admin applica
 3. Filter by `realm-management` client.
 4. Assign: `manage-users`, `query-groups`, `view-users`, `query-users`, `manage-realm`, `view-clients`, `manage-clients`.
 
-**Add the naturalPersonNumber scope as optional:**
+**Add the OIDC Sweden scopes as optional:**
 
 1. Go to the client → **Client scopes** tab.
 2. Click **Add client scope**.
-3. Select `https://id.oidc.se/scope/naturalPersonNumber` and add as **Optional**.
+3. Select `https://id.oidc.se/scope/naturalPersonNumber` and
+   `https://id.oidc.se/scope/naturalPersonOrgId` and add them as **Optional**.
 
-Adding this scope as optional means that the personal identity number claim will be included in a token if the `https://id.oidc.se/scope/naturalPersonNumber` is requested.
+Adding a scope as optional means that its claims are included in a token only when the client
+requests the scope: the personal identity number under `naturalPersonNumber`, and the
+organizational identity claims under `naturalPersonOrgId`.
 
 ---
 
@@ -679,21 +1002,28 @@ This client uses signed JWT assertions for authentication rather than a client s
 2. Go to the client → **Keys** tab → enable **Use JWKS URL** → set **JWKS URL** to
    `https://local.dev.swedenconnect.se:16990/jwks` → Save.
 
-**Set the `iam_admin_managed` attribute:**
+**Set the iam-admin marker attributes:**
 
-Run the following script to mark this client as managed by the IAM admin application (see
-`keycloak/scripts/README.md` for details):
+Run the following script to give this client the OIDC client role, which sets both
+`iam_admin_managed=true` and `iam_admin_oidc_client=true` (see
+[keycloak/scripts/README.md](../keycloak/scripts/README.md) for details):
 
 ```bash
-./compose/keycloak-scripts/set-iam-admin-managed.sh <realm> \
-    https://local.dev.swedenconnect.se:16990 <admin-username> <admin-password>
+./keycloak/scripts/set-iam-admin-managed.sh \
+    --url https://local.dev.swedenconnect.se:17000 \
+    --cacert compose/config/common/tls.crt \
+    --realm orgiam \
+    --client-id https://local.dev.swedenconnect.se:16990 \
+    --username admin \
+    --password keycloak
 ```
 
-**Add the naturalPersonNumber scope as optional:**
+**Add the OIDC Sweden scopes as optional:**
 
 1. Go to the client → **Client scopes** tab.
 2. Click **Add client scope**.
-3. Select `https://id.oidc.se/scope/naturalPersonNumber` and add as **Optional**.
+3. Select `https://id.oidc.se/scope/naturalPersonNumber` and
+   `https://id.oidc.se/scope/naturalPersonOrgId` and add them as **Optional**.
 
 ---
 
@@ -719,7 +1049,9 @@ If the resource server only supports specific functions, set the attribute using
 supports the `demo` function:
 
 ```bash
-./compose/keycloak-scripts/add-resource-server.sh \
+./keycloak/scripts/add-resource-server.sh \
+    --url https://local.dev.swedenconnect.se:17000 \
+    --cacert compose/config/common/tls.crt \
     --realm orgiam \
     --username admin \
     --password keycloak \
@@ -749,7 +1081,7 @@ tokens issued by this client.
 
 > **Note:** Adding the scope as **optional** would not work here. In an OAuth 2.0
 > authorization request (without `openid`), the `scope` parameter carries only the API
-> scopes such as `5590026042:demo:write`. The `naturalPersonNumber` scope would not be
+> scopes such as `2021006883:demo:write`. The `naturalPersonNumber` scope would not be
 > present in the request, so an optional scope would not be applied and the mapper would not
 > fire. A default scope is applied by Keycloak regardless of what the client requests.
 
@@ -803,32 +1135,32 @@ user has no `phoneNumber` attribute set, the claim is absent even when the scope
 
 ---
 
-### A.7. Create Organization `5590026042` — Litsec AB
+### A.7. Create Organization `2021006883`, Digg - Myndigheten för Digital förvaltning
 
 1. Navigate to **Groups**.
 2. Click on the `orgs` group.
 3. In the **Child groups** tab, click **Create group**.
-4. Name: `5590026042`.
+4. Name: `2021006883`.
 5. Click **Create**.
 6. Go to the **Attributes** tab of this sub-group:
-7. Add the following attributes: `organization_identifier`: `5590026042`, `organization_name#sv`: `Litsec AB` and `organization_name#en`: `Litsec AB`.
+7. Add the following attributes: `organization_identifier`: `2021006883` and `organization_name`: `Myndigheten för Digital förvaltning`. `organization_name` holds the legal name as registered at Bolagsverket and is mandatory. The display names `organization_name#sv` and `organization_name#en` are optional; add them only if the organization should be shown under something other than its legal name, for example `organization_name#sv`: `Digg - Myndigheten för Digital förvaltning` and `organization_name#en`: `Digg - Authority for Digital Government`.
 
 8. Click **Save**.
 
-**Create child groups under `5590026042`:**
+**Create child groups under `2021006883`:**
 
 Repeat the following three times (creating `_admin`, `_write`, `_read`):
 
-1. Click on the `5590026042` group.
+1. Click on the `2021006883` group.
 2. In the **Child groups**, click **Create group**.
 3. Name: `_admin` (then `_write`, then `_read`).
 4. Click **Create**.
 
 ---
 
-### A.8. Attach Function `demo` to Organization `5590026042`
+### A.8. Attach Function `demo` to Organization `2021006883`
 
-1. Navigate to **Groups → orgs → 5590026042**.
+1. Navigate to **Groups → orgs → 2021006883**.
 2. In the **Child groups** tab, click **Create group**.
 3. Name: `demo`.
 4. Click **Create**.
@@ -836,18 +1168,18 @@ Repeat the following three times (creating `_admin`, `_write`, `_read`):
 6. Add attribute: `function_ref` = `demo`.
 7. Click **Save**.
 
-**Create right sub-groups under `5590026042/demo`:**
+**Create right sub-groups under `2021006883/demo`:**
 
-1. Click on the `demo` sub-group (under `5590026042`).
+1. Click on the `demo` sub-group (under `2021006883`).
 2. Create sub-groups `_admin`, `_write`, and `_read`.
 
 **Create client scopes for this org/function combination:**
 
 Create three client scopes via the Admin Console or REST API (see [Appendix B](#appendix-b-keycloak-admin-rest-api-reference)):
 
-- `5590026042:demo:read`
-- `5590026042:demo:write`
-- `5590026042:demo:admin`
+- `2021006883:demo:read`
+- `2021006883:demo:write`
+- `2021006883:demo:admin`
 
 For each scope, create an Authorization Services Group Policy with the qualifying groups
 as described in the [Rights Model](rights-model.md#scopes-for-api-access). Add each scope as an optional scope on the relevant client(s).
@@ -858,19 +1190,19 @@ as described in the [Rights Model](rights-model.md#scopes-for-api-access). Add e
 
 1. Navigate to **Client scopes**.
 2. Click **Create client scope**.
-3. Name: `5590026042:demo:read`
+3. Name: `2021006883:demo:read`
 4. Protocol: `OpenID Connect`
 5. Include in token scope: `ON`
 6. Display on consent screen: `OFF`
 7. Click **Save**.
 
-Repeat for `5590026042:demo:write` and `5590026042:demo:admin`.
+Repeat for `2021006883:demo:write` and `2021006883:demo:admin`.
 
 **Add the scopes as optional to the relevant clients:**
 
 1. Navigate to **Clients → `https://local.dev.swedenconnect.se:17005` → Client scopes** tab.
 2. Click **Add client scope**.
-3. Select `5590026042:demo:read` and add as **Optional**.
+3. Select `2021006883:demo:read` and add as **Optional**.
 4. Repeat for `:write` and `:admin`.
 
 Repeat steps 1–4 for client `https://local.dev.swedenconnect.se:16990`.
@@ -891,50 +1223,50 @@ This must be done for both clients:
 
 1. Navigate to **Clients → `https://local.dev.swedenconnect.se:17005` → Authorization → Scopes** tab.
 2. Click **Create authorization scope**.
-3. Name: `5590026042:demo:read`
+3. Name: `2021006883:demo:read`
 4. Click **Save**.
-5. Repeat for `5590026042:demo:write` and `5590026042:demo:admin`.
+5. Repeat for `2021006883:demo:write` and `2021006883:demo:admin`.
 
 Repeat steps 1–5 for **Clients → `https://local.dev.swedenconnect.se:16990` → Authorization → Scopes** tab.
 
 Now create a Group Policy for each:
 
-For `5590026042:demo:read`:
+For `2021006883:demo:read`:
 
 1. Navigate to **Clients → `https://local.dev.swedenconnect.se:17005` → Authorization** tab.
 2. Click **Policies**.
 3. Click **Create policy → Group**.
-4. Name: `policy-5590026042-demo-read`
+4. Name: `policy-2021006883-demo-read`
 5. Under **Groups**, add:
-   - `/orgs/5590026042/_read`
-   - `/orgs/5590026042/_write`
-   - `/orgs/5590026042/_admin`
-   - `/orgs/5590026042/demo/_read`
-   - `/orgs/5590026042/demo/_write`
-   - `/orgs/5590026042/demo/_admin`
+   - `/orgs/2021006883/_read`
+   - `/orgs/2021006883/_write`
+   - `/orgs/2021006883/_admin`
+   - `/orgs/2021006883/demo/_read`
+   - `/orgs/2021006883/demo/_write`
+   - `/orgs/2021006883/demo/_admin`
 6. Logic: `Positive`
 7. Click **Save**.
 
-For `policy-5590026042-demo-write`, add only:
-- `/orgs/5590026042/_write`
-- `/orgs/5590026042/_admin`
-- `/orgs/5590026042/demo/_write`
-- `/orgs/5590026042/demo/_admin`
+For `policy-2021006883-demo-write`, add only:
+- `/orgs/2021006883/_write`
+- `/orgs/2021006883/_admin`
+- `/orgs/2021006883/demo/_write`
+- `/orgs/2021006883/demo/_admin`
 
-For `policy-5590026042-demo-admin`, add only:
-- `/orgs/5590026042/_admin`
-- `/orgs/5590026042/demo/_admin`
+For `policy-2021006883-demo-admin`, add only:
+- `/orgs/2021006883/_admin`
+- `/orgs/2021006883/demo/_admin`
 
 **Create a Permission linking each scope to its policy:**
 
-For `5590026042:demo:read`:
+For `2021006883:demo:read`:
 
 1. Navigate to **Clients → `https://local.dev.swedenconnect.se:17005` → Authorization** tab.
 2. Navigate to **Authorization → Permissions**.
 3. Click **Create permission → Scope-based**.
-4. Name: `permission-5590026042-demo-read`
-5. Authorization scopes: select `5590026042:demo:read`
-6. Policies: select `policy-5590026042-demo-read`
+4. Name: `permission-2021006883-demo-read`
+5. Authorization scopes: select `2021006883:demo:read`
+6. Policies: select `policy-2021006883-demo-read`
 7. Decision strategy: `Affirmative`
 8. Click **Save**.
 
@@ -942,7 +1274,7 @@ Repeat for `:write` and `:admin`, linking each to its corresponding policy.
 
 Repeat the entire **Create authorization scopes**, **Create a Group Policy**, and
 **Create a Permission** sequence for client `https://local.dev.swedenconnect.se:16990`, using the
-same scope names, policy names (prefixed with the client or kept identical — they are
+same scope names, policy names (prefixed with the client or kept identical, since they are
 per-client), and group lists.
 
 ---
@@ -950,9 +1282,9 @@ per-client), and group lists.
 ### A.9. Create a Superuser
 
 A superuser is an internal system administrator. They do not need to provide a personal
-identity number. The username can be any chosen identifier — a name, an email address, or
-any other memorable string — since there is no personal identity number to use as a natural
-unique identifier.
+identity number. The username can be any chosen identifier: a name, an email address, or any
+other memorable string, since there is no personal identity number to use as a natural unique
+identifier.
 
 > **Note:** As with regular users, when a SAML IdP is introduced the username will become
 > irrelevant. Superusers may however continue to use password login if they are internal
@@ -980,13 +1312,18 @@ will appear in any token issued for this user.
 
 ### A.10. Create a Regular User
 
-> **Note:** Currently users log in with username and password. The username is set to the
-> personal identity number so the user has something known and unique to type at the login
+> **Note:** Currently users log in with username and password. The username below is set to
+> the personal identity number so the user has something known and unique to type at the login
 > screen. The `sub` claim in tokens is always Keycloak's internal UUID and is never derived
 > from the username, so the personal identity number will not appear in any token claim other
 > than `https://id.oidc.se/claim/personalIdentityNumber`. When a SAML IdP is introduced
-> later, the username will become irrelevant — Keycloak will identify users by matching the
-> incoming assertion against the `personalIdentityNumber` attribute.
+> later, the username will become irrelevant, since Keycloak will identify users by matching
+> the incoming assertion against the eID attributes.
+
+> **Note:** No eID attribute is mandatory in Keycloak. When a user is created from the admin
+> application, the `iam.admin.user-registration` settings decide which attributes are collected,
+> whether the administrator assigns the username, and whether at least one eID attribute must be
+> given. See [IAM Admin Configuration](iam-admin-configuration.md).
 
 1. Navigate to **Users → Create new user**.
 2. Fill in:
@@ -995,6 +1332,7 @@ will appear in any token issued for this user.
     - Last name: `Lindström`
     - Email: (optional)
     - Personal Identity Number: `196911292032`
+    - Organizational Affiliation: (optional) e.g. `martin@2021006883`
 3. Click **Create**.
 4. Go to the **Attributes** tab.
 5. Click **Save**.
@@ -1003,24 +1341,24 @@ will appear in any token issued for this user.
 
 ---
 
-### A.11. Assign Write Right on `demo` under Litsec AB
+### A.11. Assign Write Right on `demo` under Digg - Myndigheten för Digital förvaltning
 
-Martin should have `write` access to `demo` within organization `5590026042`.
+Martin should have `write` access to `demo` within organization `2021006883`.
 
 1. Navigate to **Users → Martin Lindström**.
 2. Go to the **Groups** tab.
 3. Click **Join group**.
-4. Navigate to: `orgs → 5590026042 → demo → _write`.
+4. Navigate to: `orgs → 2021006883 → demo → _write`.
 5. Select `_write` and click **Join**.
 
-Martin is now a member of `orgs/5590026042/demo/_write`. The `org_rights` mapper will
+Martin is now a member of `orgs/2021006883/demo/_write`. The `org_rights` mapper will
 produce the following entry in his token:
 
 ```json
 {
-  "organization_identifier": "5590026042",
-  "organization_name#sv": "Litsec AB",
-  "organization_name#en": "Litsec AB",
+  "organization_identifier": "2021006883",
+  "organization_legal_name": "Myndigheten för Digital förvaltning",
+  "organization_name": "Myndigheten för Digital förvaltning",
   "functions": [
     { "function": "demo", "right": "write" }
   ]
@@ -1130,18 +1468,19 @@ GET /admin/realms/orgiam/groups?search=orgs&exact=true
 
 This requires multiple calls: create the org group, then create its three right sub-groups.
 
-**Step 1 — Create the organization group:**
+**Step 1: Create the organization group:**
 
 ```http
 POST /admin/realms/orgiam/groups/<orgs-group-id>/children
 Content-Type: application/json
 
 {
-  "name": "5590026042",
+  "name": "2021006883",
   "attributes": {
-    "organization_identifier": ["5590026042"],
-    "organization_name#sv": ["Litsec AB"],
-    "organization_name#en": ["Litsec AB"]
+    "organization_identifier": ["2021006883"],
+    "organization_name": ["Myndigheten för Digital förvaltning"],
+    "organization_name#sv": ["Digg - Myndigheten för Digital förvaltning"],
+    "organization_name#en": ["Digg - Authority for Digital Government"]
   }
 }
 ```
@@ -1149,7 +1488,7 @@ Content-Type: application/json
 Note the `id` of the newly created group from the `Location` response header or by
 subsequently searching for it.
 
-**Step 2 — Create right sub-groups:**
+**Step 2: Create right sub-groups:**
 
 ```http
 POST /admin/realms/orgiam/groups/<org-group-id>/children
@@ -1174,7 +1513,7 @@ GET /admin/realms/orgiam/groups/<orgs-group-id>/children?briefRepresentation=fal
 #### Get a Specific Organization by Identifier
 
 ```http
-GET /admin/realms/orgiam/groups?search=5590026042&exact=true
+GET /admin/realms/orgiam/groups?search=2021006883&exact=true
 ```
 
 #### Update Organization Metadata
@@ -1184,11 +1523,12 @@ PUT /admin/realms/orgiam/groups/<org-group-id>
 Content-Type: application/json
 
 {
-  "name": "5590026042",
+  "name": "2021006883",
   "attributes": {
-    "organization_identifier": ["5590026042"],
-    "organization_name#sv": ["Litsec AB — uppdaterat namn"],
-    "organization_name#en": ["Litsec AB — updated name"]
+    "organization_identifier": ["2021006883"],
+    "organization_name": ["Myndigheten för Digital förvaltning"],
+    "organization_name#sv": ["Digg - Myndigheten för Digital förvaltning, uppdaterat namn"],
+    "organization_name#en": ["Digg - Authority for Digital Government, updated name"]
   }
 }
 ```
@@ -1200,7 +1540,7 @@ Content-Type: application/json
 This requires creating the function sub-group under the org, its three right sub-groups,
 and the three client scopes with their Authorization policies.
 
-**Step 1 — Create function sub-group under the org:**
+**Step 1: Create function sub-group under the org:**
 
 ```http
 POST /admin/realms/orgiam/groups/<org-group-id>/children
@@ -1214,7 +1554,7 @@ Content-Type: application/json
 }
 ```
 
-**Step 2 — Create right sub-groups under the function sub-group:**
+**Step 2: Create right sub-groups under the function sub-group:**
 
 ```http
 POST /admin/realms/orgiam/groups/<org-function-group-id>/children
@@ -1230,14 +1570,14 @@ Content-Type: application/json
 { "name": "_read" }
 ```
 
-**Step 3 — Create client scopes:**
+**Step 3: Create client scopes:**
 
 ```http
 POST /admin/realms/orgiam/client-scopes
 Content-Type: application/json
 
 {
-  "name": "5590026042:demo:read",
+  "name": "2021006883:demo:read",
   "protocol": "openid-connect",
   "attributes": {
     "include.in.token.scope": "true",
@@ -1248,7 +1588,7 @@ Content-Type: application/json
 
 Repeat for `:write` and `:admin`.
 
-**Step 4 — Create Authorization Services scopes** on each client's resource server.
+**Step 4: Create Authorization Services scopes** on each client's resource server.
 
 Keycloak Authorization Services maintains its own scope registry per resource server,
 completely separate from OAuth2 client scopes. Scope permissions must reference scopes from
@@ -1258,12 +1598,12 @@ this registry. Create each of the three scopes on **both** clients:
 POST /admin/realms/orgiam/clients/<client-id>/authz/resource-server/scope
 Content-Type: application/json
 
-{ "name": "5590026042:demo:read" }
+{ "name": "2021006883:demo:read" }
 ```
 
 Repeat for `:write` and `:admin`. The response body contains the created scope with its `id`.
 
-**Step 5 — Create Authorization Services policies and permissions** for each scope.
+**Step 5: Create Authorization Services policies and permissions** for each scope.
 
 First, enable Authorization Services on the relevant client if not already done. Then for
 each scope, create a Group Policy via:
@@ -1273,14 +1613,14 @@ POST /admin/realms/orgiam/clients/<client-id>/authz/resource-server/policy/group
 Content-Type: application/json
 
 {
-  "name": "policy-5590026042-demo-read",
+  "name": "policy-2021006883-demo-read",
   "groups": [
-    { "path": "/orgs/5590026042/_read",        "extendChildren": false },
-    { "path": "/orgs/5590026042/_write",       "extendChildren": false },
-    { "path": "/orgs/5590026042/_admin",       "extendChildren": false },
-    { "path": "/orgs/5590026042/demo/_read",   "extendChildren": false },
-    { "path": "/orgs/5590026042/demo/_write",  "extendChildren": false },
-    { "path": "/orgs/5590026042/demo/_admin",  "extendChildren": false }
+    { "path": "/orgs/2021006883/_read",        "extendChildren": false },
+    { "path": "/orgs/2021006883/_write",       "extendChildren": false },
+    { "path": "/orgs/2021006883/_admin",       "extendChildren": false },
+    { "path": "/orgs/2021006883/demo/_read",   "extendChildren": false },
+    { "path": "/orgs/2021006883/demo/_write",  "extendChildren": false },
+    { "path": "/orgs/2021006883/demo/_admin",  "extendChildren": false }
   ],
   "logic": "POSITIVE",
   "decisionStrategy": "AFFIRMATIVE"
@@ -1302,15 +1642,15 @@ POST /admin/realms/orgiam/clients/<client-id>/authz/resource-server/permission/s
 Content-Type: application/json
 
 {
-  "name": "permission-5590026042-demo-read",
+  "name": "permission-2021006883-demo-read",
   "type": "scope",
-  "scopes": ["5590026042:demo:read"],
+  "scopes": ["2021006883:demo:read"],
   "policies": ["<policy-id>"],
   "decisionStrategy": "AFFIRMATIVE"
 }
 ```
 
-> **Note:** The `scopes` array must contain the **scope name** (e.g. `"5590026042:demo:read"`),
+> **Note:** The `scopes` array must contain the **scope name** (e.g. `"2021006883:demo:read"`),
 > not the scope UUID. This is inconsistent with the `policies` field which takes a UUID, but it
 > is how the Keycloak Authorization Services API works.
 
@@ -1319,7 +1659,7 @@ Again, the permission `id` is in the response body, not a `Location` header.
 Repeat the policy + permission pair for `:write` and `:admin` scopes, using the appropriate
 group lists and scope names.
 
-**Step 6 — Add scopes as optional to relevant clients:**
+**Step 6: Add scopes as optional to relevant clients:**
 
 ```http
 PUT /admin/realms/orgiam/clients/<client-id>/optional-client-scopes/<scope-id>
@@ -1332,7 +1672,10 @@ PUT /admin/realms/orgiam/clients/<client-id>/optional-client-scopes/<scope-id>
 #### Create a User
 
 When creating a user via the REST API, omit the `username` field to let Keycloak generate a
-UUID, or supply a UUID explicitly. The personal identity number is stored as an attribute only.
+UUID, or supply one explicitly. The eID attributes are stored as user attributes only. None of
+them is mandatory in Keycloak; which of them the admin application collects, and whether at
+least one of them must be given, is decided by the `iam.admin.user-registration` settings. See
+[IAM Admin Configuration](iam-admin-configuration.md).
 
 ```http
 POST /admin/realms/orgiam/users
@@ -1343,9 +1686,16 @@ Content-Type: application/json
   "firstName": "Martin",
   "lastName": "Lindström",
   "attributes": {
-    "personalIdentityNumber": ["196911292032"]
+    "personalIdentityNumber": ["196911292032"],
+    "orgAffiliation": ["martin@2021006883"]
   }
 }
+```
+
+#### Find a User by Organizational Affiliation
+
+```http
+GET /admin/realms/orgiam/users?q=orgAffiliation:martin@2021006883&exact=true
 ```
 
 > **Note:** Keycloak requires the `username` field in some versions even when UUID generation
@@ -1398,7 +1748,7 @@ GET /admin/realms/orgiam/groups?search=_write&exact=true
 Alternatively, traverse the tree:
 
 ```http
-GET /admin/realms/orgiam/groups?search=5590026042&exact=true
+GET /admin/realms/orgiam/groups?search=2021006883&exact=true
 ```
 
 Then navigate into sub-groups using the returned `subGroupCount` or:
@@ -1409,7 +1759,7 @@ GET /admin/realms/orgiam/groups/<org-group-id>/children
 
 #### Assign a Right to a User
 
-Add the user to the appropriate right group. For `write` on `demo` under `5590026042`:
+Add the user to the appropriate right group. For `write` on `demo` under `2021006883`:
 
 ```http
 PUT /admin/realms/orgiam/users/<user-id>/groups/<_write-group-id-under-demo>
@@ -1485,7 +1835,7 @@ Look for `superuser` in the returned array.
 GET /admin/realms/orgiam/groups/<org-group-id>/children
 ```
 
-Filter out `_admin`, `_write`, `_read` from the results — the remaining children are the
+Filter out `_admin`, `_write`, `_read` from the results. The remaining children are the
 attached function sub-groups.
 
 #### Find All Organizations That Have a Specific Function Attached
@@ -1505,8 +1855,8 @@ Then for each organization, check if a child group exists with the desired funct
 GET /admin/realms/orgiam/groups/<group-id>/members
 ```
 
-For example, to list all users with `write` right on `demo` under `5590026042`, obtain
-the ID of `orgs/5590026042/demo/_write` and call the members endpoint.
+For example, to list all users with `write` right on `demo` under `2021006883`, obtain
+the ID of `orgs/2021006883/demo/_write` and call the members endpoint.
 
 ---
 
@@ -1514,7 +1864,7 @@ the ID of `orgs/5590026042/demo/_write` and call the members endpoint.
 
 Organization mutable attributes (names, contact info) are stored on the org group
 representation and updated via a `PUT` to the group endpoint. The full group representation
-must be supplied — Keycloak replaces the entire object, so always fetch first and merge.
+must be supplied, because Keycloak replaces the entire object, so always fetch first and merge.
 
 #### Fetch the Organization Group
 
@@ -1530,21 +1880,23 @@ Content-Type: application/json
 
 {
   "id": "<org-group-id>",
-  "name": "5590026042",
+  "name": "2021006883",
   "attributes": {
-    "organization_identifier": ["5590026042"],
-    "organization_name#sv": ["Litsec AB"],
-    "organization_name#en": ["Litsec AB"],
-    "contact_info": ["{\"email\":\"info@litsec.se\",\"phone_number\":\"+46701234567\"}"]
+    "organization_identifier": ["2021006883"],
+    "organization_name": ["Myndigheten för Digital förvaltning"],
+    "organization_name#sv": ["Digg - Myndigheten för Digital förvaltning"],
+    "organization_name#en": ["Digg - Authority for Digital Government"],
+    "contact_info": ["{\"email\":\"info@digg.se\",\"phone_number\":\"+46701234567\"}"]
   }
 }
 ```
 
 The `contact_info` attribute is a single-element list containing a compact JSON string with
 the optional members `email` and `phone_number`. Omit the attribute entirely if no contact
-details are set. Always carry forward the existing `organization_identifier` and
-`organization_name#*` attributes when only updating contact info, and vice versa — the PUT
-replaces all attributes.
+details are set. Always carry forward the existing `organization_identifier`,
+`organization_name` and any `organization_name#*` attributes when only updating contact info, and
+vice versa, since the PUT replaces all attributes. `organization_name` holds the legal name and is
+mandatory; the tagged display names are optional and may simply be omitted.
 
 A `204 No Content` response indicates success.
 

@@ -44,7 +44,7 @@
 
 In the current KeyCloak setup, users are granted rights on organizations and functions by
 being added as members of the corresponding rights groups (e.g.
-`orgs/5590026042/walletreg/_write`). Group membership is binary: a user either belongs to a
+`orgs/2021006883/walletreg/_write`). Group membership is binary: a user either belongs to a
 group or does not. Rights are permanent until an administrator explicitly removes the
 membership.
 
@@ -58,11 +58,11 @@ claim, and how Authorization Services scope policies are built.
 
 There is a requirement to support **optional time restrictions** on rights. For example:
 
-> User A has `write` rights on function `walletreg` under organization `5590026042` until 2026-07-01.
+> User A has `write` rights on function `walletreg` under organization `2021006883` until 2026-07-01.
 
 After the expiry date the right should be treated as if it had never been granted: it must
 not appear in the `org_rights` claim, and KeyCloak must not grant the corresponding OAuth
-scope (`5590026042:walletreg:write`) to that user.
+scope (`2021006883:walletreg:write`) to that user.
 
 KeyCloak's group membership model has no native concept of temporal validity. This document
 describes how time-restricted rights can be layered on top of the existing architecture
@@ -85,7 +85,7 @@ membership:
 
 ```json
 [
-  { "group_path": "orgs/5590026042/walletreg/_write", "expires": "2026-07-01" },
+  { "group_path": "orgs/2021006883/walletreg/_write", "expires": "2026-07-01" },
   { "group_path": "orgs/5561234567/_read",            "expires": "2027-01-01" }
 ]
 ```
@@ -115,7 +115,7 @@ Optionally, the `expires` date can be included in the emitted claim for transpar
 - The user remains a *group member* even after expiry. The group membership list in the
   KeyCloak admin console is misleading.
 - **Critical gap:** Authorization Services scope policies (used when KeyCloak decides whether
-  to grant `5590026042:walletreg:write` as an OAuth 2.0 scope) evaluate raw group membership,
+  to grant `2021006883:walletreg:write` as an OAuth 2.0 scope) evaluate raw group membership,
   completely bypassing the `org_rights` mapper. An expired right would still allow the user
   to obtain a scoped access token. This makes Option A alone insufficient.
 
@@ -194,7 +194,7 @@ group membership:
 ```json
 [
   {
-    "group_path": "orgs/5590026042/walletreg/_write",
+    "group_path": "orgs/2021006883/walletreg/_write",
     "expires": "2026-07-01"
   },
   {

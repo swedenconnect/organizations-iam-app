@@ -20,7 +20,17 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { Search, User as UserIcon, Loader2, Info } from 'lucide-react';
 import { useLanguage } from '@/app/contexts/LanguageContext';
-import { createUser, DuplicatePinError } from '@/services/userService';
+import { createUser, DuplicateIdentityError, UserIdTakenError } from '@/services/userService';
+import { useUserRegistration } from '@/app/contexts/UserRegistrationContext';
+import {
+  EMPTY_IDENTITY_VALUES,
+  IdentityErrors,
+  IdentityValues,
+  UserIdentityFields,
+  identityPayload,
+  validateIdentityValues,
+} from '@/app/components/UserIdentityFields';
+import { resolveOrgName } from '@/utils';
 
 interface AddUserToFunctionDialogProps {
   open: boolean;
@@ -30,6 +40,8 @@ interface AddUserToFunctionDialogProps {
   users: User[];
   userRoles: UserOrganizationRole[];
   currentUserId: string;
+  /** When false, the admin right is not offered as a selectable role. */
+  canAssignAdmin: boolean;
   onAddUserToFunction: (organizationId: string, functionId: string, userId: string, role: string) => void;
   onUserCreated?: (user: User) => void;
 }
@@ -42,10 +54,12 @@ export function AddUserToFunctionDialog({
   users,
   userRoles,
   currentUserId,
+  canAssignAdmin,
   onAddUserToFunction,
   onUserCreated,
 }: AddUserToFunctionDialogProps) {
   const { t, language } = useLanguage();
+  const settings = useUserRegistration();
 
   // Shared
   const [activeTab, setActiveTab] = useState<string>('select');
@@ -58,37 +72,52 @@ export function AddUserToFunctionDialog({
   // Create-tab state
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newPin, setNewPin] = useState('');
+  const [identity, setIdentity] = useState<IdentityValues>(EMPTY_IDENTITY_VALUES);
+  const [identityErrors, setIdentityErrors] = useState<IdentityErrors>({});
   const [newPhone, setNewPhone] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [duplicateUser, setDuplicateUser] = useState<User | null>(null);
   const [externalDuplicateUserId, setExternalDuplicateUserId] = useState<string | null>(null);
 
-  const getOrgName = (org: Organization) =>
-    language === 'sv' ? org.nameSv : org.nameEn;
+  const getOrgName = (org: Organization) => resolveOrgName(org, language);
+
+  // The person added to a function nobody holds a right for within this organization is the one who
+  // will administer it, so the role list opens on `admin` there instead of on `write`. Rights held
+  // at the organization level are a different scope and do not count. The preselection is a
+  // starting value only, and it is never made when the admin right is not offered at all.
+  const functionHasRightsHolders = organization && func
+    ? userRoles.some((r) => r.organizationId === organization.id && r.functionId === func.id)
+    : false;
+
+  const defaultRole = canAssignAdmin && !functionHasRightsHolders ? 'admin' : 'write';
 
   useEffect(() => {
     if (!open) {
       setActiveTab('select');
-      setSelectedRole('write');
+      setSelectedRole(defaultRole);
       setSearchTerm('');
       setSelectedUserId('');
       setNewName('');
       setNewEmail('');
-      setNewPin('');
+      setIdentity(EMPTY_IDENTITY_VALUES);
+      setIdentityErrors({});
       setNewPhone('');
       setFieldErrors({});
       setIsSubmitting(false);
       setDuplicateUser(null);
       setExternalDuplicateUserId(null);
     }
-  }, [open]);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // When the dialog opens, jump straight to "create" if there is nobody to select
+  // Every time the dialog opens: preselect the role for the scope as it stands now, and jump
+  // straight to "create" if there is nobody to select
   useEffect(() => {
-    if (open && availableUsers.length === 0) {
-      setActiveTab('create');
+    if (open) {
+      setSelectedRole(defaultRole);
+      if (availableUsers.length === 0) {
+        setActiveTab('create');
+      }
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -121,12 +150,12 @@ export function AddUserToFunctionDialog({
   // ── Create-tab helpers ──────────────────────────────────────────────────────
 
   const handleCreateAndAdd = async () => {
-    const pinStripped = newPin.replace(/-/g, '');
     const errors: Record<string, string> = {};
     if (!newName.trim()) errors.name = t('validation.required');
     if (!newEmail.trim() || !newEmail.includes('@')) errors.email = t('validation.emailRequired');
-    if (!/^\d{12}$/.test(pinStripped)) errors.pin = t('validation.pin12digits');
-    if (Object.keys(errors).length > 0) {
+    const identityValidation = validateIdentityValues(identity, settings, t);
+    setIdentityErrors(identityValidation);
+    if (Object.keys(errors).length > 0 || Object.keys(identityValidation).length > 0) {
       setFieldErrors(errors);
       return;
     }
@@ -136,15 +165,15 @@ export function AddUserToFunctionDialog({
       const created = await createUser({
         name: newName.trim(),
         email: newEmail.trim(),
-        personalIdentityNumber: pinStripped,
+        ...identityPayload(identity, settings),
         phoneNumber: newPhone.trim() || undefined,
-        superuser: false,
-        rights: [],
       });
       onAddUserToFunction(organization!.id, func!.id, created.id, selectedRole);
       onClose();
     } catch (err) {
-      if (err instanceof DuplicatePinError) {
+      if (err instanceof UserIdTakenError) {
+        setIdentityErrors({ userId: t('validation.userIdTaken') });
+      } else if (err instanceof DuplicateIdentityError) {
         const existing = err.existingUserId
           ? users.find((u) => u.id === err.existingUserId) ?? null
           : null;
@@ -220,7 +249,9 @@ export function AddUserToFunctionDialog({
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{user.name}</p>
                           <p className="text-xs text-gray-500 truncate">{user.email}</p>
-                          <p className="text-xs text-gray-400">{user.personalIdentityNumber}</p>
+                          <p className="text-xs text-gray-400">
+                            {user.personalIdentityNumber || user.orgAffiliation}
+                          </p>
                         </div>
                         {selectedUserId === user.id && (
                           <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
@@ -242,7 +273,7 @@ export function AddUserToFunctionDialog({
                   <SelectContent>
                     <SelectItem value="read">{t('role.read')}</SelectItem>
                     <SelectItem value="write">{t('role.write')}</SelectItem>
-                    <SelectItem value="admin">{t('role.admin')}</SelectItem>
+                    {canAssignAdmin && <SelectItem value="admin">{t('role.admin')}</SelectItem>}
                   </SelectContent>
                 </Select>
               </div>
@@ -277,7 +308,9 @@ export function AddUserToFunctionDialog({
                 <div className="border rounded-lg p-3 bg-gray-50 space-y-1">
                   <p className="text-sm font-medium">{duplicateUser.name}</p>
                   <p className="text-xs text-gray-500">{duplicateUser.email}</p>
-                  <p className="text-xs text-gray-400">{duplicateUser.personalIdentityNumber}</p>
+                  <p className="text-xs text-gray-400">
+                    {duplicateUser.personalIdentityNumber || duplicateUser.orgAffiliation}
+                  </p>
                 </div>
                 <div className="space-y-1">
                   <Label>{t('org.selectRole')}</Label>
@@ -286,7 +319,7 @@ export function AddUserToFunctionDialog({
                     <SelectContent>
                       <SelectItem value="read">{t('role.read')}</SelectItem>
                       <SelectItem value="write">{t('role.write')}</SelectItem>
-                      <SelectItem value="admin">{t('role.admin')}</SelectItem>
+                      {canAssignAdmin && <SelectItem value="admin">{t('role.admin')}</SelectItem>}
                     </SelectContent>
                   </Select>
                 </div>
@@ -314,7 +347,7 @@ export function AddUserToFunctionDialog({
                     <SelectContent>
                       <SelectItem value="read">{t('role.read')}</SelectItem>
                       <SelectItem value="write">{t('role.write')}</SelectItem>
-                      <SelectItem value="admin">{t('role.admin')}</SelectItem>
+                      {canAssignAdmin && <SelectItem value="admin">{t('role.admin')}</SelectItem>}
                     </SelectContent>
                   </Select>
                 </div>
@@ -348,11 +381,13 @@ export function AddUserToFunctionDialog({
                   {fieldErrors.email && <p className="text-xs text-red-500">{fieldErrors.email}</p>}
                 </div>
 
-                <div className="space-y-1">
-                  <Label>{t('users.uniqueIdentity')} *</Label>
-                  <Input value={newPin} onChange={(e) => setNewPin(e.target.value)} placeholder={t('validation.pin12digitsPlaceholder')} />
-                  {fieldErrors.pin && <p className="text-xs text-red-500">{fieldErrors.pin}</p>}
-                </div>
+                <UserIdentityFields
+                  settings={settings}
+                  values={identity}
+                  errors={identityErrors}
+                  idPrefix="addUserToFunction"
+                  onChange={(values) => { setIdentity(values); setIdentityErrors({}); }}
+                />
 
                 <div className="space-y-1">
                   <Label>{t('users.phoneNumber')}</Label>
@@ -366,7 +401,7 @@ export function AddUserToFunctionDialog({
                     <SelectContent>
                       <SelectItem value="read">{t('role.read')}</SelectItem>
                       <SelectItem value="write">{t('role.write')}</SelectItem>
-                      <SelectItem value="admin">{t('role.admin')}</SelectItem>
+                      {canAssignAdmin && <SelectItem value="admin">{t('role.admin')}</SelectItem>}
                     </SelectContent>
                   </Select>
                 </div>

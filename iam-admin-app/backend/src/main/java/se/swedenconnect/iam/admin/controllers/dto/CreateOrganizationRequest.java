@@ -16,14 +16,20 @@
 package se.swedenconnect.iam.admin.controllers.dto;
 
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Request body for creating a new organization.
+ *
+ * <p>{@code legalName} is the name the organization is registered under at Bolagsverket and is
+ * mandatory. The two display names exist for presentation only and are optional, independently of
+ * each other; absent or blank means no display name, and no attribute is written for it.</p>
  *
  * @author Martin Lindström
  */
 public record CreateOrganizationRequest(
     @NonNull String organizationNumber,
-    @NonNull String nameSv,
-    @NonNull String nameEn) {
+    @NonNull String legalName,
+    @Nullable String nameSv,
+    @Nullable String nameEn) {
 }

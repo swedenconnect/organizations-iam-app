@@ -32,7 +32,7 @@ import java.util.Objects;
  * only the organization identifier and the right are needed.</p>
  *
  * <p>Authority string form: {@code {orgIdentifier}:{right}}, for example
- * {@code 5590026042:write} or {@code 5561234567:admin}.</p>
+ * {@code 2021006883:write} or {@code 5561234567:admin}.</p>
  *
  * <p>The effective right is the highest right the user holds for the configured function
  * in the given organization — either via a direct function-level right or an org-wide
@@ -85,7 +85,7 @@ public final class FunctionScopedAuthority implements GrantedAuthority, Serializ
    * Parses an authority string of the form {@code {orgIdentifier}:{right}} into a
    * {@code FunctionScopedAuthority}.
    *
-   * <p>Example: {@code FunctionScopedAuthority.parse("5590026042:write")}</p>
+   * <p>Example: {@code FunctionScopedAuthority.parse("2021006883:write")}</p>
    *
    * @param authority the authority string to parse; must not be null and must contain exactly one colon
    * @return the parsed {@code FunctionScopedAuthority}; never null

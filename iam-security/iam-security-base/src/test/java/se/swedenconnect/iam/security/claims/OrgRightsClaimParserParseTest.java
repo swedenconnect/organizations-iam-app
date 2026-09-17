@@ -37,10 +37,10 @@ class OrgRightsClaimParserParseTest {
   @Test
   void parse_collectsAllLocalizedNames() {
     final List<Map<String, Object>> rawClaim = List.of(Map.of(
-        "organization_identifier", "5590026042",
-        "organization_name#sv", "Litsec AB",
-        "organization_name#en", "Litsec AB (English)",
-        "organization_name#de", "Litsec AB (Deutsch)",
+        "organization_identifier", "2021006883",
+        "organization_name#sv", "Digg - Myndigheten för Digital förvaltning",
+        "organization_name#en", "Digg - Myndigheten för Digital förvaltning (English)",
+        "organization_name#de", "Digg - Myndigheten för Digital förvaltning (Deutsch)",
         "functions", List.of(
             Map.of("function", "walletreg", "right", "write")
         )
@@ -53,17 +53,17 @@ class OrgRightsClaimParserParseTest {
 
     final OrgRightsClaim.OrgEntry entry = claim.orgEntries().getFirst();
 
-    assertThat(entry.orgIdentifier()).isEqualTo(OrganizationID.of("5590026042"));
-    assertThat(entry.name().get("sv")).isEqualTo("Litsec AB");
-    assertThat(entry.name().get("en")).isEqualTo("Litsec AB (English)");
-    assertThat(entry.name().get("de")).isEqualTo("Litsec AB (Deutsch)");
+    assertThat(entry.orgIdentifier()).isEqualTo(OrganizationID.of("2021006883"));
+    assertThat(entry.name().get("sv")).isEqualTo("Digg - Myndigheten för Digital förvaltning");
+    assertThat(entry.name().get("en")).isEqualTo("Digg - Myndigheten för Digital förvaltning (English)");
+    assertThat(entry.name().get("de")).isEqualTo("Digg - Myndigheten för Digital förvaltning (Deutsch)");
   }
 
   /** An entry without {@code org_level_right} parses to a {@code null} org-level right. */
   @Test
   void parse_orgLevelRightAbsent() {
     final List<Map<String, Object>> rawClaim = List.of(Map.of(
-        "organization_identifier", "5590026042",
+        "organization_identifier", "2021006883",
         "functions", List.of(Map.of("function", "walletreg", "right", "write"))
     ));
 
@@ -77,7 +77,7 @@ class OrgRightsClaimParserParseTest {
   @Test
   void parse_orgLevelRightPresent() {
     final List<Map<String, Object>> rawClaim = List.of(Map.of(
-        "organization_identifier", "5590026042",
+        "organization_identifier", "2021006883",
         "org_level_right", "admin",
         "functions", List.of(
             Map.of("function", "demo", "right", "admin"),
@@ -103,7 +103,7 @@ class OrgRightsClaimParserParseTest {
   @Test
   void parse_orgLevelRightWithEmptyFunctions() {
     final List<Map<String, Object>> rawClaim = List.of(Map.of(
-        "organization_identifier", "5590026042",
+        "organization_identifier", "2021006883",
         "org_level_right", "admin",
         "functions", List.of()
     ));
@@ -123,7 +123,7 @@ class OrgRightsClaimParserParseTest {
             "functions", List.of(Map.of("function", "walletreg", "right", "write"))
         ),
         Map.of(
-            "organization_identifier", "5590026042",
+            "organization_identifier", "2021006883",
             "functions", List.of(Map.of("function", "walletreg", "right", "read"))
         )
     );
@@ -131,7 +131,7 @@ class OrgRightsClaimParserParseTest {
     final OrgRightsClaim claim = this.parser.parse(rawClaim);
 
     assertThat(claim.orgEntries()).hasSize(1);
-    assertThat(claim.orgEntries().getFirst().orgIdentifier()).isEqualTo(OrganizationID.of("5590026042"));
+    assertThat(claim.orgEntries().getFirst().orgIdentifier()).isEqualTo(OrganizationID.of("2021006883"));
   }
 
 }
