@@ -30,7 +30,7 @@ of normal post first broker login handling.
 ## Protocol independence
 
 The attribute value is read from the `BrokeredIdentityContext`, where the **stock IdP mappers**
-(`Attribute Importer` for SAML, the claim mapper for OIDC) place it before the first broker login
+(`Attribute Importer`, for both SAML and OIDC) place it before the first broker login
 flow runs. The authenticator never touches the raw SAML assertion or the OIDC claims JSON and
 contains no protocol specific code, so the same component serves a SAML provider and an OIDC provider
 without change.
@@ -87,9 +87,12 @@ user in the authentication context. Without it the flow completes with no user.
 `REQUIRED` is the only requirement choice offered. The execution is the gate for unknown identities,
 so `ALTERNATIVE` or `DISABLED` would defeat its purpose.
 
-Disable the remaining stock executions in the flow: `Create User If Unique`, `Confirm Link Existing
-Account`, `Verify Existing Account By Email` and `Verify Existing Account By Re-authentication`. The
-last would otherwise fall back to prompting for a username and password.
+Disable the remaining stock executions in the flow: `Review Profile`, `Create User If Unique`,
+`Confirm Link Existing Account`, `Verify Existing Account By Email` and `Verify Existing Account By
+Re-authentication`. The last would otherwise fall back to prompting for a username and password.
+`Review Profile` would show an *Update Account Information* form whenever the identity provider does
+not release `email`, `firstName` and `lastName`, which is the normal case here. Users must never be
+asked to fill in profile data themselves.
 
 Note that first broker login only runs when no link exists yet. For an already linked user it never
 executes.
@@ -126,9 +129,85 @@ cp target/idp-user-matcher-<version>.jar /opt/keycloak/providers/
 Repeat with a separate flow and configuration for each identity provider.
 
 Make sure the identity provider has a mapper that writes the match attribute into the brokered
-context — an **Attribute Importer** for SAML, or a **Claim to User Attribute** mapper for OIDC. The
-authenticator has nothing to match on otherwise. Leave the mapper's sync mode at `import` so that the
-admin application stays the source of truth for the attribute on existing users.
+context. The authenticator has nothing to match on otherwise. Both SAML and OIDC providers use a
+mapper named **Attribute Importer** (SAML: `saml-user-attribute-idp-mapper`, OIDC:
+`oidc-user-attribute-idp-mapper`). Leave the mapper's sync mode at `import` so that the admin
+application stays the source of truth for the attribute on existing users.
+
+### Example: OIDC provider releasing the Swedish eID personal identity number
+
+The OIDC provider releases the personal identity number in the ID token as the claim
+`https://id.oidc.se/claim/personalIdentityNumber`, provided the scope
+`https://id.oidc.se/scope/naturalPersonNumber` is requested. The value is 12 digits without a hyphen,
+for example `190001011234`.
+
+Under **Identity providers** → *provider* → **Mappers** → **Add mapper**:
+
+| Field | Value |
+| :--- | :--- |
+| Name | `personalIdentityNumber` |
+| Sync mode override | `import` |
+| Mapper type | `Attribute Importer` |
+| Claim | `https://id\.oidc\.se/claim/personalIdentityNumber` |
+| User Attribute Name | `personalIdentityNumber` |
+
+Then set **Match attribute** to `personalIdentityNumber` on the execution of this plugin.
+
+Three details decide whether this works:
+
+- **Escape every dot in the claim name.** Keycloak reads an unescaped `.` as a step into a nested
+  object, so `https://id.oidc.se/claim/personalIdentityNumber` is searched for as `https`,
+  `//id`, `oidc`, and so on, and is never found. Write each dot as `\.`. The slashes need no escaping.
+- **The claim must not end with a space (or start with one).** Keycloak does not trim the value
+  before looking it up, so `https://id\.oidc\.se/claim/personalIdentityNumber␣` (trailing space)
+  searches for a claim that does not exist. This is easy to introduce by copy and paste, and nothing
+  in the admin console shows it. Retype the field by hand if the attribute is missing. The same
+  applies to **User Attribute Name**.
+- **The names are case sensitive and must agree.** *User Attribute Name* in the mapper, **Match
+  attribute** on the execution and the attribute stored on the pre-provisioned user must all be
+  `personalIdentityNumber`, and the stored value must have the same format as the claim (here 12
+  digits, no hyphen).
+
+### Realm user profile
+
+Pre-provisioned users have an opaque UUID username and no e-mail address, first name or last name.
+Since Keycloak 24 the realm has a declarative user profile in which `email`, `firstName` and
+`lastName` are required by default. A user who lacks a required attribute is sent to the required
+action **Verify Profile** right after a successful login, no matter how the login was made. The user
+then sees an *Update Account Information* form and cannot continue without filling it in. The URL of
+that page contains `execution=VERIFY_PROFILE`.
+
+This happens even when the first broker login flow is correct: the plugin has matched and linked the
+user, and the profile check is a separate step that follows. To prevent it:
+
+1. Go to **Realm settings** → **User profile**.
+2. Open `email`, `firstName` and `lastName` one at a time and turn off **Required field**. Check
+   *Required for* as well, since a field can be required for the `user` role, the `admin` role, or both.
+3. Make sure `personalIdentityNumber` is defined in the user profile, or that **Unmanaged attributes**
+   is enabled for the realm. Otherwise Keycloak may refuse to store or may drop the attribute, and
+   the match stops working.
+
+As a last resort, **Authentication** → **Required actions** → **Verify Profile** can be switched off,
+but that disables the profile check for the whole realm.
+
+### Troubleshooting
+
+Enable debug logging for the plugin and the Keycloak broker code:
+
+```
+se.swedenconnect.iam.keycloak:DEBUG
+org.keycloak.broker:DEBUG
+```
+
+| Log output | Meaning |
+| :--- | :--- |
+| `BrokerAtt:personalIdentityNumber: [...]` | The mapper works. If the login is still rejected, look at the matching against the local user. |
+| `No user attributes found for broker`, or no `BrokerAtt:personalIdentityNumber` line | The mapper did not find the claim. Check dots, spaces and spelling as described above. |
+| `Going to process JsonNode path <claim>  on data null` | Keycloak searched the access token and the ID token without finding the claim and then fell back to the user info response, which was empty. Two spaces before `on` means the configured claim ends with a space. |
+| `rejected: attribute 'personalIdentityNumber' is absent ...` | The plugin received nothing from the mapper. Same causes as above. |
+| `rejected: no local user has a matching 'personalIdentityNumber' attribute` | The claim arrived, but no user stores that exact value. Compare formats. |
+| An *Update Account Information* form is shown after login, URL contains `/login-actions/first-broker-login` | The `Review Profile` execution is still active in the first broker login flow. Disable it. |
+| An *Update Account Information* form is shown after login, URL contains `execution=VERIFY_PROFILE` | The realm user profile requires attributes the user lacks. See *Realm user profile* above. |
 
 ## A note on stability
 

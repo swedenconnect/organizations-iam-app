@@ -33,11 +33,13 @@
     <module>org-rights-mapper</module>
     <module>scope-org-identifier-mapper</module>
     <module>resource-aud-plugin</module>
+    <module>idp-user-matcher</module>
+    <!-- The login theme, packaged as a provider JAR. -->
+    <module>login-theme</module>
     <!-- Builds last: it assembles the other modules' output into the distribution ZIP. -->
     <module>plugin-distribution</module>
     <!-- Assembles the realm administration scripts into a ZIP of their own. -->
     <module>scripts</module>
-    <module>idp-user-matcher</module>
   </modules>
 
   <dependencyManagement>

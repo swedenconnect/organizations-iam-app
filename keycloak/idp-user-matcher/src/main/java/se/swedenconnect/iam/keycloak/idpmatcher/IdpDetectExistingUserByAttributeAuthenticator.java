@@ -104,6 +104,13 @@ public class IdpDetectExistingUserByAttributeAuthenticator extends AbstractIdpAu
     }
 
     final String attributeValue = brokerContext.getUserAttribute(matchAttribute);
+    if(LOG.isDebugEnabled()) {
+      if (brokerContext.getAttributes().isEmpty()){
+        LOG.debug("No user attributes found for broker");
+      }
+      brokerContext.getAttributes().forEach((k, v) -> LOG.debug("BrokerAtt:" + k + ": " + v));
+    }
+
     if (attributeValue == null || attributeValue.isBlank()) {
       this.fail(context, alias,
           "attribute '%s' is absent from the brokered identity context or empty — check the identity provider's attribute mappers"
