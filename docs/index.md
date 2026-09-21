@@ -51,9 +51,6 @@ a Spring Boot admin application.
 - [Keycloak Setup](keycloak-setup.md) — Step-by-step Keycloak realm configuration,
   client registration, and automation scripts.
 
-- [Building a Release Docker Image](docker-release.md) — How snapshot and versioned
-  Docker images are built and published, and how to cut a release by pushing a tag.
-
 ---
 
 Copyright &copy; 2026, [Myndigheten för digital förvaltning - Swedish Agency for

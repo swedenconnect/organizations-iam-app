@@ -651,11 +651,12 @@ A redirect URI stored as a bare path is also refused unless the client has a roo
 against; complete it by hand in that case.
 
 **`unknown function: <id>`.**
-The function does not exist in the realm. Create it under the **Functions** tab first.
+The function does not exist in the realm. Create it under the **Functions** tab first, which
+requires a superuser.
 
 **The Services tab is not visible.**
-It is superuser-only. Check the account's `org_rights` claim; see the
-[Rights Model](rights-model.md#the-org_rights-claim).
+It is superuser-only, as are the **Functions** and **Import/Export** tabs. Check the account's
+`org_rights` claim; see the [Rights Model](rights-model.md#the-org_rights-claim).
 
 **A client registered outside the application does not appear.**
 It is missing `iam_admin_oidc_client=true` (OIDC client) or `iam_admin_resource_server=true`

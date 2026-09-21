@@ -793,13 +793,17 @@ public class KeycloakAdminClient {
    * @param legalName the legal name as registered at Bolagsverket; mandatory
    * @param nameSv Swedish display name, or {@code null} for none
    * @param nameEn English display name, or {@code null} for none
+   * @param contactEmail contact e-mail, or {@code null} or blank for none
+   * @param contactPhone contact phone, or {@code null} or blank for none
    * @throws KeycloakAdminException on any Keycloak API error
    */
   public void createOrganization(
       final @NonNull String orgIdentifier,
       final @NonNull String legalName,
       final @Nullable String nameSv,
-      final @Nullable String nameEn) {
+      final @Nullable String nameEn,
+      final @Nullable String contactEmail,
+      final @Nullable String contactPhone) {
 
     log.debug("Creating organization group '{}' under /orgs", orgIdentifier);
 
@@ -815,6 +819,19 @@ public class KeycloakAdminClient {
     }
     if (nameEn != null && !nameEn.isBlank()) {
       attributes.put(ORG_ATTR_NAME_EN, List.of(nameEn));
+    }
+
+    // Both contact values share one attribute. With neither given the attribute is left out
+    // entirely, so the group looks exactly like one created before contact details were asked for.
+    final Map<String, String> contactInfo = new LinkedHashMap<>();
+    if (contactEmail != null && !contactEmail.isBlank()) {
+      contactInfo.put("email", contactEmail);
+    }
+    if (contactPhone != null && !contactPhone.isBlank()) {
+      contactInfo.put("phone_number", contactPhone);
+    }
+    if (!contactInfo.isEmpty()) {
+      attributes.put("contact_info", List.of(toContactInfoJson(contactInfo)));
     }
 
     final Map<String, Object> orgGroupBody = Map.of(

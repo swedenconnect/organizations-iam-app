@@ -165,7 +165,8 @@ appends to `client_functions` rather than replacing it:
     --function walletreg
 ```
 
-The function has to exist first. Create it in the admin application's **Functions** tab.
+The function has to exist first. Create it in the admin application's **Functions** tab, which
+is visible to a superuser only.
 
 **If the realm already has functions attached to organizations**, a newly registered client
 starts out without the corresponding scopes, policies and permissions. Reconcile it to

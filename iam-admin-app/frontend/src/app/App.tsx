@@ -17,6 +17,7 @@ import { UserFormValues } from '@/app/components/UserForm';
 import { DEFAULT_USER_REGISTRATION_SETTINGS, UserRegistrationProvider } from '@/app/contexts/UserRegistrationContext';
 import { Button } from '@/app/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
+import { showsDeploymentTabs } from '@/lib/tabVisibility';
 import { Building2, Users as UsersIcon, Plus, Boxes, HelpCircle, KeyRound, RefreshCw, FileJson } from 'lucide-react';
 import { toast } from 'sonner';
 import { Toaster } from '@/app/components/ui/sonner';
@@ -823,28 +824,24 @@ function AppContent() {
                   {t('users.title')}
                 </TabsTrigger>
               </TabsList>
-              {functionConstraint === null && (
+              {showsDeploymentTabs(sessionData?.superuser ?? false, functionConstraint) && (
                 <TabsList className="bg-transparent border-0 p-0">
                   <TabsTrigger value="functions" className="flex items-center gap-2">
                     <Boxes className="w-4 h-4" />
                     {t('functions.title')}
                   </TabsTrigger>
-                  {(sessionData?.superuser ?? false) && (
-                    <TabsTrigger
-                      value="clients"
-                      className="flex items-center gap-2"
-                      onClick={handleOpenClients}
-                    >
-                      <KeyRound className="w-4 h-4" />
-                      {t('services.tabTitle')}
-                    </TabsTrigger>
-                  )}
-                  {(sessionData?.superuser ?? false) && (
-                    <TabsTrigger value="importExport" className="flex items-center gap-2">
-                      <FileJson className="w-4 h-4" />
-                      {t('importExport.tabTitle')}
-                    </TabsTrigger>
-                  )}
+                  <TabsTrigger
+                    value="clients"
+                    className="flex items-center gap-2"
+                    onClick={handleOpenClients}
+                  >
+                    <KeyRound className="w-4 h-4" />
+                    {t('services.tabTitle')}
+                  </TabsTrigger>
+                  <TabsTrigger value="importExport" className="flex items-center gap-2">
+                    <FileJson className="w-4 h-4" />
+                    {t('importExport.tabTitle')}
+                  </TabsTrigger>
                 </TabsList>
               )}
             </div>
@@ -896,6 +893,7 @@ function AppContent() {
                 expandOrgId={expandOrgId}
                 onExpandOrgHandled={() => setExpandOrgId(null)}
                 onUserCreated={(user) => setUsers((prev) => [...prev, user])}
+                onShowFunctionsHelp={() => setIsHelpDialogOpen(true)}
               />
             </TabsContent>
 
@@ -927,42 +925,42 @@ function AppContent() {
               />
             </TabsContent>
 
-            <TabsContent value="functions" className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold">{t('functions.title')}</h2>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {functions.length} {functions.length !== 1 ? t('functions.count_plural') : t('functions.count')}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsHelpDialogOpen(true)}
-                  >
-                    <HelpCircle className="w-4 h-4 mr-2" />
-                    {t('functions.help')}
-                  </Button>
-                  {(sessionData?.superuser ?? false) && (
+            {showsDeploymentTabs(sessionData?.superuser ?? false, functionConstraint) && (
+              <TabsContent value="functions" className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-semibold">{t('functions.title')}</h2>
+                    <p className="text-sm text-gray-500 mt-1">
+                      {functions.length} {functions.length !== 1 ? t('functions.count_plural') : t('functions.count')}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsHelpDialogOpen(true)}
+                    >
+                      <HelpCircle className="w-4 h-4 mr-2" />
+                      {t('functions.help')}
+                    </Button>
                     <Button onClick={handleCreateFunction} className="bg-primary hover:bg-primary/90">
                       <Plus className="w-4 h-4 mr-2" />
                       {t('functions.create')}
                     </Button>
-                  )}
+                  </div>
                 </div>
-              </div>
 
-              <FunctionList
-                functions={functions}
-                organizations={organizations}
-                organizationFunctions={organizationFunctions}
-                isSuperuser={sessionData?.superuser ?? false}
-                allowFunctionRemoval={allowFunctionRemoval}
-                onEdit={handleEditFunction}
-                onDelete={handleDeleteFunction}
-                onNavigateToOrg={handleNavigateToOrg}
-              />
-            </TabsContent>
+                <FunctionList
+                  functions={functions}
+                  organizations={organizations}
+                  organizationFunctions={organizationFunctions}
+                  isSuperuser={sessionData?.superuser ?? false}
+                  allowFunctionRemoval={allowFunctionRemoval}
+                  onEdit={handleEditFunction}
+                  onDelete={handleDeleteFunction}
+                  onNavigateToOrg={handleNavigateToOrg}
+                />
+              </TabsContent>
+            )}
 
             <TabsContent value="clients" className="space-y-4">
               <div className="flex items-center justify-between">

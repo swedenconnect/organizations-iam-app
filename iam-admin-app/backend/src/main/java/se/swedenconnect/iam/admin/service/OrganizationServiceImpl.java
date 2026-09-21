@@ -121,9 +121,12 @@ public class OrganizationServiceImpl implements OrganizationService {
       final @NonNull String orgNumber,
       final @NonNull String legalName,
       final @Nullable String nameSv,
-      final @Nullable String nameEn) {
+      final @Nullable String nameEn,
+      final @Nullable String contactEmail,
+      final @Nullable String contactPhone) {
 
-    this.keycloakAdminClient.createOrganization(orgNumber, legalName, nameSv, nameEn);
+    this.keycloakAdminClient.createOrganization(
+        orgNumber, legalName, nameSv, nameEn, contactEmail, contactPhone);
 
     final OrganizationInfo created = this.keycloakAdminClient.fetchOrganizationByIdentifier(orgNumber)
         .orElseThrow(() -> new KeycloakAdminException(
@@ -163,6 +166,22 @@ public class OrganizationServiceImpl implements OrganizationService {
     this.keycloakAdminClient.deleteOrganization(orgNumber);
     this.cache.evict(orgNumber);
     log.info("Organization '{}' deleted and evicted from cache", orgNumber);
+  }
+
+  @Override
+  public void refresh(final @NonNull String orgNumber) {
+    if (!this.cache.isLoaded()) {
+      return;
+    }
+    this.keycloakAdminClient.fetchOrganizationByIdentifier(orgNumber)
+        .ifPresentOrElse(this.cache::put, () -> this.cache.evict(orgNumber));
+    log.debug("Cache entry for organization '{}' refreshed from Keycloak", orgNumber);
+  }
+
+  @Override
+  public void refreshAll() {
+    this.cache.clear();
+    log.debug("Organization cache discarded; it will be primed on next access");
   }
 
   // ---------------------------------------------------------------------------

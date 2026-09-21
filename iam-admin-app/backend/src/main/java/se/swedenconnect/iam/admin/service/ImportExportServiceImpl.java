@@ -286,7 +286,7 @@ public class ImportExportServiceImpl implements ImportExportService {
         continue;
       }
       try {
-        this.organizationService.create(o.orgIdentifier(), o.legalName(), o.nameSv(), o.nameEn());
+        this.organizationService.create(o.orgIdentifier(), o.legalName(), o.nameSv(), o.nameEn(), null, null);
         if (o.contactEmail() != null || o.contactPhone() != null) {
           this.organizationService.update(o.orgIdentifier(), null, null, null, o.contactEmail(), o.contactPhone());
         }
@@ -298,6 +298,10 @@ public class ImportExportServiceImpl implements ImportExportService {
             log.warn("Import: organization '{}' created but function '{}' could not be attached: {}",
                 o.orgIdentifier(), functionId, e.getMessage());
           }
+        }
+        if (!o.attachedFunctions().isEmpty()) {
+          // Attaching bypasses OrganizationService, so the cached attached function list is stale.
+          this.organizationService.refresh(o.orgIdentifier());
         }
         organizationOutcomes.add(new ImportItemOutcome(o.orgIdentifier(), "created", null));
       }

@@ -22,7 +22,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/app/components/ui/alert-dialog';
-import { Pencil, Trash2, Building2, Search, ChevronDown, ChevronRight, User as UserIcon, Plus, X, Boxes, Info, Unlink } from 'lucide-react';
+import { Pencil, Trash2, Building2, Search, ChevronDown, ChevronRight, User as UserIcon, Plus, X, Boxes, Info, Unlink, HelpCircle } from 'lucide-react';
 import { useLanguage } from '@/app/contexts/LanguageContext';
 import { useState, useEffect } from 'react';
 import { AddUserToOrgDialog } from '@/app/components/AddUserToOrgDialog';
@@ -30,6 +30,28 @@ import { AssignFunctionsDialog } from '@/app/components/AssignFunctionsDialog';
 import { AddUserToFunctionDialog } from '@/app/components/AddUserToFunctionDialog';
 import { formatOrgNumber, canAdminOrg, canAdminFunction, resolveOrgName } from '@/utils';
 import { LastAdminError } from '@/services/userService';
+
+/**
+ * Counts the distinct users with access to an organization, from the very lists the expanded panel
+ * renders: the organization-level users and the users of every function attached to the
+ * organization. A user holding both an organization-level right and a function right, or rights on
+ * several functions, is counted once.
+ */
+export function countUsersWithAccess(
+  orgUsers: Array<{ user?: { id: string } | undefined }>,
+  orgFunctions: Array<{ users: Array<{ user: { id: string } }> }>,
+): number {
+  const userIds = new Set<string>();
+  for (const { user } of orgUsers) {
+    if (user) userIds.add(user.id);
+  }
+  for (const { users: functionUsers } of orgFunctions) {
+    for (const { user } of functionUsers) {
+      userIds.add(user.id);
+    }
+  }
+  return userIds.size;
+}
 
 interface OrganizationListProps {
   organizations: Organization[];
@@ -67,6 +89,8 @@ interface OrganizationListProps {
   expandOrgId: string | null;
   onExpandOrgHandled: () => void;
   onUserCreated: (user: User) => void;
+  /** Opens the "what are functions" dialog owned by App. */
+  onShowFunctionsHelp: () => void;
 }
 
 export function OrganizationList({
@@ -98,6 +122,7 @@ export function OrganizationList({
   expandOrgId,
   onExpandOrgHandled,
   onUserCreated,
+  onShowFunctionsHelp,
 }: OrganizationListProps) {
   const { t, language } = useLanguage();
   const [expandedOrgs, setExpandedOrgs] = useState<Set<string>>(new Set());
@@ -235,6 +260,7 @@ export function OrganizationList({
         {organizations.map((org) => {
           const orgUsers = getUsersForOrganization(org.id);
           const orgFunctions = getFunctionsForOrganization(org.id);
+          const userCount = countUsersWithAccess(orgUsers, orgFunctions);
           const isExpanded = expandedOrgs.has(org.id);
 
           return (
@@ -258,9 +284,9 @@ export function OrganizationList({
                       </div>
                       {!isExpanded && (
                         <div className="flex gap-3 mt-2">
-                          {orgUsers.length > 0 && (
+                          {userCount > 0 && (
                             <p className="text-xs text-gray-400">
-                              {orgUsers.length} {orgUsers.length === 1 ? t('users.count') : t('users.count_plural')}
+                              {userCount} {userCount === 1 ? t('users.count') : t('users.count_plural')}
                             </p>
                           )}
                           {orgFunctions.length > 0 && (
@@ -414,6 +440,17 @@ export function OrganizationList({
                       <h4 className="text-sm font-medium flex items-center gap-2">
                         <Boxes className="w-4 h-4" />
                         {t('functions.orgFunctions')}
+                        {/* The Functions tab is superuser-only, so this is where a regular
+                            administrator reaches the explanation of what a function is. */}
+                        <button
+                          type="button"
+                          onClick={onShowFunctionsHelp}
+                          aria-label={t('functions.help')}
+                          title={t('functions.help')}
+                          className="text-gray-400 hover:text-gray-600"
+                        >
+                          <HelpCircle className="w-4 h-4" />
+                        </button>
                       </h4>
                       {isSuperuser && (
                         <Button
