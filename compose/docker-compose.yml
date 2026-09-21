@@ -172,7 +172,7 @@ services:
       JAVA_TOOL_OPTIONS: "-Djava.net.preferIPv4Stack=true -Dorg.apache.xml.security.ignoreLineBreaks=true -Djavax.net.ssl.trustStore=/opt/common/trust.jks -Djavax.net.ssl.trustStorePassword=secret"
 
   keycloak:
-    image: keycloak/keycloak:26.7.3
+    image: keycloak/keycloak:26.5.7
     depends_on:
       postgres:
         condition: service_healthy
@@ -209,7 +209,10 @@ services:
       KC_DB: postgres
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: secret
-    command: start-dev --log-level=INFO,se.swedenconnect.iam.keycloak:DEBUG --spi-theme-static-max-age=-1 --spi-theme-cache-themes=false --spi-theme-cache-templates=false --hostname local.dev.swedenconnect.se --hostname-strict false --verbose --features=preview,scripts
+    command: >
+      start-dev --log-level=INFO,org.apache.http.wire:DEBUG,org.hibernate.orm.core:INFO,se.swedenconnect.iam.keycloak:TRACE,org.keycloak.broker:TRACE,org.keycloak.protocol.oidc:DEBUG
+      --spi-theme-static-max-age=-1 --spi-theme-cache-themes=false --spi-theme-cache-templates=false
+      --hostname local.dev.swedenconnect.se --hostname-strict false --verbose --features=preview,scripts
     volumes:
       - ./config/keycloak/tmp:/tmp
       - ./config/keycloak/import:/opt/keycloak/data/import
