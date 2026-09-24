@@ -43,6 +43,7 @@ the version number, and the one place to change it.
 The first four provider types are the ones `bootstrap-realm.sh` checks for before it configures
 a realm. `idp-detect-existing-user-by-attr` is used when an identity provider is brokered, and
 is not part of that check.
+| [idp-user-matcher](idp-user-matcher/README.md) | First broker login authenticator that resolves an incoming brokered identity to a pre-provisioned local user by matching on a configured user attribute. |
 
 ## Build
 

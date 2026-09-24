@@ -59,6 +59,18 @@
     </dependency>
 
     <dependency>
+      <groupId>se.swedenconnect.iam.keycloak</groupId>
+      <artifactId>idp-user-matcher</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>se.swedenconnect.iam.keycloak</groupId>
+      <artifactId>login-theme</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+
+    <dependency>
       <groupId>se.oidc.keycloak</groupId>
       <artifactId>oidc-sweden-claims-plugin</artifactId>
       <version>${oidc-sweden-claims-plugin.version}</version>

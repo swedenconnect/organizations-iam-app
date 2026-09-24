@@ -44,6 +44,8 @@ For an overview of the rights model and key concepts, see
 
     2.10. [Managed Clients and Reconciliation](#managed-clients-and-reconciliation)
 
+    2.11. [The Login Theme](#the-login-theme)
+
 - [**Appendix A: Step-by-Step Setup with Examples**](#appendix-a-step-by-step-setup-with-examples)
 
 - [**Appendix B: Keycloak Admin REST API Reference**](#appendix-b-keycloak-admin-rest-api-reference)
@@ -769,6 +771,51 @@ handles, and removes the ones for the functions it no longer handles, so narrowi
 `client_functions` takes effect on the next run. Every operation checks for existence before acting, so a run that finds nothing missing
 makes no changes, and concurrent runs on several application instances converge to the same
 state.
+
+<a name="the-login-theme"></a>
+### 2.11. The Login Theme (`IamOrgAdmin-Swedenconnect`)
+
+The repository contains a Keycloak login theme named `IamOrgAdmin-Swedenconnect`, in the Maven module
+`keycloak/login-theme`. It extends the stock `keycloak.v2` login theme and takes its logo, colours and
+typeface (Ubuntu) from <https://sandbox.swedenconnect.se/home/>. The name has no space, because Keycloak
+uses it as a directory name.
+
+The login page lists the identity providers first, as buttons. The last button, labelled
+**Username/Password**, unfolds the username and password form. The form is open from the start when the
+realm has no identity provider, and after a failed login so that the error message is visible. The
+button is a native HTML `details` element, so it works without JavaScript and from the keyboard.
+
+The module builds a provider JAR, `login-theme-<version>.jar`. It is part of the plugin distribution
+ZIP, so `compose/keycloak-scripts/install-keycloak-plugins.sh` installs it next to the other plugin JARs,
+and no separate step is needed. Restart Keycloak afterwards. A Keycloak that runs with `start --optimized`
+needs `kc.sh build` after the JAR has been added, as for any provider.
+
+Everything below is under `keycloak/login-theme/src/main/resources/`:
+
+| File | Purpose |
+| :--- | :--- |
+| `META-INF/keycloak-themes.json` | Tells Keycloak that the JAR holds the theme `IamOrgAdmin-Swedenconnect`, of type `login`. |
+| `theme/IamOrgAdmin-Swedenconnect/login/theme.properties` | Sets the parent theme `keycloak.v2`, turns off dark mode and adds the stylesheet. |
+| `.../login/login.ftl` | The login page: identity providers first, the password form behind the last button. |
+| `.../login/resources/css/swedenconnect.css` | Colours, typeface, logo and button shapes. The design tokens carry the names the sandbox site uses. |
+| `.../login/resources/img/` | The Sweden Connect logo and the favicon. |
+| `.../login/resources/fonts/` | Ubuntu 400 and 700, latin and latin-ext. |
+| `.../login/messages/messages_en.properties`, `messages_sv.properties` | The label of the toggle button, `scUsernamePassword`. |
+
+To use the theme, go to **Realm settings** → **Themes** and set **Login theme** to
+`IamOrgAdmin-Swedenconnect`.
+
+To change the look, edit the design tokens at the top of `swedenconnect.css`. To change the text on the
+toggle button, edit the `scUsernamePassword` key. Only the login page (`login.ftl`) is overridden. All
+other pages, such as password reset and OTP, come from `keycloak.v2` and are restyled by the stylesheet
+only. Whenever Keycloak is upgraded, compare `login.ftl` with the `login.ftl` of the new `keycloak.v2`
+theme.
+
+Because the theme is packaged, a change means a rebuild: run `install-keycloak-plugins.sh` and restart
+Keycloak. For quick iteration on the CSS, a copy of the theme directory can be mounted at
+`/opt/keycloak/themes/IamOrgAdmin-Swedenconnect/login`, which is the `compose/config/keycloak/themes`
+directory that the Compose file already mounts. Remove that copy again before using the JAR, since two
+themes with the same name conflict.
 
 ---
 
