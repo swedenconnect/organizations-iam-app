@@ -8,9 +8,9 @@
 
 ### Version 0.9.8
 
-**Date:** _not yet released_
+**Date:** 2026-09-25
 
-- 
+- Structural changes and GitHub actions – no functional updates.
 
 ### Version 0.9.7
 
