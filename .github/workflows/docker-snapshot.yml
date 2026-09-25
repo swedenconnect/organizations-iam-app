@@ -1,13 +1,13 @@
-# Publishes the Docker images of a release, for all three services, when a version tag is pushed.
+# Publishes snapshot Docker images for all three services, tagged with the Maven version (e.g. 1.0.9-SNAPSHOT),
+# on every push to main.
 #
-# The Maven version is set manually and committed before tagging, so the tag must match it: the tag v1.0.9 requires
-# the version 1.0.9 in pom.xml. Each image is tagged with the version and with latest.
-name: Release Docker images
+# Nothing is published when main holds a release version, so a release image is never overwritten by later commits.
+name: Snapshot Docker images
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
 
 # Narrowed to what building and pushing the images requires.
 permissions:
@@ -15,8 +15,8 @@ permissions:
   packages: write
 
 jobs:
-  publish:
-    name: Publish Docker images
+  publish-snapshot-ghcr:
+    name: Publish snapshot Docker images
     runs-on: ubuntu-latest
 
     steps:
@@ -28,25 +28,24 @@ jobs:
           java-version: '25'
           cache: 'maven'
 
-      - name: Check that the tag matches the Maven version
-        env:
-          TAG: ${{ github.ref_name }}
+      - name: Check for a snapshot version
+        id: version
         run: |
           VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout --no-transfer-progress)
           if [[ "${VERSION}" == *-SNAPSHOT ]]; then
-            echo "::error::The Maven version ${VERSION} is a snapshot - set the release version in pom.xml before tagging"
-            exit 1
-          fi
-          if [[ "${TAG}" != "v${VERSION}" ]]; then
-            echo "::error::The tag ${TAG} does not match the Maven version ${VERSION} - expected the tag v${VERSION}"
-            exit 1
+            echo "snapshot=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "::notice::The Maven version ${VERSION} is not a snapshot - no snapshot images are published"
+            echo "snapshot=false" >> "${GITHUB_OUTPUT}"
           fi
 
       # Builds and installs every module, so the frontend artifacts are available to the backends that unpack them.
       - name: Build the project
+        if: steps.version.outputs.snapshot == 'true'
         run: mvn clean install --no-transfer-progress
 
       - name: Login to GitHub Container Registry
+        if: steps.version.outputs.snapshot == 'true'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -54,8 +53,9 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish images
+        if: steps.version.outputs.snapshot == 'true'
         env:
           DOCKER_REPO: ghcr.io
         run: |
-          mvn jib:build -Djib.to.tags=latest --no-transfer-progress \
+          mvn jib:build --no-transfer-progress \
             -pl iam-admin-app/backend,demo/demo-app/backend,demo/demo-service
