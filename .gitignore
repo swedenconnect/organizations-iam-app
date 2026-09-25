@@ -51,3 +51,6 @@ build/
 
 ### Local build helper ###
 build-snapshot.sh
+
+### Claude
+.claude
