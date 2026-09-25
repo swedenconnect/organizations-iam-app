@@ -97,17 +97,24 @@ public interface OrganizationService {
   /**
    * Creates a new organization in Keycloak and adds it to the cache if the cache is already loaded.
    *
-   * @param orgNumber the 10-digit organization number
-   * @param legalName the legal name as registered at Bolagsverket
-   * @param nameSv    Swedish display name, or {@code null} for none
-   * @param nameEn    English display name, or {@code null} for none
+   * <p>Contact details are written as part of the creation, so the organization never exists
+   * without the contact information it was created with.</p>
+   *
+   * @param orgNumber    the 10-digit organization number
+   * @param legalName    the legal name as registered at Bolagsverket
+   * @param nameSv       Swedish display name, or {@code null} for none
+   * @param nameEn       English display name, or {@code null} for none
+   * @param contactEmail contact e-mail, or {@code null} for none
+   * @param contactPhone contact phone, or {@code null} for none
    * @return the freshly created organization
    */
   @NonNull OrganizationInfo create(
       @NonNull String orgNumber,
       @NonNull String legalName,
       @Nullable String nameSv,
-      @Nullable String nameEn);
+      @Nullable String nameEn,
+      @Nullable String contactEmail,
+      @Nullable String contactPhone);
 
   /**
    * Updates an organization in Keycloak and refreshes the corresponding cache entry.
@@ -134,4 +141,24 @@ public interface OrganizationService {
    * @param orgNumber the organization identifier
    */
   void delete(@NonNull String orgNumber);
+
+  /**
+   * Re-reads one organization from Keycloak and replaces its cache entry, so that a change made
+   * outside this service becomes visible to the cache-backed list and search operations.
+   *
+   * <p>Attaching or detaching a function changes the organization's
+   * {@link OrganizationInfo#attachedFunctions()} without going through {@link #update}, so the
+   * caller performing that change must invoke this method afterwards. The organization is evicted
+   * if it no longer exists in Keycloak, and nothing happens while the cache is unprimed.</p>
+   *
+   * @param orgNumber the organization identifier
+   */
+  void refresh(@NonNull String orgNumber);
+
+  /**
+   * Discards the whole cache so that the next list or search operation primes it from Keycloak
+   * again. For changes that affect an unbounded set of organizations, such as deleting a function
+   * that is attached to several of them.
+   */
+  void refreshAll();
 }

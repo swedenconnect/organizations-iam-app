@@ -183,6 +183,10 @@ public class OrganizationController {
     // Display names are optional; blank is the same as absent and stores nothing.
     final String nameSv = blankToNull(req.nameSv());
     final String nameEn = blankToNull(req.nameEn());
+    // Contact details are optional too. On update a blank clears the value; on create there is
+    // nothing to clear, so blank and absent alike leave the attribute unwritten.
+    final String contactEmail = blankToNull(req.contactEmail());
+    final String contactPhone = blankToNull(req.contactPhone());
 
     if (!orgNumber.matches("^\\d{10}$")) {
       log.info("POST /api/organizations — rejected: invalid organization number '{}'", orgNumber);
@@ -198,7 +202,7 @@ public class OrganizationController {
       return ResponseEntity.status(409).build();
     }
 
-    this.organizationService.create(orgNumber, legalName, nameSv, nameEn);
+    this.organizationService.create(orgNumber, legalName, nameSv, nameEn, contactEmail, contactPhone);
     log.info("POST /api/organizations — organization '{}' created successfully", orgNumber);
 
     final LinkedHashMap<String, Object> body = new LinkedHashMap<>();
@@ -207,6 +211,8 @@ public class OrganizationController {
     body.put("legalName", legalName);
     body.put("nameSv", nameSv);
     body.put("nameEn", nameEn);
+    body.put("contactEmail", contactEmail);
+    body.put("contactPhone", contactPhone);
     return ResponseEntity.status(201).body(body);
   }
 

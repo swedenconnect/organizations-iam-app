@@ -6,7 +6,7 @@
   <parent>
     <groupId>se.swedenconnect.iam.keycloak</groupId>
     <artifactId>keycloak-plugins</artifactId>
-    <version>0.9.6-SNAPSHOT</version>
+    <version>0.9.8-SNAPSHOT</version>
   </parent>
 
   <artifactId>keycloak-plugin-distribution</artifactId>
@@ -30,7 +30,7 @@
       against. This is the only place it is pinned: the compose installer and the fetch
       script both take the plugin from the ZIP assembled here.
     -->
-    <oidc-sweden-claims-plugin.version>1.1.0</oidc-sweden-claims-plugin.version>
+    <oidc-sweden-claims-plugin.version>1.1.1</oidc-sweden-claims-plugin.version>
   </properties>
 
   <!--
@@ -55,6 +55,18 @@
     <dependency>
       <groupId>se.swedenconnect.iam.keycloak</groupId>
       <artifactId>resource-aud-plugin</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>se.swedenconnect.iam.keycloak</groupId>
+      <artifactId>idp-user-matcher</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>se.swedenconnect.iam.keycloak</groupId>
+      <artifactId>login-theme</artifactId>
       <version>${project.version}</version>
     </dependency>
 

@@ -242,42 +242,38 @@ export function OrganizationForm({ organization, isOpen, isSuperuser, onClose, o
               <p className="text-sm text-gray-500">{t('organizations.displayNameHelp')}</p>
             </div>
 
-            {/* Edit Mode Only: Contact Email and Phone */}
-            {organization && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="contactEmail" className="text-base font-medium">
-                    {t('organizations.contactEmail')}
-                  </Label>
-                  <Input
-                    id="contactEmail"
-                    type="text"
-                    value={contactEmail}
-                    onChange={(e) => { setContactEmail(e.target.value); setErrors(prev => ({ ...prev, contactEmail: '' })); }}
-                    className="text-base"
-                  />
-                  {errors.contactEmail && (
-                    <p className="text-sm text-red-500 mt-1">{errors.contactEmail}</p>
-                  )}
-                </div>
+            {/* Contact Email and Phone, in create mode as well as edit mode */}
+            <div className="space-y-2">
+              <Label htmlFor="contactEmail" className="text-base font-medium">
+                {t('organizations.contactEmail')}
+              </Label>
+              <Input
+                id="contactEmail"
+                type="text"
+                value={contactEmail}
+                onChange={(e) => { setContactEmail(e.target.value); setErrors(prev => ({ ...prev, contactEmail: '' })); }}
+                className="text-base"
+              />
+              {errors.contactEmail && (
+                <p className="text-sm text-red-500 mt-1">{errors.contactEmail}</p>
+              )}
+            </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="contactPhone" className="text-base font-medium">
-                    {t('organizations.contactPhone')}
-                  </Label>
-                  <Input
-                    id="contactPhone"
-                    type="tel"
-                    value={contactPhone}
-                    onChange={(e) => { setContactPhone(e.target.value); setErrors(prev => ({ ...prev, contactPhone: '' })); }}
-                    className="text-base"
-                  />
-                  {errors.contactPhone && (
-                    <p className="text-sm text-red-500 mt-1">{errors.contactPhone}</p>
-                  )}
-                </div>
-              </>
-            )}
+            <div className="space-y-2">
+              <Label htmlFor="contactPhone" className="text-base font-medium">
+                {t('organizations.contactPhone')}
+              </Label>
+              <Input
+                id="contactPhone"
+                type="tel"
+                value={contactPhone}
+                onChange={(e) => { setContactPhone(e.target.value); setErrors(prev => ({ ...prev, contactPhone: '' })); }}
+                className="text-base"
+              />
+              {errors.contactPhone && (
+                <p className="text-sm text-red-500 mt-1">{errors.contactPhone}</p>
+              )}
+            </div>
 
             {/* Form Actions */}
             <div className="flex items-center justify-end gap-3 pt-6 border-t">

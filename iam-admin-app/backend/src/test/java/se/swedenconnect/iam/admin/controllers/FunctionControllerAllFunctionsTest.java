@@ -31,6 +31,7 @@ import se.swedenconnect.iam.admin.keycloak.AdminSessionBootstrapHandler;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminClient;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminException;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
+import se.swedenconnect.iam.admin.service.OrganizationService;
 import se.swedenconnect.iam.security.claims.OrgRightsClaim;
 
 import java.util.List;
@@ -63,6 +64,9 @@ class FunctionControllerAllFunctionsTest {
   private KeycloakAdminClient keycloakAdminClient;
 
   @Mock
+  private OrganizationService organizationService;
+
+  @Mock
   private HttpServletRequest request;
 
   @Mock
@@ -72,7 +76,8 @@ class FunctionControllerAllFunctionsTest {
 
   @BeforeEach
   void setUp() {
-    this.controller = new FunctionController(this.keycloakAdminClient, new IamAdminProperties());
+    this.controller = new FunctionController(
+        this.keycloakAdminClient, new IamAdminProperties(), this.organizationService);
     when(this.request.getSession(false)).thenReturn(this.session);
   }
 

@@ -5,11 +5,55 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) ![Maven Central](https://img.shields.io/maven-central/v/se.swedenconnect.iam/iam-parent.svg)
 
 ---
+
+### Version 0.9.8
+
+**Date:** _not yet released_
+
+- 
+
+### Version 0.9.7
+
+**Date:** 2026-09-15
+
+- **Keycloak version was updated.** Keycloak plugins and the local environment now use Keycloak v26.7.3.
+
+- **Contact e-mail and phone can now be given when an organization is created.** Both are optional,
+  and are stored as part of the creation rather than by a follow-up edit.
+  See [issue #54](https://github.com/swedenconnect/organizations-iam-app/issues/54).
+
+- **The Functions tab is now shown to superusers only.** The functions attached to an organization
+  are still listed when the organization is expanded, with a help icon explaining what a function
+  is. See [issue #60](https://github.com/swedenconnect/organizations-iam-app/issues/60).
+
+- **Functions attached to a newly created organization are no longer missing from the organizations
+  view.** The view rendered a cached organization whose attached function list was not refreshed
+  when a function was attached or detached, so it reported no functions assigned while the users
+  view showed the same function correctly. See
+  [issue #86](https://github.com/swedenconnect/organizations-iam-app/issues/86).
+
+- **An administrator no longer sees a user's rights outside their own scope.** Each user is now
+  listed with the rights the caller administers only, and a user left without a visible right is
+  not listed at all. A superuser is unaffected. See
+  [issue #55](https://github.com/swedenconnect/organizations-iam-app/issues/55).
+
+- **Reading or updating a single user is now scoped to the caller as well.** An administrator can
+  address a user by their Keycloak UUID only when that user holds a right the administrator can
+  see, and any other UUID is reported as not found, whether or not it belongs to an existing user.
+  A superuser reaches every user. See
+  [issue #92](https://github.com/swedenconnect/organizations-iam-app/issues/92).
+
+### Version 0.9.6
+
+**Date:** 2026-09-15
+
+- **Fixed bad build for 0.9.5** 
+
 ### Version 0.9.5
 
 **Date:** 2026-09-14
 
-- **GH Action to performe releases** GH - Actions now perform releases. 
+- **GH Action to perform releases** GH - Actions now perform releases. 
   
 ### Version 0.9.4
 

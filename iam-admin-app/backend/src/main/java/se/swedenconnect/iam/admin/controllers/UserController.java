@@ -18,6 +18,7 @@ package se.swedenconnect.iam.admin.controllers;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -46,6 +47,7 @@ import se.swedenconnect.iam.admin.keycloak.model.UserInfo;
 import se.swedenconnect.iam.admin.keycloak.model.UserRight;
 
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -83,6 +85,11 @@ public class UserController {
    * per user. Regular admins receive only their scoped users from session data with
    * in-memory pagination.</p>
    *
+   * <p>For a regular admin each user carries only the rights the caller is entitled to see, see
+   * {@link AdminSessionData#mayViewRight(UserRight)}, and a user left without a single visible
+   * right is left out of the response altogether. The reported total counts the users that remain
+   * after that filtering.</p>
+   *
    * @param page    0-based page index (default 0)
    * @param size    page size (default 50)
    * @param request the HTTP servlet request
@@ -116,38 +123,29 @@ public class UserController {
       log.debug("GET /api/users — superuser, page={}, size={}, total={}", effectivePage, effectiveSize, total);
     }
     else {
-      final List<String> userIds = this.keycloakAdminClient.fetchUserIdsForOrgs(data.adminOrgIdentifiers());
-      // Apply orgConstraint if present
-      final List<String> scopedIds;
-      if (data.orgConstraint() != null) {
-        final String oc = data.orgConstraint();
-        scopedIds = userIds.stream()
-            .filter(id -> this.keycloakAdminClient.fetchUserRights(id).stream()
-                .anyMatch(r -> oc.equals(r.orgIdentifier())))
+      final List<String> candidateUserIds =
+          this.keycloakAdminClient.fetchUserIdsForOrgs(data.adminOrgIdentifiers());
+
+      // A user is only shown with the rights the caller is entitled to see, and a user left
+      // without any visible right is not shown at all. That decision is taken before pagination,
+      // so the reported total counts only the users that survive it.
+      final List<VisibleUser> visibleUsers = new ArrayList<>();
+      for (final String userId : candidateUserIds) {
+        final List<UserRight> rights = this.keycloakAdminClient.fetchUserRights(userId).stream()
+            .filter(data::mayViewRight)
             .toList();
+        if (!rights.isEmpty()) {
+          visibleUsers.add(new VisibleUser(userId, rights));
+        }
       }
-      else {
-        scopedIds = userIds;
-      }
-      total = scopedIds.size();
+
+      total = visibleUsers.size();
       final int fromIndex = Math.min(first, total);
       final int toIndex = Math.min(first + effectiveSize, total);
-      content = scopedIds.subList(fromIndex, toIndex).stream()
-          .map(id -> {
-            final UserInfo u = this.keycloakAdminClient.fetchUserById(id).orElse(null);
-            if (u == null) return null;
-            List<UserRight> rights = this.keycloakAdminClient.fetchUserRights(id);
-            if (data.orgConstraint() != null) {
-              final String oc = data.orgConstraint();
-              rights = rights.stream().filter(r -> oc.equals(r.orgIdentifier())).toList();
-            }
-            if (data.functionConstraint() != null) {
-              final String fc = data.functionConstraint();
-              rights = rights.stream()
-                  .filter(r -> r.functionId() == null || fc.equals(r.functionId()))
-                  .toList();
-            }
-            return toResponse(u, rights);
+      content = visibleUsers.subList(fromIndex, toIndex).stream()
+          .map(v -> {
+            final UserInfo u = this.keycloakAdminClient.fetchUserById(v.userId()).orElse(null);
+            return u != null ? toResponse(u, v.rights()) : null;
           })
           .filter(Objects::nonNull)
           .toList();
@@ -259,9 +257,14 @@ public class UserController {
   /**
    * Returns a single user by their Keycloak UUID.
    *
+   * <p>A regular admin may only address a user that is visible to them, see
+   * {@link #resolveVisibleUser(AdminSessionData, String)}. A user outside the caller's scope is
+   * reported exactly as an unknown UUID is.</p>
+   *
    * @param userId  the Keycloak user UUID
    * @param request the HTTP servlet request
-   * @return 200 with user data, 403 if not authenticated, 404 if not found
+   * @return 200 with user data, 403 if not authenticated, 404 if not found or outside the
+   *         caller's scope
    */
   @GetMapping(value = "/users/{userId}", produces = MediaType.APPLICATION_JSON_VALUE)
   public ResponseEntity<?> getUser(
@@ -274,7 +277,7 @@ public class UserController {
       return ResponseEntity.status(403).build();
     }
 
-    return this.keycloakAdminClient.fetchUserById(userId)
+    return this.resolveVisibleUser(data, userId)
         .map(u -> {
           final String firstName = u.firstName() != null ? u.firstName() : "";
           final String lastName = u.lastName() != null ? u.lastName() : "";
@@ -302,11 +305,16 @@ public class UserController {
    *
    * <p>Personal identity number and rights are not updated here.</p>
    *
+   * <p>A regular admin may only address a user that is visible to them, see
+   * {@link #resolveVisibleUser(AdminSessionData, String)}. A user outside the caller's scope is
+   * reported exactly as an unknown UUID is, and is left unchanged.</p>
+   *
    * @param userId  the Keycloak user UUID
    * @param req     the request body
    * @param request the HTTP servlet request
    * @return 200 with updated user data on success, 400 on invalid input,
-   *         403 if not authenticated or self-update, 404 if not found, 500 on Keycloak error
+   *         403 if not authenticated or self-update, 404 if not found or outside the caller's
+   *         scope, 500 on Keycloak error
    */
   @PutMapping(value = "/users/{userId}",
       consumes = MediaType.APPLICATION_JSON_VALUE,
@@ -338,6 +346,11 @@ public class UserController {
     }
     if (req.email() != null && !req.email().isBlank() && !req.email().contains("@")) {
       return ResponseEntity.badRequest().body("email is not valid");
+    }
+
+    if (this.resolveVisibleUser(data, userId).isEmpty()) {
+      log.info("PUT /api/users/{} — not found", userId);
+      return ResponseEntity.notFound().build();
     }
 
     try {
@@ -442,6 +455,47 @@ public class UserController {
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
+
+  /**
+   * Loads a user the caller is entitled to address, by the same visibility rule the list endpoint
+   * applies, see {@link AdminSessionData#mayViewUser(List)}.
+   *
+   * <p>An empty result means the caller must be answered with a 404: either there is no such user,
+   * or the user holds no right the caller may see. The two must not be told apart, so that a
+   * response never confirms that a UUID belongs to an existing user.</p>
+   *
+   * <p>The rights are read from Keycloak on every request rather than taken from the session, so a
+   * right granted moments earlier makes the user addressable in the same interaction. The
+   * organizations view depends on that: adding a user to an organization grants the right and then
+   * fetches the user by UUID.</p>
+   *
+   * @param data   the caller's session data
+   * @param userId the Keycloak user UUID
+   * @return the user, or empty if there is no such user or the caller may not address them
+   */
+  private Optional<UserInfo> resolveVisibleUser(
+      final @NonNull AdminSessionData data, final @NonNull String userId) {
+
+    final Optional<UserInfo> user = this.keycloakAdminClient.fetchUserById(userId);
+    if (user.isEmpty() || data.currentUserIsSuperuser()) {
+      return user;
+    }
+    if (!data.mayViewUser(this.keycloakAdminClient.fetchUserRights(userId))) {
+      log.info("User '{}' is outside the caller's scope and is reported as not found", userId);
+      return Optional.empty();
+    }
+    return user;
+  }
+
+  /**
+   * A candidate user for the list along with the rights the caller is entitled to see. The profile
+   * itself is loaded only for the users on the requested page.
+   *
+   * @param userId the Keycloak user UUID
+   * @param rights the rights visible to the caller; never empty
+   */
+  private record VisibleUser(@NonNull String userId, @NonNull List<UserRight> rights) {
+  }
 
   private static UserResponse toResponse(final UserInfo u, final List<UserRight> rights) {
     final List<UserRightResponse> rightResponses = rights.stream()

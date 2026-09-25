@@ -1,0 +1,284 @@
+/*
+ * Sweden Connect login theme.
+ *
+ * Colours, typeface, logo and button shapes follow https://sandbox.swedenconnect.se/home/. The token
+ * names and values below are the ones that site declares in its own stylesheet, so a later diff
+ * against it stays easy.
+ *
+ * Loaded after the keycloak.v2 stylesheet, and overrides it.
+ */
+
+/* ------------------------------------------------------------------ *
+ * Typeface: Ubuntu, 400 and 700, served from this theme
+ * ------------------------------------------------------------------ */
+
+@font-face {
+  font-family: "Ubuntu";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/ubuntu-400-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Ubuntu";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/ubuntu-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Ubuntu";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../fonts/ubuntu-700-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Ubuntu";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../fonts/ubuntu-700-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ------------------------------------------------------------------ *
+ * Design tokens
+ * ------------------------------------------------------------------ */
+
+:root {
+  --sc-text: #292a2b;
+  --sc-text-muted: #707070;
+  --sc-outline: #2b2a29;
+
+  --sc-accent: #5a6751;
+  --sc-accent-light: #657c54;
+  --sc-link-hover: #5a5856;
+
+  --sc-bg: #ffffff;
+  --sc-bg-frame: #f3f3f3;
+  --sc-border: #e8e8e8;
+  --sc-terracotta: #cd7a6e;
+  --sc-terracotta-tint: #f7e4e1;
+
+  --sc-font-family: "Ubuntu", "Helvetica Neue", Arial, sans-serif;
+  --sc-border-width: 2px;
+  --sc-logo-height: 59px;
+
+  /* Repoint the PatternFly and keycloak.v2 variables at the Sweden Connect values, so that
+     everything the theme does not restyle by name (inputs, links, alerts) follows along. */
+  --keycloak-bg-logo-url: none;
+  --keycloak-card-top-color: var(--sc-accent);
+
+  --pf-v5-global--FontFamily--text: var(--sc-font-family);
+  --pf-v5-global--FontFamily--heading: var(--sc-font-family);
+  --pf-v5-global--FontFamily--sans-serif: var(--sc-font-family);
+  --pf-v5-global--primary-color--100: var(--sc-accent);
+  --pf-v5-global--primary-color--200: var(--sc-accent-light);
+  --pf-v5-global--link--Color: var(--sc-text);
+  --pf-v5-global--link--Color--hover: var(--sc-link-hover);
+  --pf-v5-global--active-color--100: var(--sc-accent);
+  --pf-v5-global--BorderRadius--sm: 2px;
+}
+
+/* ------------------------------------------------------------------ *
+ * Page: light frame, white card, logo above it instead of the Keycloak banner
+ * ------------------------------------------------------------------ */
+
+html,
+body,
+body#keycloak-bg {
+  font-family: var(--sc-font-family);
+  color: var(--sc-text);
+}
+
+body#keycloak-bg {
+  background-color: var(--sc-bg-frame);
+  background-image: none;
+}
+
+.pf-v5-c-login {
+  --pf-v5-c-login--BackgroundColor: var(--sc-bg-frame);
+  background-image: none;
+}
+
+#kc-header-wrapper {
+  /* The stock rule paints the realm name white, on a dark banner. The name stays in the markup for
+     screen readers; the logo is drawn behind it. */
+  height: var(--sc-logo-height);
+  max-width: 343px;
+  margin: 0 auto;
+  font-size: 0;
+  line-height: 0;
+  color: transparent !important;
+  background: url("../img/sweden-connect-logo.svg") no-repeat center / contain;
+}
+
+#kc-header-wrapper .kc-logo-text {
+  background-image: none;
+  height: 0;
+}
+
+.pf-v5-c-login__header {
+  padding-bottom: 1.5rem;
+}
+
+.pf-v5-c-login__main {
+  background-color: var(--sc-bg);
+  border: var(--sc-border-width) solid var(--sc-border);
+  border-radius: 2px;
+  box-shadow: none;
+}
+
+.pf-v5-c-login__main-header {
+  border-top: 4px solid var(--sc-accent);
+}
+
+.pf-v5-c-title,
+#kc-page-title {
+  color: var(--sc-text);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* ------------------------------------------------------------------ *
+ * Focus indicator: the dotted outline is the most recognisable detail of the official design
+ * ------------------------------------------------------------------ */
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline: 3px dotted var(--sc-outline);
+  outline-offset: 3px;
+  box-shadow: none;
+  z-index: 1;
+}
+
+/* ------------------------------------------------------------------ *
+ * Buttons
+ *
+ * .sc-btn-filled is used for the identity providers, .sc-btn-outline for the button that unfolds
+ * the username/password form. The stock PatternFly primary button, used to submit that form, is
+ * given the filled look.
+ * ------------------------------------------------------------------ */
+
+.sc-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.675rem 1.25rem;
+  border: var(--sc-border-width) solid var(--sc-accent);
+  border-radius: 2px;
+  font-family: var(--sc-font-family);
+  font-size: 1rem;
+  line-height: 1.5;
+  font-weight: 400;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.sc-btn-filled {
+  background-color: var(--sc-accent);
+  color: #fff;
+}
+
+.sc-btn-filled:hover {
+  background-color: var(--sc-accent-light);
+  border-color: var(--sc-accent-light);
+  color: #fff;
+  text-decoration: none;
+}
+
+.sc-btn-filled[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: default;
+  pointer-events: none;
+}
+
+.sc-btn-outline {
+  background-color: transparent;
+  color: var(--sc-accent);
+}
+
+.sc-btn-outline:hover {
+  border-color: var(--sc-accent-light);
+  color: var(--sc-accent-light);
+}
+
+.pf-v5-c-button.pf-m-primary {
+  --pf-v5-c-button--m-primary--BackgroundColor: var(--sc-accent);
+  --pf-v5-c-button--m-primary--Color: #fff;
+  --pf-v5-c-button--m-primary--hover--BackgroundColor: var(--sc-accent-light);
+  --pf-v5-c-button--m-primary--focus--BackgroundColor: var(--sc-accent-light);
+  --pf-v5-c-button--m-primary--active--BackgroundColor: var(--sc-accent-light);
+  --pf-v5-c-button--BorderRadius: 2px;
+  font-family: var(--sc-font-family);
+}
+
+/* ------------------------------------------------------------------ *
+ * Identity provider list, then the unfoldable username/password form
+ * ------------------------------------------------------------------ */
+
+.sc-idp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.sc-password-login summary {
+  list-style: none;
+}
+
+.sc-password-login summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Chevron that turns when the form is open. */
+.sc-password-login summary::after {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-left: 0.75rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 0.15s ease;
+}
+
+.sc-password-login[open] summary::after {
+  transform: rotate(-135deg) translateY(-2px);
+}
+
+.sc-password-login-body {
+  margin-top: 1.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-password-login summary::after {
+    transition: none;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Messages
+ * ------------------------------------------------------------------ */
+
+.pf-v5-c-alert.pf-m-danger {
+  --pf-v5-c-alert--m-danger--BorderTopColor: var(--sc-terracotta);
+  --pf-v5-c-alert--m-danger__icon--Color: var(--sc-terracotta);
+  --pf-v5-c-alert--m-danger__title--Color: var(--sc-text);
+}

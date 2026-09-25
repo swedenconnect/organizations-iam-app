@@ -91,10 +91,12 @@ class OrganizationLegalNameTest {
     setupSuperuserSession();
 
     final ResponseEntity<?> response = this.controller.createOrganization(
-        new CreateOrganizationRequest(ORG, "Myndigheten för Digital förvaltning", null, null), this.request);
+        new CreateOrganizationRequest(ORG, "Myndigheten för Digital förvaltning", null, null, null, null),
+        this.request);
 
     assertThat(response.getStatusCode().value()).isEqualTo(201);
-    verify(this.organizationService).create(ORG, "Myndigheten för Digital förvaltning", null, null);
+    verify(this.organizationService).create(
+        ORG, "Myndigheten för Digital förvaltning", null, null, null, null);
   }
 
   /** A blank display name is the same as none, and nothing is stored for it. */
@@ -103,9 +105,11 @@ class OrganizationLegalNameTest {
     setupSuperuserSession();
 
     this.controller.createOrganization(
-        new CreateOrganizationRequest(ORG, "Myndigheten för Digital förvaltning", "  ", ""), this.request);
+        new CreateOrganizationRequest(ORG, "Myndigheten för Digital förvaltning", "  ", "", null, null),
+        this.request);
 
-    verify(this.organizationService).create(ORG, "Myndigheten för Digital förvaltning", null, null);
+    verify(this.organizationService).create(
+        ORG, "Myndigheten för Digital förvaltning", null, null, null, null);
   }
 
   /** Display names are passed through when given. */
@@ -115,11 +119,13 @@ class OrganizationLegalNameTest {
 
     this.controller.createOrganization(
         new CreateOrganizationRequest(ORG, "Myndigheten för Digital förvaltning",
-            "Digg - Myndigheten för Digital förvaltning", "Digg - Authority for Digital Government"),
+            "Digg - Myndigheten för Digital förvaltning", "Digg - Authority for Digital Government",
+            null, null),
         this.request);
 
     verify(this.organizationService).create(ORG, "Myndigheten för Digital förvaltning",
-        "Digg - Myndigheten för Digital förvaltning", "Digg - Authority for Digital Government");
+        "Digg - Myndigheten för Digital förvaltning", "Digg - Authority for Digital Government",
+        null, null);
   }
 
   /** Creating without a legal name is rejected. */
@@ -128,10 +134,13 @@ class OrganizationLegalNameTest {
     setupSuperuserSession();
 
     final ResponseEntity<?> response = this.controller.createOrganization(
-        new CreateOrganizationRequest(ORG, "   ", "Digg - Myndigheten för Digital förvaltning", null), this.request);
+        new CreateOrganizationRequest(ORG, "   ", "Digg - Myndigheten för Digital förvaltning", null,
+            null, null),
+        this.request);
 
     assertThat(response.getStatusCode().value()).isEqualTo(400);
-    verify(this.organizationService, never()).create(anyString(), anyString(), any(), any());
+    verify(this.organizationService, never()).create(
+        anyString(), anyString(), any(), any(), any(), any());
   }
 
   // ---------------------------------------------------------------------------
