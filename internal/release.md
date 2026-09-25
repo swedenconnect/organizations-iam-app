@@ -6,9 +6,10 @@
 
 -----
 
-Every push to `main` triggers a GitHub Actions workflow that builds and publishes a **snapshot** Docker image to the
-GitHub Container Registry (`ghcr.io`). This image always carries whatever version is currently set in `pom.xml`
-(for example `1.0.9-SNAPSHOT`).
+Every push to `main` triggers a GitHub Actions workflow that builds and publishes **snapshot** Docker images for all
+three services (the admin application, the demo app and the demo service) to the GitHub Container Registry
+(`ghcr.io`). The images carry whatever version is currently set in `pom.xml` (for example `1.0.9-SNAPSHOT`). When
+`main` holds a release version, nothing is published, so a release image is never overwritten by later commits.
 
 -----
 
@@ -23,8 +24,8 @@ once the release is tagged:
    git checkout -b release_1_2_3
    ```
 
-2. **Set the release version in every pom.**  run locally 
-   against a real version number:
+2. **Set the release version in every pom.** The version is set in every POM file by running the
+   command below with the release version number:
 
    ```bash
    mvn versions:set -DgenerateBackupPoms=false -DnewVersion=1.2.3 --no-transfer-progress
@@ -48,9 +49,12 @@ once the release is tagged:
    git push origin v1.2.3
    ```
    The tag name must start with `v` (e.g. `v1.2.0`, `v0.0.3-rc1`), tags that do not match this
-   pattern will not trigger a release build. Pushing the tag triggers `release.yml`, which
+   pattern will not trigger a release build. Pushing the tag triggers `docker-release.yml`, which
    builds and publishes a Docker image per service (the admin application, the demo app, and
-   the demo service) to `ghcr.io`, each tagged with `1.2.3`. This point in the flow is also
+   the demo service) to `ghcr.io`, each tagged with both `1.2.3` and `latest`. The run fails
+   before anything is published if the tag does not match the version set in the POM files, so
+   the tag `v1.2.3` requires the version `1.2.3`. The same tag also triggers
+   `github-release.yml`, which creates the GitHub release from it. This point in the flow is also
    where the library modules could be published to Maven Central, using the repository's
    `release` Maven profile; that step is manual today, not run by CI.
 

@@ -104,10 +104,8 @@
             <image>eclipse-temurin:21-jre-alpine</image>
           </from>
           <to>
-            <image>${DOCKER_REPO}/swedenconnect/iam-demo-service</image>
-            <tags>
-              <tag>${project.version}</tag>
-            </tags>
+            <!-- Tagged with the version only - "latest" is added by the release workflow (-Djib.to.tags=latest) -->
+            <image>${DOCKER_REPO}/swedenconnect/iam-demo-service:${project.version}</image>
           </to>
           <container>
             <creationTime>USE_CURRENT_TIMESTAMP</creationTime>
@@ -143,6 +141,9 @@
               </from>
               <to>
                 <image>iam-demo-service</image>
+                <tags>
+                  <tag>${project.version}</tag>
+                </tags>
               </to>
             </configuration>
           </execution>
