@@ -38,6 +38,7 @@ import org.springframework.security.oauth2.client.web.OAuth2AuthorizedClientRepo
 import se.swedenconnect.iam.security.claims.OrgRightsClaimParser;
 import se.swedenconnect.iam.security.client.OAuthClientContext;
 import se.swedenconnect.iam.security.client.OidcTokenEndpointLoggingInterceptor;
+import se.swedenconnect.iam.security.client.OrgKeyedAuthorizedClientRepository;
 import se.swedenconnect.iam.security.client.OrgRightsOidcUserService;
 import se.swedenconnect.iam.security.client.ResourceParameterConverter;
 import se.swedenconnect.security.credential.PkiCredential;
@@ -255,6 +256,25 @@ public class IamSecurityClientAutoConfiguration {
   @ConditionalOnProperty(name = "iam.security.debug", havingValue = "true")
   OidcTokenEndpointLoggingInterceptor oidcTokenEndpointLoggingInterceptor() {
     return new OidcTokenEndpointLoggingInterceptor();
+  }
+
+  /**
+   * Provides a default {@link OAuth2AuthorizedClientRepository} bean.
+   * <p>
+   * The default implementation is {@link OrgKeyedAuthorizedClientRepository}.
+   * which adds the dimenstion of organization stored in OAuthCLientContext
+   * for individual storage of authorized clients per organization context.
+   * <p>
+   * Applications may override this default by defining their own
+   * {@link OAuth2AuthorizedClientRepository} bean.
+   *
+   * @param context the OAuth client context; must not be null
+   * @return the configured {@link OrgKeyedAuthorizedClientRepository}; never null
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  OAuth2AuthorizedClientRepository authorizedClientRepository(OAuthClientContext context) {
+    return new OrgKeyedAuthorizedClientRepository(context);
   }
 
 }
