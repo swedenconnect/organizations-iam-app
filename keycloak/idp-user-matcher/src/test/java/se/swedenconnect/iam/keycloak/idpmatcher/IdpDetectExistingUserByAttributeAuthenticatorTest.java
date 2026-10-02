@@ -318,6 +318,58 @@ class IdpDetectExistingUserByAttributeAuthenticatorTest {
   }
 
   // ---------------------------------------------------------------------------
+  // discloseNotRegistered — the one deliberate exception to the generic message
+  // ---------------------------------------------------------------------------
+
+  /**
+   * With {@code discloseNotRegistered} off (the default), a missing match still shows the generic
+   * message, same as every other rejection reason.
+   */
+  @Test
+  void noLocalUserMatches_disclosureOff_showsGenericMessage() {
+    this.matchingUsers();
+
+    this.authenticate();
+
+    final ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
+    verify(this.loginForms).setError(captor.capture());
+    assertEquals(org.keycloak.services.messages.Messages.IDENTITY_PROVIDER_UNEXPECTED_ERROR, captor.getValue());
+  }
+
+  /**
+   * With {@code discloseNotRegistered} on, a missing match shows the distinct message instead of
+   * the generic one.
+   */
+  @Test
+  void noLocalUserMatches_disclosureOn_showsDistinctMessage() {
+    this.matchingUsers();
+    this.config.put(IdpDetectExistingUserByAttributeAuthenticatorFactory.DISCLOSE_NOT_REGISTERED, "true");
+
+    this.authenticate();
+
+    final ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
+    verify(this.loginForms).setError(captor.capture());
+    assertEquals("idpUserNotRegistered", captor.getValue());
+    this.assertFailedClosed();
+  }
+
+  /**
+   * {@code discloseNotRegistered} only changes the missing-match message. Every other rejection
+   * reason must keep showing the generic message even when it is enabled.
+   */
+  @Test
+  void ambiguousMatch_disclosureOn_stillShowsGenericMessage() {
+    this.matchingUsers(this.user(USER_ID, true), this.user("other", true));
+    this.config.put(IdpDetectExistingUserByAttributeAuthenticatorFactory.DISCLOSE_NOT_REGISTERED, "true");
+
+    this.authenticate();
+
+    final ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
+    verify(this.loginForms).setError(captor.capture());
+    assertEquals(org.keycloak.services.messages.Messages.IDENTITY_PROVIDER_UNEXPECTED_ERROR, captor.getValue());
+  }
+
+  // ---------------------------------------------------------------------------
   // The failure must not be distinguishable by the user
   // ---------------------------------------------------------------------------
 
