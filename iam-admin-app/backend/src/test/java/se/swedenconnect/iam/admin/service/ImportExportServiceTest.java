@@ -26,9 +26,12 @@ import org.springframework.mock.web.MockHttpSession;
 import se.swedenconnect.iam.admin.config.IamAdminProperties;
 import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportExportBundle;
 import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportItemOutcome;
+import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportJobStatus;
 import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportPreviewReport;
 import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportReport;
+import se.swedenconnect.iam.admin.keycloak.FunctionAttachContext;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminClient;
+import se.swedenconnect.iam.admin.keycloak.KeycloakAdminException;
 import se.swedenconnect.iam.admin.keycloak.model.FunctionInfo;
 import se.swedenconnect.iam.admin.keycloak.model.OrganizationInfo;
 import se.swedenconnect.iam.admin.keycloak.model.UserInfo;
@@ -37,6 +40,7 @@ import se.swedenconnect.iam.commons.types.LocalizedString;
 import tools.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -47,6 +51,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -84,8 +89,9 @@ class ImportExportServiceTest {
   void setUp() {
     this.objectMapper = new ObjectMapper();
     this.properties = new IamAdminProperties();
+    // The import runs on the calling thread, so that a test sees its result as soon as it is started.
     this.service = new ImportExportServiceImpl(
-        this.keycloakAdminClient, this.organizationService, this.objectMapper, this.properties);
+        this.keycloakAdminClient, this.organizationService, this.objectMapper, this.properties, Runnable::run);
     this.session = new MockHttpSession();
 
     // A realm holding the organization and the function every test file references, and nobody else.
@@ -245,7 +251,7 @@ class ImportExportServiceTest {
 
     assertThat(statuses(report.functions())).containsExactly("new");
 
-    this.service.confirm(report.batchId(), "actor", this.session);
+    this.confirm(report.batchId());
     verify(this.keycloakAdminClient).createFunction("demo", "Demo", "Demo", null, null);
   }
 
@@ -260,7 +266,7 @@ class ImportExportServiceTest {
     final ImportPreviewReport report = this.dryRun(userFile("\"username\": \"anna\","));
     assertThat(statuses(report.users())).containsExactly("new");
 
-    final ImportReport result = this.service.confirm(report.batchId(), "actor", this.session);
+    final ImportReport result = this.confirm(report.batchId());
 
     assertThat(statuses(result.users())).containsExactly("created");
     verify(this.keycloakAdminClient)
@@ -274,7 +280,7 @@ class ImportExportServiceTest {
     final ImportPreviewReport report = this.dryRun(userFile(""));
     assertThat(statuses(report.users())).containsExactly("new");
 
-    this.service.confirm(report.batchId(), "actor", this.session);
+    this.confirm(report.batchId());
 
     verify(this.keycloakAdminClient)
         .createUser(isNull(), eq("Anna Andersson"), any(), eq(PIN), isNull(), any(), isNull());
@@ -290,7 +296,7 @@ class ImportExportServiceTest {
     assertThat(report.users().getFirst().status()).isEqualTo("error");
     assertThat(report.users().getFirst().reason()).isEqualTo("username 'anna' is already taken");
 
-    this.service.confirm(report.batchId(), "actor", this.session);
+    this.confirm(report.batchId());
     verify(this.keycloakAdminClient, never()).createUser(any(), anyString(), any(), any(), any(), any(), any());
   }
 
@@ -305,7 +311,7 @@ class ImportExportServiceTest {
         .isEqualTo("usernames are not accepted in an import file for this deployment "
             + "(iam.admin.user-registration.allow-select-user-id is false)");
 
-    this.service.confirm(report.batchId(), "actor", this.session);
+    this.confirm(report.batchId());
     verify(this.keycloakAdminClient, never()).createUser(any(), anyString(), any(), any(), any(), any(), any());
   }
 
@@ -316,7 +322,7 @@ class ImportExportServiceTest {
     final ImportPreviewReport report = this.dryRun(userFile(""));
     assertThat(statuses(report.users())).containsExactly("new");
 
-    final ImportReport result = this.service.confirm(report.batchId(), "actor", this.session);
+    final ImportReport result = this.confirm(report.batchId());
 
     assertThat(statuses(result.users())).containsExactly("created");
     verify(this.keycloakAdminClient)
@@ -372,7 +378,7 @@ class ImportExportServiceTest {
     // Somebody else takes the username between the dry run and the confirm.
     when(this.keycloakAdminClient.usernameExists("anna")).thenReturn(true);
 
-    final ImportReport result = this.service.confirm(report.batchId(), "actor", this.session);
+    final ImportReport result = this.confirm(report.batchId());
 
     assertThat(result.users().getFirst().status()).isEqualTo("error");
     assertThat(result.users().getFirst().reason()).isEqualTo("username 'anna' is already taken");
@@ -386,11 +392,156 @@ class ImportExportServiceTest {
 
     this.properties.getUserRegistration().setAllowSelectUserId(false);
 
-    final ImportReport result = this.service.confirm(report.batchId(), "actor", this.session);
+    final ImportReport result = this.confirm(report.batchId());
 
     assertThat(result.users().getFirst().status()).isEqualTo("error");
     assertThat(result.users().getFirst().reason()).contains("usernames are not accepted");
     verify(this.keycloakAdminClient, never()).createUser(any(), anyString(), any(), any(), any(), any(), any());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Background import
+  // ---------------------------------------------------------------------------
+
+  @Test
+  void confirmReturnsAtOnceAndTheReportIsReadOnceTheImportHasRun() {
+    final List<Runnable> pending = new ArrayList<>();
+    final ImportExportServiceImpl deferred = new ImportExportServiceImpl(
+        this.keycloakAdminClient, this.organizationService, this.objectMapper, this.properties, pending::add);
+    final ImportPreviewReport report =
+        deferred.dryRun(minimalFile().getBytes(StandardCharsets.UTF_8), "actor", this.session);
+
+    final ImportJobStatus started = deferred.startImport(report.batchId(), "actor", this.session);
+
+    assertThat(started.status()).isEqualTo(ImportJobStatus.RUNNING);
+    assertThat(started.total()).isEqualTo(1);
+    assertThat(started.processed()).isZero();
+    assertThat(started.report()).isNull();
+    verify(this.keycloakAdminClient, never()).createUser(any(), anyString(), any(), any(), any(), any(), any());
+
+    pending.getFirst().run();
+
+    final ImportJobStatus finished = deferred.getImportJob(started.jobId(), "actor").orElseThrow();
+    assertThat(finished.status()).isEqualTo(ImportJobStatus.COMPLETED);
+    assertThat(finished.processed()).isEqualTo(1);
+    assertThat(finished.finishedAt()).isNotNull();
+    assertThat(statuses(finished.report().users())).containsExactly("created");
+  }
+
+  @Test
+  void anImportCanOnlyBeReadByTheSuperuserWhoStartedIt() {
+    final ImportPreviewReport report = this.dryRun(minimalFile());
+    final ImportJobStatus started = this.service.startImport(report.batchId(), "actor", this.session);
+
+    assertThat(this.service.getImportJob(started.jobId(), "actor")).isPresent();
+    assertThat(this.service.getImportJob(started.jobId(), "someone-else")).isEmpty();
+    assertThat(this.service.getImportJob("no-such-job", "actor")).isEmpty();
+  }
+
+  @Test
+  void anotherImportCannotBeStartedWhileOneIsRunning() {
+    final List<Runnable> pending = new ArrayList<>();
+    final ImportExportServiceImpl deferred = new ImportExportServiceImpl(
+        this.keycloakAdminClient, this.organizationService, this.objectMapper, this.properties, pending::add);
+    final ImportPreviewReport first =
+        deferred.dryRun(minimalFile().getBytes(StandardCharsets.UTF_8), "actor", this.session);
+    deferred.startImport(first.batchId(), "actor", this.session);
+
+    final MockHttpSession otherSession = new MockHttpSession();
+    final ImportPreviewReport second =
+        deferred.dryRun(minimalFile().getBytes(StandardCharsets.UTF_8), "other", otherSession);
+
+    assertThatThrownBy(() -> deferred.startImport(second.batchId(), "other", otherSession))
+        .isInstanceOf(ImportAlreadyRunningException.class);
+
+    // The refused batch is kept, so that it can be confirmed once the running import is done.
+    pending.getFirst().run();
+    assertThat(deferred.startImport(second.batchId(), "other", otherSession).jobId()).isNotNull();
+  }
+
+  @Test
+  void aFailureOutsideASingleEntryFailsTheImportAndKeepsWhatWasDone() {
+    final ImportPreviewReport report = this.dryRun(orgFile(
+        "{ \"org_identifier\": \"5560000001\", \"legal_name\": \"Ett AB\", \"attached_functions\": [] }",
+        "{ \"id\": \"demo\", \"name#sv\": \"Demo\", \"name#en\": \"Demo\" }"));
+    when(this.keycloakAdminClient.fetchAllOrganizationGroups()).thenThrow(new KeycloakAdminException("down"));
+
+    final ImportJobStatus job = this.service.startImport(report.batchId(), "actor", this.session);
+
+    assertThat(job.status()).isEqualTo(ImportJobStatus.FAILED);
+    assertThat(job.error()).contains("down");
+    assertThat(statuses(job.report().functions())).containsExactly("created");
+    assertThat(job.report().organizations()).isEmpty();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Organizations
+  // ---------------------------------------------------------------------------
+
+  @Test
+  void anExistingOrganizationGetsTheFunctionsItLacks() {
+    final ImportPreviewReport report = this.dryRun(orgFile(
+        "{ \"org_identifier\": \"" + ORG + "\", \"legal_name\": \"Digg\","
+            + " \"attached_functions\": [\"walletreg\", \"demo\"] }",
+        "{ \"id\": \"demo\", \"name#sv\": \"Demo\", \"name#en\": \"Demo\" }"));
+
+    assertThat(statuses(report.organizations())).containsExactly("update");
+    assertThat(report.organizations().getFirst().reason()).contains("[demo]");
+
+    final ImportReport result = this.confirm(report.batchId());
+
+    assertThat(statuses(result.organizations())).containsExactly("updated");
+    verify(this.keycloakAdminClient).attachFunctionToOrg(eq(ORG), eq("demo"), any(FunctionAttachContext.class));
+    verify(this.keycloakAdminClient, never())
+        .attachFunctionToOrg(eq(ORG), eq("walletreg"), any(FunctionAttachContext.class));
+    verify(this.organizationService, never()).create(anyString(), anyString(), any(), any(), any(), any());
+  }
+
+  @Test
+  void aFunctionThatCannotBeAttachedIsReportedAndTheImportGoesOn() {
+    when(this.organizationService.create(anyString(), anyString(), any(), any(), any(), any()))
+        .thenAnswer(inv -> createdOrganization(inv.getArgument(0)));
+    doThrow(new KeycloakAdminException("conflict"))
+        .when(this.keycloakAdminClient)
+        .attachFunctionToOrg(eq("5560000001"), eq("walletreg"), any(FunctionAttachContext.class));
+
+    final ImportReport result = this.confirm(this.dryRun(orgFile(
+        "{ \"org_identifier\": \"5560000001\", \"legal_name\": \"Ett AB\", \"attached_functions\": [\"walletreg\"] },"
+            + "{ \"org_identifier\": \"5560000002\", \"legal_name\": \"Två AB\", \"attached_functions\": [\"walletreg\"] }",
+        "")).batchId());
+
+    assertThat(statuses(result.organizations())).containsExactly("partial", "created");
+    assertThat(result.organizations().getFirst().reason()).contains("[walletreg]");
+  }
+
+  @Test
+  void anOrganizationThatFailsDoesNotStopTheNextOne() {
+    when(this.organizationService.create(eq("5560000001"), anyString(), any(), any(), any(), any()))
+        .thenThrow(new IllegalStateException("boom"));
+    when(this.organizationService.create(eq("5560000002"), anyString(), any(), any(), any(), any()))
+        .thenReturn(createdOrganization("5560000002"));
+
+    final ImportReport result = this.confirm(this.dryRun(orgFile(
+        "{ \"org_identifier\": \"5560000001\", \"legal_name\": \"Ett AB\", \"attached_functions\": [] },"
+            + "{ \"org_identifier\": \"5560000002\", \"legal_name\": \"Två AB\", \"attached_functions\": [] }",
+        "")).batchId());
+
+    assertThat(statuses(result.organizations())).containsExactly("error", "created");
+    assertThat(result.organizations().getFirst().reason()).isEqualTo("boom");
+  }
+
+  @Test
+  void theContactDetailsAreGivenWhenTheOrganizationIsCreated() {
+    when(this.organizationService.create(anyString(), anyString(), any(), any(), any(), any()))
+        .thenAnswer(inv -> createdOrganization(inv.getArgument(0)));
+
+    this.confirm(this.dryRun(orgFile(
+        "{ \"org_identifier\": \"5560000001\", \"legal_name\": \"Ett AB\", \"contact_email\": \"info@ett.se\","
+            + " \"contact_phone\": \"+4681234567\", \"attached_functions\": [] }",
+        "")).batchId());
+
+    verify(this.organizationService).create("5560000001", "Ett AB", null, null, "info@ett.se", "+4681234567");
+    verify(this.organizationService, never()).update(anyString(), any(), any(), any(), any(), any());
   }
 
   // ---------------------------------------------------------------------------
@@ -413,7 +564,7 @@ class ImportExportServiceTest {
       assertThat(statuses(report.organizations())).containsExactly("skipped_duplicate");
       assertThat(statuses(report.users())).containsExactly("skipped_duplicate");
 
-      final ImportReport result = this.service.confirm(report.batchId(), "actor", this.session);
+      final ImportReport result = this.confirm(report.batchId());
       assertThat(result.functions()).isEmpty();
       assertThat(result.organizations()).isEmpty();
       assertThat(result.users()).isEmpty();
@@ -427,6 +578,29 @@ class ImportExportServiceTest {
 
   private ImportPreviewReport dryRun(final String json) {
     return this.service.dryRun(json.getBytes(StandardCharsets.UTF_8), "actor", this.session);
+  }
+
+  /** Confirms the batch and returns the report of the import, which has run by the time this returns. */
+  private ImportReport confirm(final String batchId) {
+    final ImportJobStatus job = this.service.startImport(batchId, "actor", this.session);
+    assertThat(job.status()).isEqualTo(ImportJobStatus.COMPLETED);
+    return job.report();
+  }
+
+  /** A file with the given organization and function entries, as raw JSON, and no users. */
+  private static String orgFile(final String organizations, final String functions) {
+    return """
+        {
+          "schema_version": "1.0",
+          "functions": [ %s ],
+          "organizations": [ %s ],
+          "users": []
+        }
+        """.formatted(functions, organizations);
+  }
+
+  private static OrganizationInfo createdOrganization(final String orgIdentifier) {
+    return new OrganizationInfo(orgIdentifier, "Legal name", null, orgIdentifier + "-group", List.of(), null, null);
   }
 
   private Map<String, Object> asJson(final Object value) {

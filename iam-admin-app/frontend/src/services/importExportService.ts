@@ -3,7 +3,7 @@
  * Bulk export/import of organizations, functions and users. All endpoints are superuser-only.
  */
 
-import type { ImportExportBundle, ImportPreviewReport, ImportReport } from '@/types';
+import type { ImportExportBundle, ImportJobStatus, ImportPreviewReport } from '@/types';
 import { apiUrl, apiFetch } from '@/lib/api';
 
 async function readError(response: Response): Promise<string> {
@@ -64,15 +64,27 @@ export async function dryRunImport(file: File): Promise<ImportPreviewReport> {
 }
 
 /**
- * Creates every entry in the pending batch identified by batchId.
+ * Starts creating every entry in the pending batch identified by batchId. The import runs in the
+ * background; poll its progress with getImportJob.
  */
-export async function confirmImport(batchId: string): Promise<ImportReport> {
+export async function confirmImport(batchId: string): Promise<ImportJobStatus> {
   const response = await apiFetch(apiUrl(`api/import/${encodeURIComponent(batchId)}/confirm`), {
     method: 'POST',
   });
   if (response.status === 403) throw new Error('FORBIDDEN');
-  if (response.status === 409) throw new Error('BATCH_NOT_FOUND');
+  if (response.status === 409) throw new Error((await readError(response)) || 'BATCH_NOT_FOUND');
   if (!response.ok) throw new Error('CONFIRM_FAILED');
+  return response.json();
+}
+
+/**
+ * Reads the progress of an import started by confirmImport, and its report once it has finished.
+ */
+export async function getImportJob(jobId: string): Promise<ImportJobStatus> {
+  const response = await apiFetch(apiUrl(`api/import/jobs/${encodeURIComponent(jobId)}`));
+  if (response.status === 403) throw new Error('FORBIDDEN');
+  if (response.status === 404) throw new Error('JOB_NOT_FOUND');
+  if (!response.ok) throw new Error('JOB_STATUS_FAILED');
   return response.json();
 }
 
