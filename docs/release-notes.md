@@ -12,6 +12,9 @@
 
 - First official release.
 
+- Import of a large file no longer stops part-way, and shows its progress ([#104](https://github.com/swedenconnect/organizations-iam-app/issues/104)).
+
+- Re-importing a file attaches the functions an existing organization lacks ([#104](https://github.com/swedenconnect/organizations-iam-app/issues/104)).
 - Keycloak upgraded to 26.8.1 ([#115](https://github.com/swedenconnect/organizations-iam-app/issues/115)).
 
 - 

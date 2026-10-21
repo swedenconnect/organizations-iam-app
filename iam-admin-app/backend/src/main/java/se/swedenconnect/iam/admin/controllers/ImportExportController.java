@@ -33,10 +33,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportExportBundle;
+import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportJobStatus;
 import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportPreviewReport;
-import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportReport;
 import se.swedenconnect.iam.admin.keycloak.AdminSessionBootstrapHandler;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
+import se.swedenconnect.iam.admin.service.ImportAlreadyRunningException;
 import se.swedenconnect.iam.admin.service.ImportBatchNotFoundException;
 import se.swedenconnect.iam.admin.service.ImportExportService;
 import se.swedenconnect.iam.admin.service.ImportValidationException;
@@ -129,12 +130,14 @@ public class ImportExportController {
   }
 
   /**
-   * Creates every entry in the pending batch identified by {@code batchId}.
+   * Starts creating every entry in the pending batch identified by {@code batchId}. The import
+   * runs in the background; its progress and final report are read with {@link #getImportJob}.
    *
    * @param batchId the batch id returned by the preceding {@link #dryRun} call
    * @param request the HTTP servlet request
-   * @return 200 with the import report, 403 if not superuser,
-   *         409 if the batch is unknown, expired, or belongs to another session
+   * @return 202 with the progress of the started import, 403 if not superuser,
+   *         409 if the batch is unknown, expired, or belongs to another session, or if another
+   *         import is still running
    */
   @PostMapping(value = "/import/{batchId}/confirm", produces = MediaType.APPLICATION_JSON_VALUE)
   public ResponseEntity<?> confirm(
@@ -153,15 +156,48 @@ public class ImportExportController {
     }
 
     try {
-      final ImportReport report =
-          this.importExportService.confirm(batchId, actorUserId, request.getSession(true));
-      log.info("POST /api/import/{}/confirm — superuser '{}' completed import", batchId, actorUserId);
-      return ResponseEntity.ok(report);
+      final ImportJobStatus job =
+          this.importExportService.startImport(batchId, actorUserId, request.getSession(true));
+      log.info("POST /api/import/{}/confirm — superuser '{}' started import, jobId={}",
+          batchId, actorUserId, job.jobId());
+      return ResponseEntity.accepted().body(job);
     }
-    catch (final ImportBatchNotFoundException e) {
+    catch (final ImportBatchNotFoundException | ImportAlreadyRunningException e) {
       log.info("POST /api/import/{}/confirm — rejected: {}", batchId, e.getMessage());
       return ResponseEntity.status(409).body(e.getMessage());
     }
+  }
+
+  /**
+   * Returns the progress of an import started by {@link #confirm}, and its report once it has
+   * finished.
+   *
+   * @param jobId the job id returned by {@link #confirm}
+   * @param request the HTTP servlet request
+   * @return 200 with the progress, 403 if not superuser, 404 if no such import was started by the
+   *         caller or it finished too long ago
+   */
+  @GetMapping(value = "/import/jobs/{jobId}", produces = MediaType.APPLICATION_JSON_VALUE)
+  public ResponseEntity<?> getImportJob(
+      @PathVariable final String jobId,
+      final HttpServletRequest request) {
+
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null || !data.currentUserIsSuperuser()) {
+      log.info("GET /api/import/jobs/{} — rejected: caller is not a superuser", jobId);
+      return ResponseEntity.status(403).build();
+    }
+
+    final String actorUserId = getCurrentUserId();
+    if (actorUserId == null) {
+      return ResponseEntity.status(403).build();
+    }
+
+    return this.importExportService.getImportJob(jobId, actorUserId)
+        .<ResponseEntity<?>>map(job -> ResponseEntity.ok()
+            .header(HttpHeaders.CACHE_CONTROL, "no-store")
+            .body(job))
+        .orElseGet(() -> ResponseEntity.notFound().build());
   }
 
   /**
