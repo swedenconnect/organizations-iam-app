@@ -103,7 +103,7 @@ name conflict.
 `login.ftl` is a copy of the `login.ftl` of `keycloak.v2`, with the changes described above. It relies
 on the macros and variables of that theme (`template.ftl`, `field.ftl`, `buttons.ftl` and
 `passkeys.ftl`), which Keycloak does not treat as a stable API. The theme was written against the
-`keycloak.v2` login theme of Keycloak 26.7.3, the version the Compose file runs. On every Keycloak
+`keycloak.v2` login theme of Keycloak 26.8.1, the version the Compose file runs. On every Keycloak
 upgrade, compare `login.ftl` with the `login.ftl` of the new `keycloak.v2` theme and bring over what
 has changed.
 
