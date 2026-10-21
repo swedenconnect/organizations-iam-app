@@ -12,6 +12,8 @@
 
 - First official release.
 
+- Keycloak upgraded to 26.8.1 ([#115](https://github.com/swedenconnect/organizations-iam-app/issues/115)).
+
 - 
 
 ### Version 0.9.8
