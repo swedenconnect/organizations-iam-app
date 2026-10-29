@@ -51,6 +51,11 @@ a Spring Boot admin application.
 - [Keycloak Setup](keycloak-setup.md) — Step-by-step Keycloak realm configuration,
   client registration, and automation scripts.
 
+- [Configuring eID Login for a Realm](eid-identity-provider.md) — Registering an eID
+  identity provider that matches users the admin application has already provisioned,
+  rather than creating them. Covers the proxy and direct topologies, one flow per
+  identity family, and the failures that give no useful message.
+
 ---
 
 Copyright &copy; 2026, [Myndigheten för digital förvaltning - Swedish Agency for

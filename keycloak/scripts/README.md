@@ -46,7 +46,9 @@ repository to be set up. See [The scripts ZIP](../README.md#scripts-distribution
 
    3.9. [`set-iam-admin-resource-server.sh`](#set-iam-admin-resource-server): Mark a client as a resource server
 
-   3.10. [`get-keycloak-plugins.sh`](#get-keycloak-plugins): Fetch the provider JARs for a version
+   3.10. [`add-identity-provider.sh`](#add-identity-provider): Register an eID identity provider
+
+   3.11. [`get-keycloak-plugins.sh`](#get-keycloak-plugins): Fetch the provider JARs for a version
 
 4. [**Typical Setup Sequence**](#typical-setup-sequence)
 
@@ -670,8 +672,81 @@ state. It does not touch `client_functions` either; that remains `set-client-fun
 
 ---
 
+<a name="add-identity-provider"></a>
+### 3.10. add-identity-provider.sh
+
+Registers a SAML identity provider for eID login, and everything needed to resolve the
+incoming identity to a user the admin application has already provisioned. Four things,
+in one idempotent run:
+
+1. the identity provider itself, with strict SAML defaults
+2. a stock **Attribute Importer** mapper, which carries the identifying attribute into
+   the brokered context
+3. a first broker login flow of exactly two executions, `idp-detect-existing-user-by-attr`
+   followed by Keycloak's `idp-auto-link`
+4. that flow bound to the provider
+
+**Users are matched, never created.** A subject that does not resolve to exactly one
+enabled, permitted local user is refused. This is deliberate: the admin application is
+the source of truth for who exists and what rights they hold, so an eID login must not
+be able to create an account.
+
+**Prerequisites:** The realm must already be bootstrapped (`bootstrap-realm.sh`), and the
+`idp-user-matcher` provider JAR must be deployed and Keycloak rebuilt. The script checks
+the authenticator is registered before it changes anything, and stops if it is not.
+
+**Usage:**
+
+```bash
+./keycloak/scripts/add-identity-provider.sh [OPTIONS]
+```
+
+**Additional options:** see `--help` for the full list. The ones that matter most:
+
+| Option | Required | Description |
+|---|---|---|
+| `--alias <alias>` | No | Provider alias. Default `digg-proxy` |
+| `--idp-entity-id <entityId>` | Yes | Upstream IdP entityID |
+| `--sso-url <url>` | Yes | Upstream single sign-on URL, HTTP-POST binding |
+| `--sp-entity-id <entityId>` | Yes | Our SP entityID, exactly as registered upstream |
+| `--signing-certificate <file>` | No | Upstream signing certificate, PEM or bare base64 |
+| `--template-realm`, `--template-alias` | No | Copy the upstream entityID, SSO URL, certificate and ACRs from an existing provider instead of giving them |
+| `--match-attribute <name>` | No | Local user attribute to match on. Default `personalIdentityNumber` |
+| `--saml-attribute <name>` | No | SAML attribute carrying it. Default `urn:oid:1.2.752.29.4.13` |
+| `--forbidden-role <role>` | No | Matched user must **not** hold this realm role |
+| `--required-role <role>` | No | Matched user must hold this realm role |
+| `--transient` | No | Lightweight users. Creates no mapper and no flow, see below |
+
+**The attribute format is the thing that silently breaks.** Keycloak's Attribute Importer
+defaults to `ATTRIBUTE_FORMAT_BASIC`, while Sweden Connect emits attributes in URI
+format. A mismatch means the attribute is never found, so the matcher refuses every login
+with the same generic error it gives for an unknown user. The script therefore defaults to
+`ATTRIBUTE_FORMAT_URI`; override with `--saml-attribute-format` only if you know the
+upstream differs.
+
+**Why the role guards matter.** They are what keeps two user populations apart on one
+realm. Give the eID provider `--forbidden-role superuser`, and an eID login can never
+land on a superuser account even if one somehow carried a matching attribute.
+
+**`--transient` is incompatible with matching.** The Sweden Connect provider only copies
+SAML attributes onto the brokered context when `doNotStoreUsers` is set, while matching
+needs a persisted user to match against. With `--transient` the script registers the
+provider alone and creates neither the mapper nor the flow.
+
+**Two things the script deliberately does not do**, and prints a reminder about:
+
+- **Register our SP metadata upstream.** Fetch it from
+  `<url>/realms/<realm>/broker/<alias>/endpoint/descriptor` and check the endpoint URLs
+  name the host the upstream expects. Keycloak derives them from the request host, so
+  fetching through an admin or internal hostname yields metadata the upstream will reject
+  with *"Indicated response URL has not been registered"*.
+- **Relax the realm user profile.** Since Keycloak 24, `email`, `firstName` and
+  `lastName` are required by default, and provisioned users typically have none of them.
+  A correctly matched user is then sent straight to **Verify Profile** and an *Update
+  Account Information* form, which looks like a broken flow but is not.
+
 <a name="get-keycloak-plugins"></a>
-### 3.10. get-keycloak-plugins.sh
+### 3.11. get-keycloak-plugins.sh
 
 Fetches the Keycloak provider JARs for a given version of this project and unpacks them into a
 directory, ready to be copied to a Keycloak host.
