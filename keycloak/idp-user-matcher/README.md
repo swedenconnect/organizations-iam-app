@@ -12,8 +12,12 @@ Keycloak's stock `Detect Existing Broker User` matches an external identity to a
 opaque UUID username and no email address, so nothing ever matches and the stock recipe cannot be
 used. This authenticator matches on a user attribute instead — typically `personalIdentityNumber`.
 
-Provider id: `idp-detect-existing-user-by-attribute`
+Provider id: `idp-detect-existing-user-by-attr`
 Display name: **Detect Existing Broker User By Attribute**
+
+Note that the provider id abbreviates the last word while the display name spells it out.
+`idp-detect-existing-user-by-attr` is the exact value the Admin REST API expects as
+`provider`, and `idp-detect-existing-user-by-attribute` matches nothing.
 
 On each first broker login it:
 
