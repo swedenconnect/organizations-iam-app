@@ -39,8 +39,8 @@ CACERT="${REPO_ROOT}/compose/config/common/tls.crt"
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   cat <<EOF
-Mark a Keycloak client as managed by the IAM admin application, by setting the
-iam_admin_managed=true client attribute.
+Give a Keycloak client the OIDC client role under the IAM admin application, by setting
+the iam_admin_managed=true and iam_admin_oidc_client=true client attributes.
 
 Runs against the compose Keycloak at ${KC_URL}.
 
@@ -51,7 +51,7 @@ Options:
   --client-id <clientId>  Client ID of the target client
   --username <username>   Admin username for the Keycloak master realm
   --password <password>   Admin password for the Keycloak master realm
-  --help, -h             Show this help message
+  --help, -h              Show this help message
 EOF
   exit 0
 fi
