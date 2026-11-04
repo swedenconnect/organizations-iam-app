@@ -195,13 +195,18 @@ The audit events can be read through the actuator's `auditevents` endpoint, whic
 Changes made directly in Keycloak, or through the scripts, do not pass through the application and are not
 audited.
 
-The following example writes the events to a file and to a PostgreSQL database. The `jdbc` backend requires
-`spring-jdbc` and a `DataSource`, see the library's documentation.
+The following example writes the events to a file and to a PostgreSQL database. The `jdbc` backend uses the
+`DataSource` configured with `spring.datasource.*`. The application does not include `spring-jdbc` or a database
+driver, so these must be added to the classpath, see the library's documentation.
 
 ```yaml
 spring:
   application:
     name: iam-admin
+  datasource:
+    url: jdbc:postgresql://db.example.com:5432/iam_audit
+    username: iam_audit
+    password: ${AUDIT_DB_PASSWORD}
 
 audit:
   default-principal: system
