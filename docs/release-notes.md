@@ -10,7 +10,8 @@
 
 **Date:** _not yet released_
 
-- First official release.
+- Switching organization no longer reuses the access token obtained for the previous organization. Applications using the iam-security starter now keep access tokens per user, organization and
+  function in the session. See [issue #99](https://github.com/swedenconnect/organizations-iam-app/issues/99).
 
 - Import of a large file no longer stops part-way, and shows its progress ([#104](https://github.com/swedenconnect/organizations-iam-app/issues/104)).
 
@@ -21,6 +22,7 @@
 - The admin application now writes an audit log of logins, changes and refused operations. See [Audit Events](audit-events.md). Production deployments must configure where the log is stored.
 
 - The admin application now has Spring Boot Actuator endpoints, `health` and `info`. See [Management Endpoints](iam-admin-configuration.md#management-endpoints).
+
 
 ### Version 0.9.8
 
