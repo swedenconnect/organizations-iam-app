@@ -23,6 +23,10 @@ Full documentation is available at https://docs.swedenconnect.se/organizations-i
 | [demo](demo) | Example applications showing how the security library is integrated, a demo app acting as OIDC and OAuth2 client, and a demo service acting as resource server. |
 | [compose](compose) | The Docker Compose local development environment for the services and Keycloak. See [compose/README.md](compose/README.md) for how to set it up. |
 
+## For maintainers
+
+How to make a release, and what is published to Maven Central and as Docker images, is described in [internal/release.md](internal/release.md).
+
 ---
 
 Copyright &copy; 2026, [Myndigheten för digital förvaltning - Swedish Agency for

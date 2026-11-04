@@ -45,4 +45,41 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+
+    <!--
+      The theme holds no Java code, so the release profile of the parent builds no javadoc jar for it. Maven Central
+      requires one for a jar, so an empty one is built here. The source jar is built by the parent, from the theme
+      resources.
+      -->
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-jar-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>empty-javadoc-jar</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+                <configuration>
+                  <classifier>javadoc</classifier>
+                  <classesDirectory>${project.build.directory}/empty</classesDirectory>
+                  <forceCreation>true</forceCreation>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+
+        </plugins>
+      </build>
+    </profile>
+
+  </profiles>
 </project>

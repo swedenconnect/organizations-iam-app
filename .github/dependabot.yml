@@ -1,0 +1,77 @@
+# Dependabot version updates for the Maven dependencies and plugins, for the GitHub Actions used by
+# the workflows, and for the npm packages of the two frontends.
+#
+# Security updates are enabled in the repository settings and are not affected by this file. They
+# are opened as soon as an advisory is published, whatever the schedule below says.
+#
+# Spring, Nimbus, Bouncy Castle and the Sweden Connect and OIDC Sweden libraries get a pull request
+# of their own each. Other minor and patch updates are grouped into one pull request per ecosystem,
+# to keep the number of pull requests down. Other major updates get a pull request each, since they
+# may need code changes. A dependency goes to the first group it matches.
+version: 2
+
+updates:
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "build"
+    ignore:
+      # The xmlsec version is pinned in the parent POM.
+      - dependency-name: "org.apache.santuario:xmlsec"
+    groups:
+      # Spring Boot and Spring Framework are updated together, since a Spring Boot release
+      # depends on a given Spring Framework version.
+      spring:
+        patterns:
+          - "org.springframework:*"
+          - "org.springframework.boot:*"
+      # The Nimbus JOSE+JWT and OAuth 2.0 SDK libraries depend on each other.
+      nimbus:
+        patterns:
+          - "com.nimbusds:*"
+      # The Bouncy Castle artifacts share one version.
+      bouncycastle:
+        patterns:
+          - "org.bouncycastle:*"
+      # The Sweden Connect and OIDC Sweden libraries are updated in a pull request of their own,
+      # major updates included.
+      sweden-connect:
+        patterns:
+          - "se.swedenconnect.*"
+          - "se.oidc.*"
+      maven-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # The admin application frontend and the demo application frontend. Minor and patch updates are
+  # grouped into one pull request per frontend, and every major update gets a pull request of its own.
+  - package-ecosystem: "npm"
+    directories:
+      - "/iam-admin-app/frontend"
+      - "/demo/demo-app/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "build"
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
