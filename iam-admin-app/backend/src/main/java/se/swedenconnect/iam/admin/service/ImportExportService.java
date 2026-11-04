@@ -49,7 +49,7 @@ public interface ImportExportService {
    * Parses and validates an uploaded import file against the current state of the realm,
    * without creating anything. Entries that already exist (matched on the same identifiers the
    * application already enforces uniqueness on) are reported as duplicates and excluded from the
-   * batch that {@link #confirm} would act on; entries with invalid data or a reference to a
+   * batch that {@link #startImport} would act on; entries with invalid data or a reference to a
    * function/organization that resolves neither in Keycloak nor earlier in the same file are
    * reported as errors and likewise excluded.
    *

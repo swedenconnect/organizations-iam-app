@@ -1,5 +1,10 @@
+<!--
+  The project URL and the SCM values are inherited as they are. Without the child.*.inherit.append.path attributes,
+  Maven appends the artifact id of each module to them, which gives URLs that do not exist.
+-->
 <project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd"
+         child.project.url.inherit.append.path="false">
 
   <modelVersion>4.0.0</modelVersion>
 
@@ -8,13 +13,14 @@
   <packaging>pom</packaging>
   <version>1.0.0-SNAPSHOT</version>
 
-  <name>Sween Connect :: IAM :: Organizations and Users Registration :: Parent POM</name>
+  <name>Sweden Connect :: IAM :: Organizations and Users Registration :: Parent POM</name>
   <description>Parent POM for the Sweden Connect IAM for Organizations and Users Registration</description>
   <url>https://www.swedenconnect.se</url>
 
-  <scm>
+  <scm child.scm.connection.inherit.append.path="false" child.scm.developerConnection.inherit.append.path="false"
+       child.scm.url.inherit.append.path="false">
     <connection>scm:git:https://github.com/swedenconnect/organizations-iam-app.git</connection>
-    <developerConnection>scm:git:https://swedenconnect/organizations-iam-app.git</developerConnection>
+    <developerConnection>scm:git:https://github.com/swedenconnect/organizations-iam-app.git</developerConnection>
     <url>https://github.com/swedenconnect/organizations-iam-app/tree/main</url>
   </scm>
 
@@ -464,6 +470,11 @@
             </executions>
           </plugin>
 
+          <!--
+            Every module of the build is published, except those that set the skipPublishing property to true, which
+            the plugin reads. The demo tree sets it in demo/pom.xml. Nothing lists the modules, so a module added
+            elsewhere later is published too. internal/scripts/check-release-version.sh reads the same property.
+            -->
           <plugin>
             <groupId>org.sonatype.central</groupId>
             <artifactId>central-publishing-maven-plugin</artifactId>

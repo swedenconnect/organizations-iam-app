@@ -277,7 +277,7 @@ public class UserController {
    * Returns a single user by their Keycloak UUID.
    *
    * <p>A regular admin may only address a user that is visible to them, see
-   * {@link #resolveVisibleUser(AdminSessionData, String)}. A user outside the caller's scope is
+   * {@code resolveVisibleUser}. A user outside the caller's scope is
    * reported exactly as an unknown UUID is.</p>
    *
    * @param userId  the Keycloak user UUID
@@ -326,7 +326,7 @@ public class UserController {
    * <p>Personal identity number and rights are not updated here.</p>
    *
    * <p>A regular admin may only address a user that is visible to them, see
-   * {@link #resolveVisibleUser(AdminSessionData, String)}. A user outside the caller's scope is
+   * {@code resolveVisibleUser}. A user outside the caller's scope is
    * reported exactly as an unknown UUID is, and is left unchanged.</p>
    *
    * @param userId  the Keycloak user UUID
