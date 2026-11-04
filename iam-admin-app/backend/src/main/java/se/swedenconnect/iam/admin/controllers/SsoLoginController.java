@@ -21,6 +21,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import se.swedenconnect.iam.admin.audit.SessionCorrelationId;
 import se.swedenconnect.iam.admin.auth.OrgRightsOidcUserService;
 
 /**
@@ -36,6 +37,11 @@ import se.swedenconnect.iam.admin.auth.OrgRightsOidcUserService;
  * to {@link se.swedenconnect.iam.admin.auth.SsoAuthorizationRequestResolver} that {@code prompt=login}
  * should be omitted, allowing KeyCloak to reuse an existing SSO session.</p>
  *
+ * <p>The optional {@code correlation-id} query parameter lets the calling application tie the audit
+ * events of the session to its own flow. A value with an accepted format becomes the session's
+ * correlation ID, unless the session already has one. An invalid value is ignored, see
+ * {@link SessionCorrelationId#assign}.</p>
+ *
  * @author Martin Lindström
  */
 @Controller
@@ -46,7 +52,13 @@ public class SsoLoginController {
   public String ssoLogin(
       @RequestParam(name = "org", required = false) final @Nullable String org,
       @RequestParam(name = "func", required = false) final @Nullable String func,
+      @RequestParam(name = SessionCorrelationId.PARAMETER, required = false) final @Nullable String correlationId,
       final HttpSession session) {
+
+    if (correlationId != null && !SessionCorrelationId.isValid(correlationId)) {
+      log.info("SSO login: ignoring a correlation-id of invalid format");
+    }
+    SessionCorrelationId.assign(session, correlationId);
 
     session.setAttribute(OrgRightsOidcUserService.SSO_ACTIVE_ATTR, Boolean.TRUE);
     session.setAttribute(OrgRightsOidcUserService.SSO_ORG_ATTR, org);

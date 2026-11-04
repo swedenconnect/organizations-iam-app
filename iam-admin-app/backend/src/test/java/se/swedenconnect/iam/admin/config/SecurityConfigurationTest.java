@@ -15,6 +15,7 @@
  */
 package se.swedenconnect.iam.admin.config;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -26,6 +27,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.IOException;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -44,7 +46,7 @@ class SecurityConfigurationTest {
 
   @BeforeEach
   void setUp() {
-    this.config = new SecurityConfiguration();
+    this.config = new SecurityConfiguration(mock(ApplicationEventPublisher.class));
     ReflectionTestUtils.setField(this.config, "contextPath", "/");
   }
 

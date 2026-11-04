@@ -54,3 +54,6 @@ build-snapshot.sh
 
 ### Claude
 .claude
+
+### Audit log written by the compose environment ###
+compose/config/iam-admin-app/audit/

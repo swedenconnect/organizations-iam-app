@@ -156,11 +156,14 @@
 
   <section>
     <h2>Organization and User Admin Application</h2>
-    <span class="port">17005</span>
+    <span class="port">17005, management 17006</span>
     <p class="desc">Manages organizations, users and group memberships.</p>
     <ul>
       <li><a href="https://local.dev.swedenconnect.se:17005" target="_blank" rel="noopener">IAM Admin Application</a></li>
+      <li><a href="https://local.dev.swedenconnect.se:17006/actuator/health" target="_blank" rel="noopener">Health</a></li>
+      <li><a href="https://local.dev.swedenconnect.se:17006/actuator/info" target="_blank" rel="noopener">Info</a></li>
     </ul>
+    <p class="note">Actuator endpoints are served on the management port 17006.</p>
   </section>
 
   <!--

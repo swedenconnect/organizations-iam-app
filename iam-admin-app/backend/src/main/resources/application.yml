@@ -46,6 +46,26 @@ spring:
             authorization-grant-type: client_credentials
             client-authentication-method: private_key_jwt
 
+# Actuator endpoints are served on a port of their own, so that they can be kept off the network
+# the application is reached through. Only health and info are exposed.
+management:
+  server:
+    port: 17006
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+
+# Audit logging. No repository is configured here, so the audit events are only kept in memory.
+# A production deployment must configure a durable repository, see docs/iam-admin-configuration.md.
+audit:
+  default-principal: system
+
 iam:
   admin:
     sso-login-path: /sso/login

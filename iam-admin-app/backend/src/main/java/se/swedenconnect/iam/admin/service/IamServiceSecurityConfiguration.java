@@ -15,13 +15,19 @@
  */
 package se.swedenconnect.iam.admin.service;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.server.resource.web.access.BearerTokenAccessDeniedHandler;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
+import se.swedenconnect.iam.admin.audit.AuditData;
+import se.swedenconnect.iam.admin.audit.AuditOperations;
+import se.swedenconnect.iam.admin.audit.IamAuditEvent;
 
 /**
  * Security configuration for the IAM Service API ({@code /iam-api/**}).
@@ -36,6 +42,9 @@ import org.springframework.security.web.SecurityFilterChain;
  * role from the token's {@code realm_access.roles} claim and maps it to
  * {@code ROLE_SUPERUSER}.</p>
  *
+ * <p>A request refused by method security, such as a {@code @PreAuthorize} check, is recorded as an
+ * {@code access_denied} audit event.</p>
+ *
  * @author Martin Lindström
  */
 @Configuration
@@ -43,7 +52,19 @@ public class IamServiceSecurityConfiguration {
 
   @Bean
   @Order(1)
-  public SecurityFilterChain iamServiceFilterChain(final HttpSecurity http) throws Exception {
+  public SecurityFilterChain iamServiceFilterChain(
+      final HttpSecurity http, final ApplicationEventPublisher eventPublisher) throws Exception {
+
+    final BearerTokenAccessDeniedHandler delegate = new BearerTokenAccessDeniedHandler();
+    final AccessDeniedHandler accessDeniedHandler = (request, response, exception) -> {
+      final String operation = "/iam-api/v1/organizations".equals(request.getServletPath())
+          ? AuditOperations.LIST_IAM_ORGANIZATIONS
+          : AuditOperations.IAM_API_REQUEST;
+      eventPublisher.publishEvent(IamAuditEvent.accessDenied(
+          new AuditData.Operation(operation, AuditOperations.NOT_SUPERUSER), AuditData.Target.none()));
+      delegate.handle(request, response, exception);
+    };
+
     http
         .securityMatcher("/iam-api/**")
         .csrf(AbstractHttpConfigurer::disable)
@@ -53,6 +74,7 @@ public class IamServiceSecurityConfiguration {
             .anyRequest().authenticated()
         )
         .oauth2ResourceServer(rs -> rs
+            .accessDeniedHandler(accessDeniedHandler)
             .jwt(jwt -> jwt
                 .jwtAuthenticationConverter(new RealmRoleJwtAuthenticationConverter())));
 

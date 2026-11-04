@@ -15,6 +15,7 @@
  */
 package se.swedenconnect.iam.admin.service;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,6 +46,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -91,7 +93,7 @@ class ImportExportServiceTest {
     this.properties = new IamAdminProperties();
     // The import runs on the calling thread, so that a test sees its result as soon as it is started.
     this.service = new ImportExportServiceImpl(
-        this.keycloakAdminClient, this.organizationService, this.objectMapper, this.properties, Runnable::run);
+        this.keycloakAdminClient, this.organizationService, this.objectMapper, this.properties, mock(ApplicationEventPublisher.class), Runnable::run);
     this.session = new MockHttpSession();
 
     // A realm holding the organization and the function every test file references, and nobody else.
@@ -407,7 +409,7 @@ class ImportExportServiceTest {
   void confirmReturnsAtOnceAndTheReportIsReadOnceTheImportHasRun() {
     final List<Runnable> pending = new ArrayList<>();
     final ImportExportServiceImpl deferred = new ImportExportServiceImpl(
-        this.keycloakAdminClient, this.organizationService, this.objectMapper, this.properties, pending::add);
+        this.keycloakAdminClient, this.organizationService, this.objectMapper, this.properties, mock(ApplicationEventPublisher.class), pending::add);
     final ImportPreviewReport report =
         deferred.dryRun(minimalFile().getBytes(StandardCharsets.UTF_8), "actor", this.session);
 
@@ -442,7 +444,7 @@ class ImportExportServiceTest {
   void anotherImportCannotBeStartedWhileOneIsRunning() {
     final List<Runnable> pending = new ArrayList<>();
     final ImportExportServiceImpl deferred = new ImportExportServiceImpl(
-        this.keycloakAdminClient, this.organizationService, this.objectMapper, this.properties, pending::add);
+        this.keycloakAdminClient, this.organizationService, this.objectMapper, this.properties, mock(ApplicationEventPublisher.class), pending::add);
     final ImportPreviewReport first =
         deferred.dryRun(minimalFile().getBytes(StandardCharsets.UTF_8), "actor", this.session);
     deferred.startImport(first.batchId(), "actor", this.session);

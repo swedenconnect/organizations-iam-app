@@ -897,6 +897,12 @@ The endpoint accepts two optional query parameters:
 |---|---|
 | `org` | Ten-digit organization identifier. If present, the IAM admin app verifies that the user has admin rights on this organization before granting access. |
 | `func` | Function identifier (e.g. `demo`). If present, the IAM admin app verifies that the user has admin rights on this function and restricts the session to only this function, the user can only view and manage rights for this function, not for other functions in the organization. |
+| `correlation-id` | An identifier from the calling application's own flow, for example the ID it uses in its own logs. The IAM admin app writes it as the correlation ID of every audit event in the session, so that what the user does there can be tied to the flow in the calling application. See [Audit Events](audit-events.md). |
+
+The `correlation-id` may contain letters, digits, `-`, `_`, `.` and `:`, and at most 128 characters. A value
+that does not meet this is ignored, and the login proceeds with an identifier the IAM admin app generates. If the
+user already has a session in the IAM admin app, that session keeps the identifier it has, and a supplied
+`correlation-id` is ignored.
 
 <a name="constructing-the-redirect-url"></a>
 ### 5.2. Constructing the Redirect URL

@@ -21,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -31,6 +32,10 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import se.swedenconnect.iam.admin.audit.AuditData;
+import se.swedenconnect.iam.admin.audit.AuditOperations;
+import se.swedenconnect.iam.admin.audit.IamAuditEvent;
+import se.swedenconnect.iam.admin.audit.IamErrorAuditEvent;
 import se.swedenconnect.iam.admin.controllers.dto.ClientDriftResponse;
 import se.swedenconnect.iam.admin.controllers.dto.CreateManagedClientRequest;
 import se.swedenconnect.iam.admin.controllers.dto.ManagedClientResponse;
@@ -81,6 +86,7 @@ public class ClientController {
 
   private final KeycloakAdminClient keycloakAdminClient;
   private final ClientReconciliationService reconciliationService;
+  private final ApplicationEventPublisher eventPublisher;
 
   /**
    * Lists everything the application administers: managed clients and resource servers. Each entry
@@ -91,9 +97,10 @@ public class ClientController {
    */
   @GetMapping(value = "/clients", produces = MediaType.APPLICATION_JSON_VALUE)
   public ResponseEntity<?> getClients(final HttpServletRequest request) {
-    if (!isSuperuser(request)) {
+    final String denial = denialReason(request);
+    if (denial != null) {
       log.info("GET /api/clients — rejected: caller is not a superuser");
-      return ResponseEntity.status(403).build();
+      return this.denied(AuditOperations.LIST_CLIENTS, denial, null);
     }
 
     try {
@@ -120,9 +127,10 @@ public class ClientController {
       @PathVariable final String id,
       final HttpServletRequest request) {
 
-    if (!isSuperuser(request)) {
+    final String denial = denialReason(request);
+    if (denial != null) {
       log.info("GET /api/clients/{} — rejected: caller is not a superuser", id);
-      return ResponseEntity.status(403).build();
+      return this.denied(AuditOperations.READ_CLIENT, denial, null);
     }
 
     try {
@@ -152,9 +160,10 @@ public class ClientController {
       @RequestBody final CreateManagedClientRequest req,
       final HttpServletRequest request) {
 
-    if (!isSuperuser(request)) {
+    final String denial = denialReason(request);
+    if (denial != null) {
       log.info("POST /api/clients — rejected: caller is not a superuser");
-      return ResponseEntity.status(403).build();
+      return this.denied(AuditOperations.CREATE_CLIENT, denial, AuditData.Client.of(req.clientId()));
     }
 
     final String clientIdError = validateClientId(req.clientId());
@@ -187,9 +196,19 @@ public class ClientController {
           false,
           !Boolean.FALSE.equals(req.orgRightsIdToken()),
           !Boolean.FALSE.equals(req.orgRightsAccessToken()));
+      this.eventPublisher.publishEvent(IamAuditEvent.clientCreated(AuditData.Client.withSettings(created)));
 
       if (oidcClient) {
-        this.reconciliationService.reconcileClient(req.clientId());
+        try {
+          this.reconciliationService.reconcileClient(req.clientId());
+        }
+        catch (final KeycloakAdminException e) {
+          // The client exists, so the failure is recorded on top of its creation
+          log.error("POST /api/clients — client '{}' created, but reconciliation failed: {}",
+              req.clientId(), e.getMessage(), e);
+          this.operationFailed(AuditOperations.CREATE_CLIENT, req.clientId(), e);
+          return ResponseEntity.status(500).body(e.getMessage());
+        }
       }
 
       log.info("POST /api/clients — client '{}' created and reconciled", req.clientId());
@@ -197,6 +216,7 @@ public class ClientController {
     }
     catch (final KeycloakAdminException e) {
       log.error("POST /api/clients — Keycloak error: {}", e.getMessage(), e);
+      this.operationFailed(AuditOperations.CREATE_CLIENT, req.clientId(), e);
       return ResponseEntity.status(500).body(e.getMessage());
     }
   }
@@ -219,9 +239,10 @@ public class ClientController {
       @RequestBody final UpdateManagedClientRequest req,
       final HttpServletRequest request) {
 
-    if (!isSuperuser(request)) {
+    final String denial = denialReason(request);
+    if (denial != null) {
       log.info("PUT /api/clients/{} — rejected: caller is not a superuser", id);
-      return ResponseEntity.status(403).build();
+      return this.denied(AuditOperations.UPDATE_CLIENT, denial, null);
     }
 
     final boolean oidcClient = !Boolean.FALSE.equals(req.oidcClient());
@@ -233,8 +254,9 @@ public class ClientController {
       return ResponseEntity.badRequest().body(error);
     }
 
+    ManagedClientInfo existing = null;
     try {
-      final ManagedClientInfo existing = this.keycloakAdminClient.findManagedClientByUuid(id).orElse(null);
+      existing = this.keycloakAdminClient.findManagedClientByUuid(id).orElse(null);
       if (existing == null) {
         log.info("PUT /api/clients/{} — not found", id);
         return ResponseEntity.notFound().build();
@@ -252,9 +274,23 @@ public class ClientController {
           req.orgRightsIdToken() == null ? existing.orgRightsIdToken() : req.orgRightsIdToken(),
           req.orgRightsAccessToken() == null
               ? existing.orgRightsAccessToken() : req.orgRightsAccessToken());
+      final AuditData.Change change = AuditData.Change.between(
+          AuditData.Client.settingsOf(existing), AuditData.Client.settingsOf(updated), true);
+      if (change != null) {
+        this.eventPublisher.publishEvent(IamAuditEvent.clientUpdated(existing.clientId(), change));
+      }
 
       if (oidcClient) {
-        this.reconciliationService.reconcileClient(existing.clientId());
+        try {
+          this.reconciliationService.reconcileClient(existing.clientId());
+        }
+        catch (final KeycloakAdminException e) {
+          // The client has changed, so the failure is recorded on top of the change
+          log.error("PUT /api/clients/{} — client '{}' updated, but reconciliation failed: {}",
+              id, existing.clientId(), e.getMessage(), e);
+          this.operationFailed(AuditOperations.UPDATE_CLIENT, existing.clientId(), e);
+          return ResponseEntity.status(500).body(e.getMessage());
+        }
       }
 
       log.info("PUT /api/clients/{} — client '{}' updated and reconciled", id, existing.clientId());
@@ -262,6 +298,7 @@ public class ClientController {
     }
     catch (final KeycloakAdminException e) {
       log.error("PUT /api/clients/{} — Keycloak error: {}", id, e.getMessage(), e);
+      this.operationFailed(AuditOperations.UPDATE_CLIENT, existing != null ? existing.clientId() : null, e);
       return ResponseEntity.status(500).body(e.getMessage());
     }
   }
@@ -285,12 +322,13 @@ public class ClientController {
       @PathVariable final String id,
       final HttpServletRequest request) {
 
-    if (!isSuperuser(request)) {
+    final String denial = denialReason(request);
+    if (denial != null) {
       log.info("DELETE /api/clients/{} — rejected: caller is not a superuser", id);
-      return ResponseEntity.status(403).build();
+      return this.denied(AuditOperations.DELETE_CLIENT, denial, null);
     }
 
-    final String clientId;
+    String clientId = null;
     try {
       final ManagedClientInfo existing = this.keycloakAdminClient.findManagedClientByUuid(id).orElse(null);
       if (existing == null) {
@@ -300,6 +338,9 @@ public class ClientController {
       if (existing.serviceAccount()) {
         log.info("DELETE /api/clients/{} — rejected: client '{}' holds a service account",
             id, existing.clientId());
+        this.eventPublisher.publishEvent(IamAuditEvent.operationRejected(
+            new AuditData.Operation(AuditOperations.DELETE_CLIENT, AuditOperations.SERVICE_ACCOUNT_CLIENT),
+            AuditData.Target.none().client(AuditData.Client.of(existing.clientId()))));
         return ResponseEntity.status(409).body(SERVICE_ACCOUNT_CLIENT_PROTECTED);
       }
       clientId = existing.clientId();
@@ -307,10 +348,12 @@ public class ClientController {
     }
     catch (final KeycloakAdminException e) {
       log.error("DELETE /api/clients/{} — Keycloak error: {}", id, e.getMessage(), e);
+      this.operationFailed(AuditOperations.DELETE_CLIENT, clientId, e);
       return ResponseEntity.status(500).body(e.getMessage());
     }
 
     log.info("DELETE /api/clients/{} — client '{}' deleted successfully", id, clientId);
+    this.eventPublisher.publishEvent(IamAuditEvent.clientDeleted(clientId));
     return ResponseEntity.noContent().build();
   }
 
@@ -328,9 +371,10 @@ public class ClientController {
   @GetMapping(value = "/clients/drift", produces = MediaType.APPLICATION_JSON_VALUE)
   public ResponseEntity<?> getDrift(final HttpServletRequest request) {
 
-    if (!isSuperuser(request)) {
+    final String denial = denialReason(request);
+    if (denial != null) {
       log.info("GET /api/clients/drift — rejected: caller is not a superuser");
-      return ResponseEntity.status(403).build();
+      return this.denied(AuditOperations.READ_CLIENT_DRIFT, denial, null);
     }
 
     try {
@@ -359,13 +403,15 @@ public class ClientController {
       @PathVariable final String id,
       final HttpServletRequest request) {
 
-    if (!isSuperuser(request)) {
+    final String denial = denialReason(request);
+    if (denial != null) {
       log.info("POST /api/clients/{}/reconcile — rejected: caller is not a superuser", id);
-      return ResponseEntity.status(403).build();
+      return this.denied(AuditOperations.RECONCILE_CLIENT, denial, null);
     }
 
+    ManagedClientInfo client = null;
     try {
-      final ManagedClientInfo client = this.keycloakAdminClient.findManagedClientByUuid(id).orElse(null);
+      client = this.keycloakAdminClient.findManagedClientByUuid(id).orElse(null);
       if (client == null) {
         log.info("POST /api/clients/{}/reconcile — not found", id);
         return ResponseEntity.notFound().build();
@@ -376,11 +422,13 @@ public class ClientController {
         return ResponseEntity.badRequest().body(
             "a resource server holds no scopes, policies or permissions and is not reconciled");
       }
-      return ResponseEntity.ok(
-          toResponse(this.reconciliationService.reconcileClient(client.clientId())));
+      final ReconciliationReport report = this.reconciliationService.reconcileClient(client.clientId());
+      this.eventPublisher.publishEvent(IamAuditEvent.clientsReconciled(manual(report), client.clientId()));
+      return ResponseEntity.ok(toResponse(report));
     }
     catch (final KeycloakAdminException e) {
       log.error("POST /api/clients/{}/reconcile — Keycloak error: {}", id, e.getMessage(), e);
+      this.operationFailed(AuditOperations.RECONCILE_CLIENT, client != null ? client.clientId() : null, e);
       return ResponseEntity.status(500).body(e.getMessage());
     }
   }
@@ -394,16 +442,20 @@ public class ClientController {
   @PostMapping(value = "/clients/reconcile", produces = MediaType.APPLICATION_JSON_VALUE)
   public ResponseEntity<?> reconcileAll(final HttpServletRequest request) {
 
-    if (!isSuperuser(request)) {
+    final String denial = denialReason(request);
+    if (denial != null) {
       log.info("POST /api/clients/reconcile — rejected: caller is not a superuser");
-      return ResponseEntity.status(403).build();
+      return this.denied(AuditOperations.RECONCILE_CLIENTS, denial, null);
     }
 
     try {
-      return ResponseEntity.ok(toResponse(this.reconciliationService.reconcileAll()));
+      final ReconciliationReport report = this.reconciliationService.reconcileAll();
+      this.eventPublisher.publishEvent(IamAuditEvent.clientsReconciled(manual(report), null));
+      return ResponseEntity.ok(toResponse(report));
     }
     catch (final KeycloakAdminException e) {
       log.error("POST /api/clients/reconcile — Keycloak error: {}", e.getMessage(), e);
+      this.operationFailed(AuditOperations.RECONCILE_CLIENTS, null, e);
       return ResponseEntity.status(500).body(e.getMessage());
     }
   }
@@ -549,14 +601,57 @@ public class ClientController {
   }
 
   /**
-   * Tells whether the session belongs to an authenticated superuser.
+   * Tells why the caller may not use the endpoints of this controller, which are reserved to
+   * superusers.
    *
    * @param request the HTTP servlet request
-   * @return {@code true} if the caller is a superuser
+   * @return the {@code access_denied} reason, or {@code null} if the caller is a superuser
    */
-  private static boolean isSuperuser(final @NonNull HttpServletRequest request) {
+  private static @Nullable String denialReason(final @NonNull HttpServletRequest request) {
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
-    return data != null && data.currentUserIsSuperuser();
+    if (data == null) {
+      return AuditOperations.NO_ADMIN_SESSION;
+    }
+    return data.currentUserIsSuperuser() ? null : AuditOperations.NOT_SUPERUSER;
+  }
+
+  /**
+   * Records an {@code access_denied} audit event and returns the 403 response.
+   *
+   * @param operation the operation refused
+   * @param reason the reason
+   * @param client the client addressed, or {@code null} if the request names it by UUID only
+   * @return a 403 response
+   */
+  private ResponseEntity<?> denied(
+      final @NonNull String operation, final @NonNull String reason, final AuditData.@Nullable Client client) {
+    this.eventPublisher.publishEvent(IamAuditEvent.accessDenied(
+        new AuditData.Operation(operation, reason), AuditData.Target.none().client(client)));
+    return ResponseEntity.status(403).build();
+  }
+
+  /**
+   * Records an {@code operation_failed} audit event.
+   *
+   * @param operation the operation
+   * @param clientId the client_id, or {@code null} if not known
+   * @param e the error
+   */
+  private void operationFailed(
+      final @NonNull String operation, final @Nullable String clientId, final @NonNull KeycloakAdminException e) {
+    this.eventPublisher.publishEvent(IamErrorAuditEvent.operationFailed(new AuditData.Operation(operation, null),
+        AuditData.Target.none().client(clientId != null ? AuditData.Client.of(clientId) : null), e));
+  }
+
+  /**
+   * Describes a manual reconciliation run for the audit log.
+   *
+   * @param report the report of the run
+   * @return the reconciliation object
+   */
+  private static AuditData.@NonNull Reconciliation manual(final @NonNull ReconciliationReport report) {
+    return new AuditData.Reconciliation(AuditData.Reconciliation.MANUAL,
+        report.clients(), report.created(), report.removed(), report.errors());
   }
 
   /**

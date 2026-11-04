@@ -47,6 +47,7 @@
     <spring-boot.version>4.1.2</spring-boot.version>
     <bc.version>1.86</bc.version>
     <credentials-support.version>2.3.0</credentials-support.version>
+    <audit-support.version>1.0.2</audit-support.version>
   </properties>
 
   <repositories>
@@ -141,6 +142,12 @@
         <groupId>se.swedenconnect.security</groupId>
         <artifactId>credentials-support-nimbus</artifactId>
         <version>${credentials-support.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>se.swedenconnect.spring.audit</groupId>
+        <artifactId>audit-support-spring-boot-starter</artifactId>
+        <version>${audit-support.version}</version>
       </dependency>
 
       <dependency>

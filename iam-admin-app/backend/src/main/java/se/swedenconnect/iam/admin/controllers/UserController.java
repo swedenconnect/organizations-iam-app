@@ -20,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -33,6 +34,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import se.swedenconnect.iam.admin.audit.AuditData;
+import se.swedenconnect.iam.admin.audit.AuditOperations;
+import se.swedenconnect.iam.admin.audit.IamAuditEvent;
+import se.swedenconnect.iam.admin.audit.IamErrorAuditEvent;
 import se.swedenconnect.iam.admin.config.IamAdminProperties;
 import se.swedenconnect.iam.admin.controllers.dto.CreateUserRequest;
 import se.swedenconnect.iam.admin.controllers.dto.UpdateUserRequest;
@@ -43,6 +48,7 @@ import se.swedenconnect.iam.admin.keycloak.AdminSessionBootstrapHandler;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminClient;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminException;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
+import se.swedenconnect.iam.admin.keycloak.model.RightHolder;
 import se.swedenconnect.iam.admin.keycloak.model.UserInfo;
 import se.swedenconnect.iam.admin.keycloak.model.UserRight;
 
@@ -72,6 +78,8 @@ public class UserController {
   private final KeycloakAdminClient keycloakAdminClient;
 
   private final IamAdminProperties properties;
+
+  private final ApplicationEventPublisher eventPublisher;
 
   private static final int DEFAULT_PAGE_SIZE = 50;
 
@@ -104,7 +112,7 @@ public class UserController {
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null) {
       log.info("GET /api/users — rejected: no valid admin session");
-      return ResponseEntity.status(403).build();
+      return this.denied(AuditOperations.LIST_USERS, AuditOperations.NO_ADMIN_SESSION, AuditData.Target.none());
     }
 
     final int effectiveSize = size > 0 ? size : DEFAULT_PAGE_SIZE;
@@ -180,7 +188,7 @@ public class UserController {
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null) {
       log.info("POST /api/users — rejected: no valid admin session");
-      return ResponseEntity.status(403).build();
+      return this.denied(AuditOperations.CREATE_USER, AuditOperations.NO_ADMIN_SESSION, AuditData.Target.none());
     }
 
     final IamAdminProperties.UserRegistration settings = this.properties.getUserRegistration();
@@ -239,9 +247,20 @@ public class UserController {
       }
     }
 
-    final String userId = this.keycloakAdminClient.createUser(
-        selectedUserId, name, email, pin, orgAffiliation, phoneNumber, temporaryPassword);
+    final String userId;
+    try {
+      userId = this.keycloakAdminClient.createUser(
+          selectedUserId, name, email, pin, orgAffiliation, phoneNumber, temporaryPassword);
+    }
+    catch (final KeycloakAdminException e) {
+      this.eventPublisher.publishEvent(IamErrorAuditEvent.operationFailed(
+          new AuditData.Operation(AuditOperations.CREATE_USER, null), AuditData.Target.none(), e));
+      throw e;
+    }
     log.info("POST /api/users — user '{}' created with id '{}'", name, userId);
+    // TODO: hsaId and efosId are passed here when those eID attributes are implemented.
+    this.eventPublisher.publishEvent(IamAuditEvent.userCreated(new AuditData.User(
+        userId, name, pin, orgAffiliation, null, null, selectedUserId, temporaryPassword != null), null));
 
     final Map<String, String> body = new LinkedHashMap<>();
     body.put("id", userId);
@@ -274,10 +293,11 @@ public class UserController {
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null) {
       log.info("GET /api/users/{} — rejected: no valid admin session", userId);
-      return ResponseEntity.status(403).build();
+      return this.denied(AuditOperations.READ_USER, AuditOperations.NO_ADMIN_SESSION,
+          AuditData.Target.none().user(this.auditUser(userId)));
     }
 
-    return this.resolveVisibleUser(data, userId)
+    return this.resolveVisibleUser(data, userId, AuditOperations.READ_USER)
         .map(u -> {
           final String firstName = u.firstName() != null ? u.firstName() : "";
           final String lastName = u.lastName() != null ? u.lastName() : "";
@@ -327,17 +347,20 @@ public class UserController {
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null) {
       log.info("PUT /api/users/{} — rejected: no valid admin session", userId);
-      return ResponseEntity.status(403).build();
+      return this.denied(AuditOperations.UPDATE_USER, AuditOperations.NO_ADMIN_SESSION,
+          AuditData.Target.none().user(this.auditUser(userId)));
     }
 
     final String currentUserId = getCurrentUserId();
     if (currentUserId == null) {
-      return ResponseEntity.status(403).build();
+      return this.denied(AuditOperations.UPDATE_USER, AuditOperations.NO_ADMIN_SESSION,
+          AuditData.Target.none().user(this.auditUser(userId)));
     }
 
     if (currentUserId.equals(userId)) {
       log.info("PUT /api/users/{} — rejected: self-update forbidden", userId);
-      return ResponseEntity.status(403).build();
+      return this.denied(AuditOperations.UPDATE_USER, AuditOperations.SELF_MODIFICATION,
+          AuditData.Target.none().user(this.auditUser(userId)));
     }
 
     final String name = req.name();
@@ -348,7 +371,8 @@ public class UserController {
       return ResponseEntity.badRequest().body("email is not valid");
     }
 
-    if (this.resolveVisibleUser(data, userId).isEmpty()) {
+    final UserInfo existing = this.resolveVisibleUser(data, userId, AuditOperations.UPDATE_USER).orElse(null);
+    if (existing == null) {
       log.info("PUT /api/users/{} — not found", userId);
       return ResponseEntity.notFound().build();
     }
@@ -356,6 +380,14 @@ public class UserController {
     try {
       this.keycloakAdminClient.updateUser(userId, name, req.email(), req.phoneNumber());
       log.info("PUT /api/users/{} — profile updated", userId);
+
+      final AuditData.Change change = AuditData.Change.between(
+          profileFields(AuditData.User.displayName(existing), existing.email(), existing.phoneNumber()),
+          profileFields(name, req.email(), req.phoneNumber()),
+          false);
+      if (change != null) {
+        this.eventPublisher.publishEvent(IamAuditEvent.userUpdated(AuditData.User.of(userId, name), change));
+      }
 
       // Re-fetch to return current state
       return this.keycloakAdminClient.fetchUserById(userId)
@@ -378,6 +410,9 @@ public class UserController {
     }
     catch (final KeycloakAdminException e) {
       log.error("PUT /api/users/{} — Keycloak error: {}", userId, e.getMessage());
+      this.eventPublisher.publishEvent(IamErrorAuditEvent.operationFailed(
+          new AuditData.Operation(AuditOperations.UPDATE_USER, null),
+          AuditData.Target.none().user(AuditData.User.of(existing)), e));
       return ResponseEntity.status(500).body(e.getMessage());
     }
   }
@@ -402,26 +437,35 @@ public class UserController {
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null) {
       log.info("DELETE /api/users/{} — rejected: no valid admin session", userId);
-      return ResponseEntity.status(403).build();
+      return this.denied(AuditOperations.DELETE_USER, AuditOperations.NO_ADMIN_SESSION,
+          AuditData.Target.none().user(this.auditUser(userId)));
     }
 
     if (!data.currentUserIsSuperuser()) {
       log.info("DELETE /api/users/{} — rejected: caller is not a superuser", userId);
-      return ResponseEntity.status(403).build();
+      return this.denied(AuditOperations.DELETE_USER, AuditOperations.NOT_SUPERUSER,
+          AuditData.Target.none().user(this.auditUser(userId)));
     }
 
     final String currentUserId = getCurrentUserId();
     if (currentUserId == null) {
-      return ResponseEntity.status(403).build();
+      return this.denied(AuditOperations.DELETE_USER, AuditOperations.NO_ADMIN_SESSION,
+          AuditData.Target.none().user(this.auditUser(userId)));
     }
 
     if (currentUserId.equals(userId)) {
       log.info("DELETE /api/users/{} — rejected: self-deletion forbidden", userId);
-      return ResponseEntity.status(403).build();
+      return this.denied(AuditOperations.DELETE_USER, AuditOperations.SELF_MODIFICATION,
+          AuditData.Target.none().user(this.auditUser(userId)));
     }
 
+    // The user and the rights are read before the deletion, since the audit entry records them.
+    final UserInfo user = this.keycloakAdminClient.fetchUserById(userId).orElse(null);
+    final AuditData.User auditUser = user != null ? AuditData.User.withIdentity(user) : AuditData.User.of(userId, null);
+    final List<UserRight> rights = this.keycloakAdminClient.fetchUserRights(userId);
+
     // Safety check: ensure no org or function is left without an admin (live Keycloak query)
-    for (final UserRight right : this.keycloakAdminClient.fetchUserRights(userId)) {
+    for (final UserRight right : rights) {
       if (!"admin".equals(right.right())) {
         continue;
       }
@@ -436,6 +480,13 @@ public class UserController {
       if (!otherAdminExists) {
         log.info("DELETE /api/users/{} — rejected: last admin for org '{}' function '{}'",
             userId, right.orgIdentifier(), right.functionId());
+        this.eventPublisher.publishEvent(IamAuditEvent.operationRejected(
+            new AuditData.Operation(AuditOperations.DELETE_USER, AuditOperations.LAST_ADMIN),
+            AuditData.Target.none()
+                .user(AuditData.User.of(userId, auditUser.displayName()))
+                .organization(right.orgIdentifier())
+                .function(right.functionId())
+                .right(right.right())));
         return ResponseEntity.status(409)
             .body(Map.of("reason", "LAST_ADMIN", "scope", right.orgIdentifier()));
       }
@@ -444,12 +495,18 @@ public class UserController {
     try {
       this.keycloakAdminClient.deleteUser(userId);
       log.info("DELETE /api/users/{} — user permanently deleted", userId);
-      return ResponseEntity.noContent().build();
     }
     catch (final KeycloakAdminException e) {
       log.error("DELETE /api/users/{} — Keycloak error: {}", userId, e.getMessage());
+      this.eventPublisher.publishEvent(IamErrorAuditEvent.operationFailed(
+          new AuditData.Operation(AuditOperations.DELETE_USER, null),
+          AuditData.Target.none().user(AuditData.User.of(userId, auditUser.displayName())), e));
       return ResponseEntity.status(500).body(e.getMessage());
     }
+    this.eventPublisher.publishEvent(IamAuditEvent.userDeleted(auditUser, rights.stream()
+        .map(r -> new RightHolder(userId, auditUser.displayName(), r.orgIdentifier(), r.functionId(), r.right()))
+        .toList()));
+    return ResponseEntity.noContent().build();
   }
 
   // ---------------------------------------------------------------------------
@@ -469,12 +526,16 @@ public class UserController {
    * organizations view depends on that: adding a user to an organization grants the right and then
    * fetches the user by UUID.</p>
    *
-   * @param data   the caller's session data
-   * @param userId the Keycloak user UUID
+   * <p>A user hidden for being outside the caller's scope is recorded as an {@code access_denied}
+   * audit event, while the response stays the same as for an unknown UUID.</p>
+   *
+   * @param data      the caller's session data
+   * @param userId    the Keycloak user UUID
+   * @param operation the operation, for the audit event
    * @return the user, or empty if there is no such user or the caller may not address them
    */
   private Optional<UserInfo> resolveVisibleUser(
-      final @NonNull AdminSessionData data, final @NonNull String userId) {
+      final @NonNull AdminSessionData data, final @NonNull String userId, final @NonNull String operation) {
 
     final Optional<UserInfo> user = this.keycloakAdminClient.fetchUserById(userId);
     if (user.isEmpty() || data.currentUserIsSuperuser()) {
@@ -482,9 +543,62 @@ public class UserController {
     }
     if (!data.mayViewUser(this.keycloakAdminClient.fetchUserRights(userId))) {
       log.info("User '{}' is outside the caller's scope and is reported as not found", userId);
+      this.eventPublisher.publishEvent(IamAuditEvent.accessDenied(
+          new AuditData.Operation(operation, AuditOperations.OUT_OF_SCOPE),
+          AuditData.Target.none().user(AuditData.User.of(user.get()))));
       return Optional.empty();
     }
     return user;
+  }
+
+  /**
+   * Records an {@code access_denied} audit event and returns the 403 response.
+   *
+   * @param operation the operation refused
+   * @param reason    the reason
+   * @param target    what the operation was aimed at
+   * @param <T>       the response body type
+   * @return a 403 response
+   */
+  private <T> ResponseEntity<T> denied(
+      final @NonNull String operation, final @NonNull String reason, final AuditData.@NonNull Target target) {
+    this.eventPublisher.publishEvent(
+        IamAuditEvent.accessDenied(new AuditData.Operation(operation, reason), target));
+    return ResponseEntity.status(403).build();
+  }
+
+  /**
+   * Identifies a user for the audit log, with the name if the user can be read.
+   *
+   * @param userId the Keycloak user UUID
+   * @return the user object
+   */
+  private AuditData.@NonNull User auditUser(final @NonNull String userId) {
+    try {
+      return this.keycloakAdminClient.fetchUserById(userId)
+          .map(AuditData.User::of)
+          .orElseGet(() -> AuditData.User.of(userId, null));
+    }
+    catch (final RuntimeException e) {
+      return AuditData.User.of(userId, null);
+    }
+  }
+
+  /**
+   * The profile fields an update may change, by audit field name.
+   *
+   * @param name        the name
+   * @param email       the email address
+   * @param phoneNumber the phone number
+   * @return the fields
+   */
+  private static Map<String, @Nullable String> profileFields(
+      final @Nullable String name, final @Nullable String email, final @Nullable String phoneNumber) {
+    final Map<String, @Nullable String> fields = new LinkedHashMap<>();
+    fields.put("name", name);
+    fields.put("email", email);
+    fields.put("phone_number", phoneNumber);
+    return fields;
   }
 
   /**

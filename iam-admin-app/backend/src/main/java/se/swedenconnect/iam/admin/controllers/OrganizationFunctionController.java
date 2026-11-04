@@ -18,17 +18,27 @@ package se.swedenconnect.iam.admin.controllers;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import se.swedenconnect.iam.admin.audit.AuditData;
+import se.swedenconnect.iam.admin.audit.AuditOperations;
+import se.swedenconnect.iam.admin.audit.IamAuditEvent;
+import se.swedenconnect.iam.admin.audit.IamErrorAuditEvent;
 import se.swedenconnect.iam.admin.keycloak.AdminSessionBootstrapHandler;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminClient;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminException;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
+import se.swedenconnect.iam.admin.keycloak.model.RightHolder;
 import se.swedenconnect.iam.admin.service.OrganizationService;
+
+import java.util.List;
 
 /**
  * REST controller for attaching functions to organizations.
@@ -46,6 +56,8 @@ public class OrganizationFunctionController {
   private final KeycloakAdminClient keycloakAdminClient;
 
   private final OrganizationService organizationService;
+
+  private final ApplicationEventPublisher eventPublisher;
 
   /**
    * Attaches a function to an organization.
@@ -66,7 +78,7 @@ public class OrganizationFunctionController {
     if (data == null || !data.currentUserIsSuperuser()) {
       log.info("POST /api/organizations/{}/functions/{} — rejected: caller is not a superuser",
           orgIdentifier, functionId);
-      return ResponseEntity.status(403).build();
+      return this.denied(AuditOperations.ATTACH_FUNCTION, data, orgIdentifier, functionId);
     }
 
     if (!this.keycloakAdminClient.organizationExists(orgIdentifier)) {
@@ -93,8 +105,12 @@ public class OrganizationFunctionController {
     catch (final KeycloakAdminException e) {
       log.error("POST /api/organizations/{}/functions/{} — Keycloak error: {}",
           orgIdentifier, functionId, e.getMessage(), e);
+      this.eventPublisher.publishEvent(IamErrorAuditEvent.operationFailed(
+          new AuditData.Operation(AuditOperations.ATTACH_FUNCTION, null),
+          AuditData.Target.none().organization(orgIdentifier).function(functionId), e));
       return ResponseEntity.status(500).body(e.getMessage());
     }
+    this.eventPublisher.publishEvent(IamAuditEvent.functionAttached(orgIdentifier, functionId, null));
 
     // The attached function list lives on the cached organization, so the entry has to be re-read.
     this.organizationService.refresh(orgIdentifier);
@@ -123,7 +139,7 @@ public class OrganizationFunctionController {
     if (data == null || !data.currentUserIsSuperuser()) {
       log.info("DELETE /api/organizations/{}/functions/{} — rejected: caller is not a superuser",
           orgIdentifier, functionId);
-      return ResponseEntity.status(403).build();
+      return this.denied(AuditOperations.DETACH_FUNCTION, data, orgIdentifier, functionId);
     }
 
     if (!this.keycloakAdminClient.isFunctionAttachedToOrg(orgIdentifier, functionId)) {
@@ -132,14 +148,21 @@ public class OrganizationFunctionController {
       return ResponseEntity.notFound().build();
     }
 
+    // The rights disappear with the function's groups, so they are read before the detach.
+    final List<RightHolder> removedRights;
     try {
+      removedRights = this.keycloakAdminClient.fetchRightHolders(orgIdentifier, functionId);
       this.keycloakAdminClient.detachFunctionFromOrg(orgIdentifier, functionId);
     }
     catch (final KeycloakAdminException e) {
       log.error("DELETE /api/organizations/{}/functions/{} — Keycloak error: {}",
           orgIdentifier, functionId, e.getMessage(), e);
+      this.eventPublisher.publishEvent(IamErrorAuditEvent.operationFailed(
+          new AuditData.Operation(AuditOperations.DETACH_FUNCTION, null),
+          AuditData.Target.none().organization(orgIdentifier).function(functionId), e));
       return ResponseEntity.status(500).body(e.getMessage());
     }
+    this.eventPublisher.publishEvent(IamAuditEvent.functionDetached(orgIdentifier, functionId, removedRights));
 
     // The attached function list lives on the cached organization, so the entry has to be re-read.
     this.organizationService.refresh(orgIdentifier);
@@ -147,6 +170,23 @@ public class OrganizationFunctionController {
     log.info("DELETE /api/organizations/{}/functions/{} — function detached successfully",
         orgIdentifier, functionId);
     return ResponseEntity.noContent().build();
+  }
+
+  /**
+   * Records an {@code access_denied} audit event and returns the 403 response.
+   *
+   * @param operation     the operation refused
+   * @param data          the caller's session data, or {@code null}
+   * @param orgIdentifier the organization
+   * @param functionId    the function
+   * @return a 403 response
+   */
+  private ResponseEntity<?> denied(final @NonNull String operation, final @Nullable AdminSessionData data,
+      final @NonNull String orgIdentifier, final @NonNull String functionId) {
+    final String reason = data == null ? AuditOperations.NO_ADMIN_SESSION : AuditOperations.NOT_SUPERUSER;
+    this.eventPublisher.publishEvent(IamAuditEvent.accessDenied(new AuditData.Operation(operation, reason),
+        AuditData.Target.none().organization(orgIdentifier).function(functionId)));
+    return ResponseEntity.status(403).build();
   }
 
 }

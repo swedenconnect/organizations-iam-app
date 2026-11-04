@@ -15,6 +15,7 @@
  */
 package se.swedenconnect.iam.admin.controllers;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
@@ -63,7 +65,7 @@ class ListRightsHoldersControllerTest {
 
   @BeforeEach
   void setUp() {
-    this.controller = new IamServiceOrganizationController(this.keycloakAdminClient, this.claimParser);
+    this.controller = new IamServiceOrganizationController(this.keycloakAdminClient, this.claimParser, mock(ApplicationEventPublisher.class));
   }
 
   @AfterEach

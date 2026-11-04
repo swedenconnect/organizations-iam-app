@@ -15,6 +15,7 @@
  */
 package se.swedenconnect.iam.admin.controllers;
 
+import org.springframework.context.ApplicationEventPublisher;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.junit.jupiter.api.AfterEach;
@@ -85,7 +86,7 @@ class UserRightsControllerAdminGateTest {
     // The admin-assigning-admin gate is exercised by its own tests below; the cases covering the
     // org-level/function-level gates predate it and run with the restriction lifted.
     this.properties.setAllowAdminAssigningAdmin(true);
-    this.controller = new UserRightsController(this.keycloakAdminClient, this.properties);
+    this.controller = new UserRightsController(this.keycloakAdminClient, this.properties, mock(ApplicationEventPublisher.class));
 
     when(this.request.getSession(false)).thenReturn(this.session);
 

@@ -15,6 +15,7 @@
  */
 package se.swedenconnect.iam.admin.controllers;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,6 +30,7 @@ import se.swedenconnect.iam.security.claims.OrgRightsClaimParser;
 import java.util.List;
 import java.util.Map;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
@@ -54,7 +56,7 @@ class IamServiceOrganizationsResponseTest {
   @BeforeEach
   void setUp() {
     this.controller = new IamServiceOrganizationController(
-        this.keycloakAdminClient, new OrgRightsClaimParser());
+        this.keycloakAdminClient, new OrgRightsClaimParser(), mock(ApplicationEventPublisher.class));
   }
 
   /** Display names are returned as they are when both are set, alongside the legal name. */

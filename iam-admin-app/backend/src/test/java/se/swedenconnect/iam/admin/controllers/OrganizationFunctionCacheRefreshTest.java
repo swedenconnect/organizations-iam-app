@@ -15,6 +15,7 @@
  */
 package se.swedenconnect.iam.admin.controllers;
 
+import org.springframework.context.ApplicationEventPublisher;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +36,7 @@ import se.swedenconnect.iam.security.claims.OrgRightsClaim;
 import java.util.List;
 import java.util.Set;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
@@ -79,7 +81,7 @@ class OrganizationFunctionCacheRefreshTest {
   @BeforeEach
   void setUp() {
     this.controller = new OrganizationFunctionController(
-        this.keycloakAdminClient, this.organizationService);
+        this.keycloakAdminClient, this.organizationService, mock(ApplicationEventPublisher.class));
     when(this.request.getSession(false)).thenReturn(this.session);
   }
 

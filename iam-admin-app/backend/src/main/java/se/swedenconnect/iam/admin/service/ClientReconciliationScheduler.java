@@ -19,12 +19,18 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
+import se.swedenconnect.iam.admin.audit.AuditData;
+import se.swedenconnect.iam.admin.audit.IamAuditEvent;
 import se.swedenconnect.iam.admin.config.IamAdminProperties;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminException;
 import se.swedenconnect.iam.admin.service.model.ReconciliationReport;
+import se.swedenconnect.spring.audit.appevents.SystemAlertEvent;
+import se.swedenconnect.spring.audit.tracing.CorrelationID;
+import se.swedenconnect.spring.audit.tracing.CorrelationIDHolder;
 
 /**
  * Runs {@link ClientReconciliationService} on a schedule to repair drift.
@@ -51,6 +57,7 @@ public class ClientReconciliationScheduler {
 
   private final ClientReconciliationService reconciliationService;
   private final IamAdminProperties properties;
+  private final ApplicationEventPublisher eventPublisher;
 
   /**
    * Logs the active schedule at startup, so that an operator can see it in the configuration
@@ -67,17 +74,31 @@ public class ClientReconciliationScheduler {
    *
    * <p>A Keycloak failure is logged and swallowed: the next run tries again, and a reconciliation
    * failure must not take down the scheduler.</p>
+   *
+   * <p>Each run gets a correlation ID of its own. A run that changed something or had errors is
+   * recorded as a {@code clients_reconciled} audit event, and a failed run as a
+   * {@code system_alert}. A run with nothing to do is not audited.</p>
    */
   @Scheduled(cron = "${iam.admin.client-reconciliation.cron:0 */15 * * * *}")
   public void reconcile() {
+    CorrelationIDHolder.set(CorrelationID.generate());
     try {
       final ReconciliationReport report = this.reconciliationService.reconcileAll();
       if (!report.errors().isEmpty()) {
         log.warn("Scheduled client reconciliation completed with {} errors", report.errors().size());
       }
+      if (report.created() > 0 || report.removed() > 0 || !report.errors().isEmpty()) {
+        this.eventPublisher.publishEvent(IamAuditEvent.clientsReconciled(new AuditData.Reconciliation(
+            AuditData.Reconciliation.SCHEDULED, report.clients(), report.created(), report.removed(),
+            report.errors()), null));
+      }
     }
     catch (final KeycloakAdminException e) {
       log.error("Scheduled client reconciliation failed: {}", e.getMessage(), e);
+      this.eventPublisher.publishEvent(new SystemAlertEvent("Scheduled client reconciliation failed", e));
+    }
+    finally {
+      CorrelationIDHolder.clear();
     }
   }
 }

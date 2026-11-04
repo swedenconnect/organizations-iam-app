@@ -46,6 +46,9 @@ a Spring Boot admin application.
 
 - [Export and Import](export-import.md) – Bulk-export and -import of organizations, functions, and users to/from a single JSON file.
 
+- [Audit Events](audit-events.md) – The audit events the admin application writes, and
+  what each of them contains.
+
 ### Operations
 
 - [Keycloak Setup](keycloak-setup.md) — Step-by-step Keycloak realm configuration,

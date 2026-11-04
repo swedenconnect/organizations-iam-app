@@ -35,6 +35,11 @@ spring:
             - "https://local.dev.swedenconnect.se:17005"
             - "account"
 
+audit:
+  repository:
+    file:
+      log-file: target/audit/iam-admin-audit.log
+
 iam:
   security:
     debug: true
