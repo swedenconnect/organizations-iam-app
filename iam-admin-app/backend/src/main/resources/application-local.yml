@@ -35,6 +35,10 @@ spring:
             - "https://local.dev.swedenconnect.se:17005"
             - "account"
 
+management:
+  server:
+    port: 17006
+
 audit:
   repository:
     file:

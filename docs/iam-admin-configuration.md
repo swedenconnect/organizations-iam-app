@@ -133,14 +133,13 @@ The following properties are available:
 ## Management Endpoints
 
 The application includes [Spring Boot Actuator](https://docs.spring.io/spring-boot/reference/actuator/index.html).
-Its endpoints are served on a port of their own, so that a deployment can keep them off the network that the
-application is reached through, and expose them only to its monitoring.
+A deployment should serve its endpoints on a port of their own, by setting `management.server.port`, so that
+they can be kept off the network that the application is reached through and exposed only to its monitoring.
 
 The application's own configuration sets the following. Each can be overridden by the deployment.
 
 | Property | Description | Value |
 | :--- | :--- | :--- |
-| `management.server.port` | The port of the management endpoints. The endpoints use the TLS settings of the application unless `management.server.ssl.*` is set. | `17006` |
 | `management.endpoints.web.exposure.include` | The endpoints exposed over HTTP. | `health,info` |
 | `management.endpoint.health.show-details` | Whether the health endpoint shows the state of each component. | `never` |
 | `management.endpoint.health.probes.enabled` | Exposes the liveness and readiness groups, `/actuator/health/liveness` and `/actuator/health/readiness`, for container orchestration. | `true` |
@@ -158,9 +157,9 @@ Other endpoints a deployment may want to expose, on a management port that is no
 
 `env`, `configprops` and `heapdump` should not be exposed, since they can reveal credentials and personal data.
 
-To keep the endpoints on the application's port, set `management.server.port` to the same value as
-`server.port`. The exposed endpoints are then reachable on the same network as the application, still without
-authentication.
+The port is set with `management.server.port`. The endpoints use the TLS settings of the application unless
+`management.server.ssl.*` is set. When the port is not set, the endpoints are served on the application's port and
+are reachable on the same network as the application, still without authentication.
 
 <a name="audit-logging"></a>
 ## Audit Logging

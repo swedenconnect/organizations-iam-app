@@ -1,5 +1,4 @@
 server:
-  port: 17005
   servlet:
     session:
       cookie:
@@ -46,11 +45,9 @@ spring:
             authorization-grant-type: client_credentials
             client-authentication-method: private_key_jwt
 
-# Actuator endpoints are served on a port of their own, so that they can be kept off the network
-# the application is reached through. Only health and info are exposed.
+# Only health and info are exposed. The deployment should set management.server.port, so that the
+# endpoints are served on a port of their own, see docs/iam-admin-configuration.md.
 management:
-  server:
-    port: 17006
   endpoints:
     web:
       exposure:
