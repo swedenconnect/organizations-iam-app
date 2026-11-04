@@ -86,13 +86,13 @@ public class UserRightsController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null) {
-      log.info("PUT /api/organizations/{}/users/{}/rights — rejected: no valid admin session",
+      log.info("PUT /api/organizations/{}/users/{}/rights — denied: no valid admin session",
           orgIdentifier, userId);
       return this.denied(AuditOperations.ASSIGN_USER_RIGHT, AuditOperations.NO_ADMIN_SESSION, this.target(orgIdentifier, null, userId, req.right()));
     }
 
     if (!this.properties.isAllowOrgRights()) {
-      log.info("PUT /api/organizations/{}/users/{}/rights — rejected: allow-org-rights is false",
+      log.info("PUT /api/organizations/{}/users/{}/rights — denied: allow-org-rights is false",
           orgIdentifier, userId);
       return this.denied(AuditOperations.ASSIGN_USER_RIGHT, AuditOperations.ORG_RIGHTS_DISABLED, this.target(orgIdentifier, null, userId, req.right()));
     }
@@ -103,13 +103,13 @@ public class UserRightsController {
     }
 
     if (currentUserId.equals(userId)) {
-      log.info("PUT /api/organizations/{}/users/{}/rights — rejected: self-assignment forbidden",
+      log.info("PUT /api/organizations/{}/users/{}/rights — denied: self-assignment forbidden",
           orgIdentifier, userId);
       return this.denied(AuditOperations.ASSIGN_USER_RIGHT, AuditOperations.SELF_MODIFICATION, this.target(orgIdentifier, null, userId, req.right()));
     }
 
     if (!data.currentUserIsSuperuser() && !hasOrgAdminRight(data, orgIdentifier)) {
-      log.info("PUT /api/organizations/{}/users/{}/rights — rejected: caller lacks org-admin right",
+      log.info("PUT /api/organizations/{}/users/{}/rights — denied: caller lacks org-admin right",
           orgIdentifier, userId);
       return this.denied(AuditOperations.ASSIGN_USER_RIGHT, AuditOperations.INSUFFICIENT_RIGHTS, this.target(orgIdentifier, null, userId, req.right()));
     }
@@ -124,7 +124,7 @@ public class UserRightsController {
 
     if ("admin".equals(right)) {
       if (adminRightRestricted) {
-        log.info("PUT /api/organizations/{}/users/{}/rights — rejected: allow-admin-assigning-admin is false",
+        log.info("PUT /api/organizations/{}/users/{}/rights — denied: allow-admin-assigning-admin is false",
             orgIdentifier, userId);
         return this.denied(AuditOperations.ASSIGN_USER_RIGHT, AuditOperations.ADMIN_ASSIGNMENT_RESTRICTED, this.target(orgIdentifier, null, userId, req.right()));
       }
@@ -135,7 +135,7 @@ public class UserRightsController {
               && r.functionId() == null
               && "admin".equals(r.right()));
       if (currentlyOrgAdmin && adminRightRestricted) {
-        log.info("PUT /api/organizations/{}/users/{}/rights — rejected: allow-admin-assigning-admin is false",
+        log.info("PUT /api/organizations/{}/users/{}/rights — denied: allow-admin-assigning-admin is false",
             orgIdentifier, userId);
         return this.denied(AuditOperations.ASSIGN_USER_RIGHT, AuditOperations.ADMIN_ASSIGNMENT_RESTRICTED, this.target(orgIdentifier, null, userId, req.right()));
       }
@@ -188,7 +188,7 @@ public class UserRightsController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null) {
-      log.info("PUT /api/organizations/{}/functions/{}/users/{}/rights — rejected: no valid admin session",
+      log.info("PUT /api/organizations/{}/functions/{}/users/{}/rights — denied: no valid admin session",
           orgIdentifier, functionId, userId);
       return this.denied(AuditOperations.ASSIGN_USER_RIGHT, AuditOperations.NO_ADMIN_SESSION, this.target(orgIdentifier, functionId, userId, req.right()));
     }
@@ -199,13 +199,13 @@ public class UserRightsController {
     }
 
     if (currentUserId.equals(userId)) {
-      log.info("PUT /api/organizations/{}/functions/{}/users/{}/rights — rejected: self-assignment forbidden",
+      log.info("PUT /api/organizations/{}/functions/{}/users/{}/rights — denied: self-assignment forbidden",
           orgIdentifier, functionId, userId);
       return this.denied(AuditOperations.ASSIGN_USER_RIGHT, AuditOperations.SELF_MODIFICATION, this.target(orgIdentifier, functionId, userId, req.right()));
     }
 
     if (!data.currentUserIsSuperuser() && !hasFunctionAdminRight(data, orgIdentifier, functionId)) {
-      log.info("PUT /api/organizations/{}/functions/{}/users/{}/rights — rejected: caller lacks function-admin right",
+      log.info("PUT /api/organizations/{}/functions/{}/users/{}/rights — denied: caller lacks function-admin right",
           orgIdentifier, functionId, userId);
       return this.denied(AuditOperations.ASSIGN_USER_RIGHT, AuditOperations.INSUFFICIENT_RIGHTS, this.target(orgIdentifier, functionId, userId, req.right()));
     }
@@ -221,7 +221,7 @@ public class UserRightsController {
     if ("admin".equals(right)) {
       if (adminRightRestricted) {
         log.info("PUT /api/organizations/{}/functions/{}/users/{}/rights "
-                + "— rejected: allow-admin-assigning-admin is false",
+                + "— denied: allow-admin-assigning-admin is false",
             orgIdentifier, functionId, userId);
         return this.denied(AuditOperations.ASSIGN_USER_RIGHT, AuditOperations.ADMIN_ASSIGNMENT_RESTRICTED, this.target(orgIdentifier, functionId, userId, req.right()));
       }
@@ -233,7 +233,7 @@ public class UserRightsController {
               && "admin".equals(r.right()));
       if (currentlyFunctionAdmin && adminRightRestricted) {
         log.info("PUT /api/organizations/{}/functions/{}/users/{}/rights "
-                + "— rejected: allow-admin-assigning-admin is false",
+                + "— denied: allow-admin-assigning-admin is false",
             orgIdentifier, functionId, userId);
         return this.denied(AuditOperations.ASSIGN_USER_RIGHT, AuditOperations.ADMIN_ASSIGNMENT_RESTRICTED, this.target(orgIdentifier, functionId, userId, req.right()));
       }
@@ -288,7 +288,7 @@ public class UserRightsController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null) {
-      log.info("DELETE /api/organizations/{}/users/{}/rights — rejected: no valid admin session",
+      log.info("DELETE /api/organizations/{}/users/{}/rights — denied: no valid admin session",
           orgIdentifier, userId);
       return this.denied(AuditOperations.REMOVE_USER_RIGHT, AuditOperations.NO_ADMIN_SESSION, this.target(orgIdentifier, null, userId, right));
     }
@@ -299,13 +299,13 @@ public class UserRightsController {
     }
 
     if (currentUserId.equals(userId)) {
-      log.info("DELETE /api/organizations/{}/users/{}/rights — rejected: self-removal forbidden",
+      log.info("DELETE /api/organizations/{}/users/{}/rights — denied: self-removal forbidden",
           orgIdentifier, userId);
       return this.denied(AuditOperations.REMOVE_USER_RIGHT, AuditOperations.SELF_MODIFICATION, this.target(orgIdentifier, null, userId, right));
     }
 
     if (!data.currentUserIsSuperuser() && !hasOrgAdminRight(data, orgIdentifier)) {
-      log.info("DELETE /api/organizations/{}/users/{}/rights — rejected: caller lacks org-admin right",
+      log.info("DELETE /api/organizations/{}/users/{}/rights — denied: caller lacks org-admin right",
           orgIdentifier, userId);
       return this.denied(AuditOperations.REMOVE_USER_RIGHT, AuditOperations.INSUFFICIENT_RIGHTS, this.target(orgIdentifier, null, userId, right));
     }
@@ -315,7 +315,7 @@ public class UserRightsController {
     }
 
     if ("admin".equals(right) && adminRightRestricted(data)) {
-      log.info("DELETE /api/organizations/{}/users/{}/rights — rejected: allow-admin-assigning-admin is false",
+      log.info("DELETE /api/organizations/{}/users/{}/rights — denied: allow-admin-assigning-admin is false",
           orgIdentifier, userId);
       return this.denied(AuditOperations.REMOVE_USER_RIGHT, AuditOperations.ADMIN_ASSIGNMENT_RESTRICTED, this.target(orgIdentifier, null, userId, right));
     }
@@ -369,7 +369,7 @@ public class UserRightsController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null) {
-      log.info("DELETE /api/organizations/{}/functions/{}/users/{}/rights — rejected: no valid admin session",
+      log.info("DELETE /api/organizations/{}/functions/{}/users/{}/rights — denied: no valid admin session",
           orgIdentifier, functionId, userId);
       return this.denied(AuditOperations.REMOVE_USER_RIGHT, AuditOperations.NO_ADMIN_SESSION, this.target(orgIdentifier, functionId, userId, right));
     }
@@ -380,13 +380,13 @@ public class UserRightsController {
     }
 
     if (currentUserId.equals(userId)) {
-      log.info("DELETE /api/organizations/{}/functions/{}/users/{}/rights — rejected: self-removal forbidden",
+      log.info("DELETE /api/organizations/{}/functions/{}/users/{}/rights — denied: self-removal forbidden",
           orgIdentifier, functionId, userId);
       return this.denied(AuditOperations.REMOVE_USER_RIGHT, AuditOperations.SELF_MODIFICATION, this.target(orgIdentifier, functionId, userId, right));
     }
 
     if (!data.currentUserIsSuperuser() && !hasFunctionAdminRight(data, orgIdentifier, functionId)) {
-      log.info("DELETE /api/organizations/{}/functions/{}/users/{}/rights — rejected: caller lacks function-admin right",
+      log.info("DELETE /api/organizations/{}/functions/{}/users/{}/rights — denied: caller lacks function-admin right",
           orgIdentifier, functionId, userId);
       return this.denied(AuditOperations.REMOVE_USER_RIGHT, AuditOperations.INSUFFICIENT_RIGHTS, this.target(orgIdentifier, functionId, userId, right));
     }
@@ -397,7 +397,7 @@ public class UserRightsController {
 
     if ("admin".equals(right) && adminRightRestricted(data)) {
       log.info("DELETE /api/organizations/{}/functions/{}/users/{}/rights "
-              + "— rejected: allow-admin-assigning-admin is false",
+              + "— denied: allow-admin-assigning-admin is false",
           orgIdentifier, functionId, userId);
       return this.denied(AuditOperations.REMOVE_USER_RIGHT, AuditOperations.ADMIN_ASSIGNMENT_RESTRICTED, this.target(orgIdentifier, functionId, userId, right));
     }

@@ -142,7 +142,7 @@ public class IamServiceOrganizationController {
         this.claimParser.checkAdminConstraint(claim, orgIdentifier, functionId);
       }
       catch (final InsufficientRightsException e) {
-        log.info("GET /iam-api/v1/organizations/{}/functions/{}/users — rejected: {}",
+        log.info("GET /iam-api/v1/organizations/{}/functions/{}/users — denied: {}",
             orgIdentifier, functionId, e.getMessage());
         this.eventPublisher.publishEvent(IamAuditEvent.accessDenied(
             new AuditData.Operation(AuditOperations.LIST_RIGHTS_HOLDERS, AuditOperations.INSUFFICIENT_RIGHTS),

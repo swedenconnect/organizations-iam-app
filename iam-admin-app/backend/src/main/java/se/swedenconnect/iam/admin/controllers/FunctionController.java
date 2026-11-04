@@ -118,7 +118,7 @@ public class FunctionController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null) {
-      log.info("GET /api/functions/{}/organizations — rejected: no valid admin session", functionId);
+      log.info("GET /api/functions/{}/organizations — denied: no valid admin session", functionId);
       return this.denied(AuditOperations.LIST_FUNCTION_ORGANIZATIONS, AuditOperations.NO_ADMIN_SESSION, functionId);
     }
 
@@ -178,7 +178,7 @@ public class FunctionController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null || !data.currentUserIsSuperuser()) {
-      log.info("POST /api/functions — rejected: caller is not a superuser");
+      log.info("POST /api/functions — denied: {}", deniedReason(data));
       return this.denied(AuditOperations.CREATE_FUNCTION, deniedReason(data), req.name());
     }
 
@@ -275,7 +275,7 @@ public class FunctionController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null || !data.currentUserIsSuperuser()) {
-      log.info("PUT /api/functions/{} — rejected: caller is not a superuser", functionId);
+      log.info("PUT /api/functions/{} — denied: {}", functionId, deniedReason(data));
       return this.denied(AuditOperations.UPDATE_FUNCTION, deniedReason(data), functionId);
     }
 
@@ -341,13 +341,13 @@ public class FunctionController {
       final HttpServletRequest request) {
 
     if (!this.properties.isAllowFunctionRemoval()) {
-      log.info("DELETE /api/functions/{} — rejected: allow-function-removal is false", functionId);
+      log.info("DELETE /api/functions/{} — denied: allow-function-removal is false", functionId);
       return this.denied(AuditOperations.DELETE_FUNCTION, AuditOperations.FUNCTION_REMOVAL_DISABLED, functionId);
     }
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null || !data.currentUserIsSuperuser()) {
-      log.info("DELETE /api/functions/{} — rejected: caller is not a superuser", functionId);
+      log.info("DELETE /api/functions/{} — denied: {}", functionId, deniedReason(data));
       return this.denied(AuditOperations.DELETE_FUNCTION, deniedReason(data), functionId);
     }
 

@@ -99,7 +99,7 @@ public class ClientController {
   public ResponseEntity<?> getClients(final HttpServletRequest request) {
     final String denial = denialReason(request);
     if (denial != null) {
-      log.info("GET /api/clients — rejected: caller is not a superuser");
+      log.info("GET /api/clients — denied: {}", denial);
       return this.denied(AuditOperations.LIST_CLIENTS, denial, null);
     }
 
@@ -129,7 +129,7 @@ public class ClientController {
 
     final String denial = denialReason(request);
     if (denial != null) {
-      log.info("GET /api/clients/{} — rejected: caller is not a superuser", id);
+      log.info("GET /api/clients/{} — denied: {}", id, denial);
       return this.denied(AuditOperations.READ_CLIENT, denial, null);
     }
 
@@ -162,7 +162,7 @@ public class ClientController {
 
     final String denial = denialReason(request);
     if (denial != null) {
-      log.info("POST /api/clients — rejected: caller is not a superuser");
+      log.info("POST /api/clients — denied: {}", denial);
       return this.denied(AuditOperations.CREATE_CLIENT, denial, AuditData.Client.of(req.clientId()));
     }
 
@@ -241,7 +241,7 @@ public class ClientController {
 
     final String denial = denialReason(request);
     if (denial != null) {
-      log.info("PUT /api/clients/{} — rejected: caller is not a superuser", id);
+      log.info("PUT /api/clients/{} — denied: {}", id, denial);
       return this.denied(AuditOperations.UPDATE_CLIENT, denial, null);
     }
 
@@ -324,7 +324,7 @@ public class ClientController {
 
     final String denial = denialReason(request);
     if (denial != null) {
-      log.info("DELETE /api/clients/{} — rejected: caller is not a superuser", id);
+      log.info("DELETE /api/clients/{} — denied: {}", id, denial);
       return this.denied(AuditOperations.DELETE_CLIENT, denial, null);
     }
 
@@ -373,7 +373,7 @@ public class ClientController {
 
     final String denial = denialReason(request);
     if (denial != null) {
-      log.info("GET /api/clients/drift — rejected: caller is not a superuser");
+      log.info("GET /api/clients/drift — denied: {}", denial);
       return this.denied(AuditOperations.READ_CLIENT_DRIFT, denial, null);
     }
 
@@ -405,7 +405,7 @@ public class ClientController {
 
     final String denial = denialReason(request);
     if (denial != null) {
-      log.info("POST /api/clients/{}/reconcile — rejected: caller is not a superuser", id);
+      log.info("POST /api/clients/{}/reconcile — denied: {}", id, denial);
       return this.denied(AuditOperations.RECONCILE_CLIENT, denial, null);
     }
 
@@ -444,7 +444,7 @@ public class ClientController {
 
     final String denial = denialReason(request);
     if (denial != null) {
-      log.info("POST /api/clients/reconcile — rejected: caller is not a superuser");
+      log.info("POST /api/clients/reconcile — denied: {}", denial);
       return this.denied(AuditOperations.RECONCILE_CLIENTS, denial, null);
     }
 

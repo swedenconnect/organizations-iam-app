@@ -111,7 +111,7 @@ public class UserController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null) {
-      log.info("GET /api/users — rejected: no valid admin session");
+      log.info("GET /api/users — denied: no valid admin session");
       return this.denied(AuditOperations.LIST_USERS, AuditOperations.NO_ADMIN_SESSION, AuditData.Target.none());
     }
 
@@ -187,7 +187,7 @@ public class UserController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null) {
-      log.info("POST /api/users — rejected: no valid admin session");
+      log.info("POST /api/users — denied: no valid admin session");
       return this.denied(AuditOperations.CREATE_USER, AuditOperations.NO_ADMIN_SESSION, AuditData.Target.none());
     }
 
@@ -292,7 +292,7 @@ public class UserController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null) {
-      log.info("GET /api/users/{} — rejected: no valid admin session", userId);
+      log.info("GET /api/users/{} — denied: no valid admin session", userId);
       return this.denied(AuditOperations.READ_USER, AuditOperations.NO_ADMIN_SESSION,
           AuditData.Target.none().user(this.auditUser(userId)));
     }
@@ -346,7 +346,7 @@ public class UserController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null) {
-      log.info("PUT /api/users/{} — rejected: no valid admin session", userId);
+      log.info("PUT /api/users/{} — denied: no valid admin session", userId);
       return this.denied(AuditOperations.UPDATE_USER, AuditOperations.NO_ADMIN_SESSION,
           AuditData.Target.none().user(this.auditUser(userId)));
     }
@@ -358,7 +358,7 @@ public class UserController {
     }
 
     if (currentUserId.equals(userId)) {
-      log.info("PUT /api/users/{} — rejected: self-update forbidden", userId);
+      log.info("PUT /api/users/{} — denied: self-update forbidden", userId);
       return this.denied(AuditOperations.UPDATE_USER, AuditOperations.SELF_MODIFICATION,
           AuditData.Target.none().user(this.auditUser(userId)));
     }
@@ -436,13 +436,13 @@ public class UserController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null) {
-      log.info("DELETE /api/users/{} — rejected: no valid admin session", userId);
+      log.info("DELETE /api/users/{} — denied: no valid admin session", userId);
       return this.denied(AuditOperations.DELETE_USER, AuditOperations.NO_ADMIN_SESSION,
           AuditData.Target.none().user(this.auditUser(userId)));
     }
 
     if (!data.currentUserIsSuperuser()) {
-      log.info("DELETE /api/users/{} — rejected: caller is not a superuser", userId);
+      log.info("DELETE /api/users/{} — denied: caller is not a superuser", userId);
       return this.denied(AuditOperations.DELETE_USER, AuditOperations.NOT_SUPERUSER,
           AuditData.Target.none().user(this.auditUser(userId)));
     }
@@ -454,7 +454,7 @@ public class UserController {
     }
 
     if (currentUserId.equals(userId)) {
-      log.info("DELETE /api/users/{} — rejected: self-deletion forbidden", userId);
+      log.info("DELETE /api/users/{} — denied: self-deletion forbidden", userId);
       return this.denied(AuditOperations.DELETE_USER, AuditOperations.SELF_MODIFICATION,
           AuditData.Target.none().user(this.auditUser(userId)));
     }

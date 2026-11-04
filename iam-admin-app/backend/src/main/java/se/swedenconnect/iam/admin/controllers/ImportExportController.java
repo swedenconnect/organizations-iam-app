@@ -81,7 +81,7 @@ public class ImportExportController {
   public ResponseEntity<?> exportAll(final HttpServletRequest request) {
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null || !data.currentUserIsSuperuser()) {
-      log.info("GET /api/export — rejected: caller is not a superuser");
+      log.info("GET /api/export — denied: {}", deniedReason(data));
       return this.denied(AuditOperations.EXPORT_DATA, data, null);
     }
 
@@ -109,7 +109,7 @@ public class ImportExportController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null || !data.currentUserIsSuperuser()) {
-      log.info("POST /api/import/dry-run — rejected: caller is not a superuser");
+      log.info("POST /api/import/dry-run — denied: {}", deniedReason(data));
       return this.denied(AuditOperations.IMPORT_DRY_RUN, data, null);
     }
 
@@ -155,7 +155,7 @@ public class ImportExportController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null || !data.currentUserIsSuperuser()) {
-      log.info("POST /api/import/{}/confirm — rejected: caller is not a superuser", batchId);
+      log.info("POST /api/import/{}/confirm — denied: {}", batchId, deniedReason(data));
       return this.denied(AuditOperations.CONFIRM_IMPORT, data, batchId);
     }
 
@@ -193,7 +193,7 @@ public class ImportExportController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null || !data.currentUserIsSuperuser()) {
-      log.info("GET /api/import/jobs/{} — rejected: caller is not a superuser", jobId);
+      log.info("GET /api/import/jobs/{} — denied: {}", jobId, deniedReason(data));
       return this.denied(AuditOperations.READ_IMPORT_JOB, data, null);
     }
 
@@ -223,7 +223,7 @@ public class ImportExportController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null || !data.currentUserIsSuperuser()) {
-      log.info("DELETE /api/import/{} — rejected: caller is not a superuser", batchId);
+      log.info("DELETE /api/import/{} — denied: {}", batchId, deniedReason(data));
       return this.denied(AuditOperations.CANCEL_IMPORT, data, batchId);
     }
 
@@ -238,6 +238,16 @@ public class ImportExportController {
   }
 
   /**
+   * The reason a superuser-only operation is refused.
+   *
+   * @param data the caller's session data, or {@code null}
+   * @return the reason
+   */
+  private static @NonNull String deniedReason(final @Nullable AdminSessionData data) {
+    return data == null ? AuditOperations.NO_ADMIN_SESSION : AuditOperations.NOT_SUPERUSER;
+  }
+
+  /**
    * Records an {@code access_denied} audit event and returns the 403 response. The endpoints of this
    * controller are reserved to superusers.
    *
@@ -248,7 +258,7 @@ public class ImportExportController {
    */
   private ResponseEntity<?> denied(
       final @NonNull String operation, final @Nullable AdminSessionData data, final @Nullable String batchId) {
-    final String reason = data == null ? AuditOperations.NO_ADMIN_SESSION : AuditOperations.NOT_SUPERUSER;
+    final String reason = deniedReason(data);
     this.eventPublisher.publishEvent(IamAuditEvent.accessDenied(new AuditData.Operation(operation, reason),
         AuditData.Target.none().importData(batchId != null ? AuditData.Import.batch(batchId) : null)));
     return ResponseEntity.status(403).build();

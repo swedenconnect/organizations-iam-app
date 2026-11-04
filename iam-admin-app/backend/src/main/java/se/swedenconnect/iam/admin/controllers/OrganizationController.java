@@ -95,7 +95,7 @@ public class OrganizationController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null) {
-      log.info("GET /api/organizations — rejected: no valid admin session");
+      log.info("GET /api/organizations — denied: no valid admin session");
       return this.denied(AuditOperations.LIST_ORGANIZATIONS, AuditOperations.NO_ADMIN_SESSION, null);
     }
 
@@ -152,12 +152,12 @@ public class OrganizationController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null) {
-      log.info("GET /api/organizations/{} — rejected: no valid admin session", orgIdentifier);
+      log.info("GET /api/organizations/{} — denied: no valid admin session", orgIdentifier);
       return this.denied(AuditOperations.READ_ORGANIZATION, AuditOperations.NO_ADMIN_SESSION, orgIdentifier);
     }
 
     if (!data.currentUserIsSuperuser() && !data.adminOrgIdentifiers().contains(orgIdentifier)) {
-      log.info("GET /api/organizations/{} — rejected: caller lacks org access", orgIdentifier);
+      log.info("GET /api/organizations/{} — denied: caller lacks org access", orgIdentifier);
       return this.denied(AuditOperations.READ_ORGANIZATION, AuditOperations.INSUFFICIENT_RIGHTS, orgIdentifier);
     }
 
@@ -186,9 +186,9 @@ public class OrganizationController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null || !data.currentUserIsSuperuser()) {
-      log.info("POST /api/organizations — rejected: caller is not a superuser");
+      log.info("POST /api/organizations — denied: {}", deniedReason(data));
       return this.denied(AuditOperations.CREATE_ORGANIZATION,
-          data == null ? AuditOperations.NO_ADMIN_SESSION : AuditOperations.NOT_SUPERUSER, req.organizationNumber());
+          deniedReason(data), req.organizationNumber());
     }
 
     final String orgNumber = req.organizationNumber();
@@ -260,7 +260,7 @@ public class OrganizationController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null) {
-      log.info("PUT /api/organizations/{} — rejected: no valid admin session", orgIdentifier);
+      log.info("PUT /api/organizations/{} — denied: no valid admin session", orgIdentifier);
       return this.denied(AuditOperations.UPDATE_ORGANIZATION, AuditOperations.NO_ADMIN_SESSION, orgIdentifier);
     }
 
@@ -269,12 +269,12 @@ public class OrganizationController {
     // Sending any name field at all, blank included, is a name change and is reserved to superusers.
     final boolean hasNameChange = req.legalName() != null || req.nameSv() != null || req.nameEn() != null;
     if (!isSuperuser && hasNameChange) {
-      log.info("PUT /api/organizations/{} — rejected: non-superuser attempted name change", orgIdentifier);
+      log.info("PUT /api/organizations/{} — denied: non-superuser attempted name change", orgIdentifier);
       return this.denied(AuditOperations.UPDATE_ORGANIZATION, AuditOperations.NAME_CHANGE_NOT_ALLOWED, orgIdentifier);
     }
 
     if (!isSuperuser && !hasOrgAdminRight(data, orgIdentifier)) {
-      log.info("PUT /api/organizations/{} — rejected: caller lacks org-admin right", orgIdentifier);
+      log.info("PUT /api/organizations/{} — denied: caller lacks org-admin right", orgIdentifier);
       return this.denied(AuditOperations.UPDATE_ORGANIZATION, AuditOperations.INSUFFICIENT_RIGHTS, orgIdentifier);
     }
 
@@ -341,9 +341,9 @@ public class OrganizationController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null || !data.currentUserIsSuperuser()) {
-      log.info("DELETE /api/organizations/{} — rejected: caller is not a superuser", orgIdentifier);
+      log.info("DELETE /api/organizations/{} — denied: {}", orgIdentifier, deniedReason(data));
       return this.denied(AuditOperations.DELETE_ORGANIZATION,
-          data == null ? AuditOperations.NO_ADMIN_SESSION : AuditOperations.NOT_SUPERUSER, orgIdentifier);
+          deniedReason(data), orgIdentifier);
     }
 
     if (!this.organizationService.exists(orgIdentifier)) {
@@ -431,6 +431,16 @@ public class OrganizationController {
     fields.put("contact_email", o.contactEmail());
     fields.put("contact_phone", o.contactPhone());
     return fields;
+  }
+
+  /**
+   * The reason a superuser-only operation is refused.
+   *
+   * @param data the caller's session data, or {@code null}
+   * @return the reason
+   */
+  private static @NonNull String deniedReason(final @Nullable AdminSessionData data) {
+    return data == null ? AuditOperations.NO_ADMIN_SESSION : AuditOperations.NOT_SUPERUSER;
   }
 
   /**

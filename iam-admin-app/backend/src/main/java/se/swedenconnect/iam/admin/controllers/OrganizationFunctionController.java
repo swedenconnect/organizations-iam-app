@@ -76,8 +76,8 @@ public class OrganizationFunctionController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null || !data.currentUserIsSuperuser()) {
-      log.info("POST /api/organizations/{}/functions/{} — rejected: caller is not a superuser",
-          orgIdentifier, functionId);
+      log.info("POST /api/organizations/{}/functions/{} — denied: {}",
+          orgIdentifier, functionId, deniedReason(data));
       return this.denied(AuditOperations.ATTACH_FUNCTION, data, orgIdentifier, functionId);
     }
 
@@ -137,8 +137,8 @@ public class OrganizationFunctionController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null || !data.currentUserIsSuperuser()) {
-      log.info("DELETE /api/organizations/{}/functions/{} — rejected: caller is not a superuser",
-          orgIdentifier, functionId);
+      log.info("DELETE /api/organizations/{}/functions/{} — denied: {}",
+          orgIdentifier, functionId, deniedReason(data));
       return this.denied(AuditOperations.DETACH_FUNCTION, data, orgIdentifier, functionId);
     }
 
@@ -173,6 +173,16 @@ public class OrganizationFunctionController {
   }
 
   /**
+   * The reason a superuser-only operation is refused.
+   *
+   * @param data the caller's session data, or {@code null}
+   * @return the reason
+   */
+  private static @NonNull String deniedReason(final @Nullable AdminSessionData data) {
+    return data == null ? AuditOperations.NO_ADMIN_SESSION : AuditOperations.NOT_SUPERUSER;
+  }
+
+  /**
    * Records an {@code access_denied} audit event and returns the 403 response.
    *
    * @param operation     the operation refused
@@ -183,7 +193,7 @@ public class OrganizationFunctionController {
    */
   private ResponseEntity<?> denied(final @NonNull String operation, final @Nullable AdminSessionData data,
       final @NonNull String orgIdentifier, final @NonNull String functionId) {
-    final String reason = data == null ? AuditOperations.NO_ADMIN_SESSION : AuditOperations.NOT_SUPERUSER;
+    final String reason = deniedReason(data);
     this.eventPublisher.publishEvent(IamAuditEvent.accessDenied(new AuditData.Operation(operation, reason),
         AuditData.Target.none().organization(orgIdentifier).function(functionId)));
     return ResponseEntity.status(403).build();
