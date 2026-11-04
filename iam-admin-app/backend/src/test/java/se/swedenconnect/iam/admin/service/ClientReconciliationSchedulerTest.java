@@ -15,6 +15,7 @@
  */
 package se.swedenconnect.iam.admin.service;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -27,6 +28,7 @@ import se.swedenconnect.iam.admin.service.model.ReconciliationReport;
 
 import java.util.List;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.Mockito.verify;
@@ -50,7 +52,7 @@ class ClientReconciliationSchedulerTest {
   @BeforeEach
   void setUp() {
     this.properties = new IamAdminProperties();
-    this.scheduler = new ClientReconciliationScheduler(this.reconciliationService, this.properties);
+    this.scheduler = new ClientReconciliationScheduler(this.reconciliationService, this.properties, mock(ApplicationEventPublisher.class));
   }
 
   @Test

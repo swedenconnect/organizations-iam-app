@@ -20,6 +20,7 @@ import org.jspecify.annotations.Nullable;
 import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportItemOutcome;
 import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportJobStatus;
 import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportReport;
+import se.swedenconnect.spring.audit.tracing.CorrelationID;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -40,7 +41,9 @@ final class ImportJob {
   static final Duration RETENTION = Duration.ofHours(1);
 
   private final String jobId;
+  private final String batchId;
   private final String ownerUserId;
+  private final @Nullable CorrelationID correlationId;
   private final Instant startedAt;
   private final int total;
 
@@ -53,9 +56,21 @@ final class ImportJob {
   private volatile @Nullable Instant finishedAt;
   private volatile @Nullable String error;
 
-  ImportJob(final @NonNull String jobId, final @NonNull String ownerUserId, final int total) {
+  /**
+   * Constructor.
+   *
+   * @param jobId the job ID
+   * @param batchId the ID of the batch being imported
+   * @param ownerUserId the user who confirmed the import
+   * @param correlationId the correlation ID of the session the import was confirmed in, or {@code null}
+   * @param total the number of entries in the batch
+   */
+  ImportJob(final @NonNull String jobId, final @NonNull String batchId, final @NonNull String ownerUserId,
+      final @Nullable CorrelationID correlationId, final int total) {
     this.jobId = jobId;
+    this.batchId = batchId;
     this.ownerUserId = ownerUserId;
+    this.correlationId = correlationId;
     this.startedAt = Instant.now();
     this.total = total;
   }
@@ -64,8 +79,16 @@ final class ImportJob {
     return this.jobId;
   }
 
+  @NonNull String batchId() {
+    return this.batchId;
+  }
+
   @NonNull String ownerUserId() {
     return this.ownerUserId;
+  }
+
+  @Nullable CorrelationID correlationId() {
+    return this.correlationId;
   }
 
   boolean isRunning() {

@@ -49,6 +49,7 @@ services:
     container_name: iam-admin-app
     ports:
       - "17005:17005"
+      - "17006:17006"
     domainname: local.dev.swedenconnect.se
     restart: on-failure
     extra_hosts:

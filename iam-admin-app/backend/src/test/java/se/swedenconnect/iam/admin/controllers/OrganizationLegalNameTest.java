@@ -15,6 +15,8 @@
  */
 package se.swedenconnect.iam.admin.controllers;
 
+import se.swedenconnect.iam.admin.keycloak.KeycloakAdminClient;
+import org.springframework.context.ApplicationEventPublisher;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +41,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -74,7 +77,7 @@ class OrganizationLegalNameTest {
 
   @BeforeEach
   void setUp() {
-    this.controller = new OrganizationController(this.organizationService);
+    this.controller = new OrganizationController(this.organizationService, mock(KeycloakAdminClient.class), mock(ApplicationEventPublisher.class));
     when(this.request.getSession(false)).thenReturn(this.session);
     when(this.organizationService.exists(ORG)).thenReturn(false);
     when(this.organizationService.update(anyString(), any(), any(), any(), any(), any()))

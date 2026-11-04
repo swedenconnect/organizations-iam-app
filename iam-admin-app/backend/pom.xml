@@ -63,6 +63,16 @@
     </dependency>
 
     <dependency>
+      <groupId>se.swedenconnect.spring.audit</groupId>
+      <artifactId>audit-support-spring-boot-starter</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+
+    <dependency>
       <groupId>org.springdoc</groupId>
       <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
       <version>3.1.0</version>

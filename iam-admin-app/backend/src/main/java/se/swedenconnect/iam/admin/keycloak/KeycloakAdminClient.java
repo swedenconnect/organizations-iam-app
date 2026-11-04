@@ -33,6 +33,7 @@ import se.swedenconnect.iam.admin.keycloak.model.ClientArtifactState;
 import se.swedenconnect.iam.admin.keycloak.model.FunctionInfo;
 import se.swedenconnect.iam.admin.keycloak.model.ManagedClientInfo;
 import se.swedenconnect.iam.admin.keycloak.model.OrganizationInfo;
+import se.swedenconnect.iam.admin.keycloak.model.RightHolder;
 import se.swedenconnect.iam.admin.keycloak.model.RightsHolderEntry;
 import se.swedenconnect.iam.admin.keycloak.model.UserInfo;
 import se.swedenconnect.iam.admin.keycloak.model.UserRight;
@@ -3879,6 +3880,70 @@ public class KeycloakAdminClient {
     }
     return this.fetchGroupMembers(funcAdminGroupId).stream()
         .anyMatch(u -> !u.userId().equals(excludeUserId));
+  }
+
+  /**
+   * Returns every right held within an organization, or within one function of it, read from the
+   * members of the right groups.
+   *
+   * <p>Without a function, both the organization-wide rights and the rights on every function
+   * attached to the organization are returned. An organization or function that does not exist
+   * holds no rights.</p>
+   *
+   * @param orgIdentifier the organization identifier
+   * @param functionId the function identifier, or {@code null} for the whole organization
+   * @return the rights; never {@code null}
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  public @NonNull List<RightHolder> fetchRightHolders(
+      final @NonNull String orgIdentifier, final @Nullable String functionId) {
+
+    final String orgGroupId = this.resolveOrgGroupId(orgIdentifier);
+    if (orgGroupId == null) {
+      return List.of();
+    }
+    final List<RightHolder> holders = new ArrayList<>();
+    for (final Map<String, Object> child : this.fetchGroupChildren(orgGroupId)) {
+      final String name = getString(child, "name");
+      final String id = getString(child, "id");
+      if (name == null || id == null) {
+        continue;
+      }
+      if (isRightGroupName(name)) {
+        if (functionId == null) {
+          this.collectRightHolders(holders, id, orgIdentifier, null, rightFromName(name));
+        }
+      }
+      else if (functionId == null || functionId.equals(name)) {
+        for (final Map<String, Object> rightGroup : this.fetchGroupChildren(id)) {
+          final String rightName = getString(rightGroup, "name");
+          final String rightId = getString(rightGroup, "id");
+          if (rightName != null && rightId != null && isRightGroupName(rightName)) {
+            this.collectRightHolders(holders, rightId, orgIdentifier, name, rightFromName(rightName));
+          }
+        }
+      }
+    }
+    return List.copyOf(holders);
+  }
+
+  /**
+   * Adds a right holder for every member of a right group.
+   *
+   * @param holders the list to add to
+   * @param groupId the right group
+   * @param orgIdentifier the organization
+   * @param functionId the function, or {@code null} for an organization-wide right group
+   * @param right the right level of the group
+   */
+  private void collectRightHolders(final @NonNull List<RightHolder> holders, final @NonNull String groupId,
+      final @NonNull String orgIdentifier, final @Nullable String functionId, final @NonNull String right) {
+    for (final UserInfo user : this.fetchGroupMembers(groupId)) {
+      final String first = user.firstName() != null ? user.firstName() : "";
+      final String last = user.lastName() != null ? user.lastName() : "";
+      final String name = (first + " " + last).trim();
+      holders.add(new RightHolder(user.userId(), name.isEmpty() ? null : name, orgIdentifier, functionId, right));
+    }
   }
 
   // ---------------------------------------------------------------------------

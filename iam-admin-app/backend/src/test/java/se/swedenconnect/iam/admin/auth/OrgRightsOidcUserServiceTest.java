@@ -15,6 +15,7 @@
  */
 package se.swedenconnect.iam.admin.auth;
 
+import org.springframework.context.ApplicationEventPublisher;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,6 +44,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
@@ -74,7 +76,7 @@ class OrgRightsOidcUserServiceTest {
   void setUp() {
     claimParser = new OrgRightsClaimParser();
     when(request.getSession(false)).thenReturn(null);
-    service = new OrgRightsOidcUserService(claimParser, request);
+    service = new OrgRightsOidcUserService(claimParser, request, mock(ApplicationEventPublisher.class));
   }
 
   // ---------------------------------------------------------------------------

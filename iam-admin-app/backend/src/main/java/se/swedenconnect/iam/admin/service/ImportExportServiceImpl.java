@@ -21,7 +21,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import se.swedenconnect.iam.admin.audit.AuditData;
+import se.swedenconnect.iam.admin.audit.AuditOperations;
+import se.swedenconnect.iam.admin.audit.IamAuditEvent;
+import se.swedenconnect.iam.admin.audit.IamErrorAuditEvent;
 import se.swedenconnect.iam.admin.config.IamAdminProperties;
 import se.swedenconnect.iam.admin.controllers.dto.impexp.BundleFunctionEntry;
 import se.swedenconnect.iam.admin.controllers.dto.impexp.BundleOrganizationEntry;
@@ -38,6 +44,9 @@ import se.swedenconnect.iam.admin.keycloak.model.FunctionInfo;
 import se.swedenconnect.iam.admin.keycloak.model.OrganizationInfo;
 import se.swedenconnect.iam.admin.keycloak.model.UserInfo;
 import se.swedenconnect.iam.admin.keycloak.model.UserRight;
+import se.swedenconnect.spring.audit.appevents.SystemAlertEvent;
+import se.swedenconnect.spring.audit.repository.AuditEventWriteException;
+import se.swedenconnect.spring.audit.tracing.CorrelationIDHolder;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
@@ -86,6 +95,10 @@ public class ImportExportServiceImpl implements ImportExportService {
   private final OrganizationService organizationService;
   private final ObjectMapper objectMapper;
   private final IamAdminProperties properties;
+  private final ApplicationEventPublisher eventPublisher;
+
+  /** The outcome reason given to an entry whose audit entry could not be written. */
+  private static final String AUDIT_WRITE_FAILED = "the audit entry could not be written; the import was stopped";
 
   /** Runs the imports, one at a time, off the request thread. */
   private final Executor importExecutor;
@@ -98,8 +111,9 @@ public class ImportExportServiceImpl implements ImportExportService {
       final KeycloakAdminClient keycloakAdminClient,
       final OrganizationService organizationService,
       final ObjectMapper objectMapper,
-      final IamAdminProperties properties) {
-    this(keycloakAdminClient, organizationService, objectMapper, properties,
+      final IamAdminProperties properties,
+      final ApplicationEventPublisher eventPublisher) {
+    this(keycloakAdminClient, organizationService, objectMapper, properties, eventPublisher,
         Executors.newSingleThreadExecutor(runnable -> {
           final Thread thread = new Thread(runnable, "iam-import");
           thread.setDaemon(true);
@@ -112,11 +126,13 @@ public class ImportExportServiceImpl implements ImportExportService {
       final OrganizationService organizationService,
       final ObjectMapper objectMapper,
       final IamAdminProperties properties,
+      final ApplicationEventPublisher eventPublisher,
       final Executor importExecutor) {
     this.keycloakAdminClient = keycloakAdminClient;
     this.organizationService = organizationService;
     this.objectMapper = objectMapper;
     this.properties = properties;
+    this.eventPublisher = eventPublisher;
     this.importExecutor = importExecutor;
   }
 
@@ -339,7 +355,8 @@ public class ImportExportServiceImpl implements ImportExportService {
       }
       batch = this.resolveBatch(batchId, actorUserId, session);
       session.removeAttribute(SESSION_ATTR);
-      job = new ImportJob(UUID.randomUUID().toString(), actorUserId,
+      // The job runs on its own thread, so it takes the correlation ID of the confirming session along
+      job = new ImportJob(UUID.randomUUID().toString(), batchId, actorUserId, CorrelationIDHolder.get(),
           batch.functions().size() + batch.organizations().size() + batch.users().size());
       this.jobs.put(job.jobId(), job);
     }
@@ -348,11 +365,23 @@ public class ImportExportServiceImpl implements ImportExportService {
         actorUserId, batchId, job.jobId(),
         batch.functions().size(), batch.organizations().size(), batch.users().size());
     try {
+      this.eventPublisher.publishEvent(IamAuditEvent.importStarted(AuditData.Import.planned(batchId, job.jobId(),
+          batch.functions().size(), batch.organizations().size(), batch.users().size())));
+    }
+    catch (final AuditEventWriteException e) {
+      // Nothing is imported without an audit trail
+      log.error("Import job {} not started, its audit entry could not be written: {}", job.jobId(), e.getMessage());
+      job.fail("The import could not be started: " + AUDIT_WRITE_FAILED);
+      this.auditCompleted(job);
+      throw e;
+    }
+    try {
       this.importExecutor.execute(() -> this.runImport(batch, job));
     }
     catch (final RejectedExecutionException e) {
       log.error("Import job {} could not be started: {}", job.jobId(), e.getMessage(), e);
       job.fail("The import could not be started");
+      this.auditCompleted(job);
     }
     return job.snapshot();
   }
@@ -373,9 +402,31 @@ public class ImportExportServiceImpl implements ImportExportService {
    * outside the handling of a single entry stops the import.
    */
   void runImport(final @NonNull PendingImportBatch batch, final @NonNull ImportJob job) {
+    if (job.correlationId() != null) {
+      CorrelationIDHolder.set(job.correlationId());
+    }
+    try {
+      this.importEntries(batch, job);
+    }
+    finally {
+      this.auditCompleted(job);
+      CorrelationIDHolder.clear();
+    }
+  }
+
+  /**
+   * Creates the entries of the batch, see {@link #runImport}.
+   */
+  private void importEntries(final @NonNull PendingImportBatch batch, final @NonNull ImportJob job) {
     try {
       for (final BundleFunctionEntry f : batch.functions()) {
-        job.addFunction(this.importFunction(f));
+        try {
+          job.addFunction(this.importFunction(f, job));
+        }
+        catch (final AuditWriteFailure e) {
+          job.addFunction(e.outcome);
+          throw e;
+        }
       }
 
       if (!batch.organizations().isEmpty()) {
@@ -388,7 +439,13 @@ public class ImportExportServiceImpl implements ImportExportService {
           context.putOrgGroupId(o.orgIdentifier(), o.groupId());
         }
         for (final BundleOrganizationEntry o : batch.organizations()) {
-          job.addOrganization(this.importOrganization(o, orgFunctions, context));
+          try {
+            job.addOrganization(this.importOrganization(o, orgFunctions, context, job));
+          }
+          catch (final AuditWriteFailure e) {
+            job.addOrganization(e.outcome);
+            throw e;
+          }
           if (job.organizations().size() % PROGRESS_LOG_INTERVAL == 0) {
             log.info("Import job {}: {}/{} organizations handled",
                 job.jobId(), job.organizations().size(), batch.organizations().size());
@@ -398,7 +455,13 @@ public class ImportExportServiceImpl implements ImportExportService {
 
       final boolean allowSelectUserId = this.properties.getUserRegistration().isAllowSelectUserId();
       for (final BundleUserEntry u : batch.users()) {
-        job.addUser(this.importUser(u, allowSelectUserId));
+        try {
+          job.addUser(this.importUser(u, allowSelectUserId, job));
+        }
+        catch (final AuditWriteFailure e) {
+          job.addUser(e.outcome);
+          throw e;
+        }
       }
 
       job.complete();
@@ -410,6 +473,12 @@ public class ImportExportServiceImpl implements ImportExportService {
           batch.organizations().size(),
           countStatus(job.users(), "created"), batch.users().size());
     }
+    catch (final AuditWriteFailure e) {
+      final ImportJobStatus progress = job.snapshot();
+      log.error("Import job {} stopped after {} of {} entries, an audit entry could not be written: {}",
+          job.jobId(), progress.processed(), progress.total(), e.getCause().getMessage());
+      job.fail("The import stopped before every entry was handled: " + AUDIT_WRITE_FAILED);
+    }
     catch (final Throwable e) {
       final ImportJobStatus progress = job.snapshot();
       log.error("Import job {} stopped after {} of {} entries: {}",
@@ -418,19 +487,27 @@ public class ImportExportServiceImpl implements ImportExportService {
     }
   }
 
-  private @NonNull ImportItemOutcome importFunction(final @NonNull BundleFunctionEntry f) {
+  private @NonNull ImportItemOutcome importFunction(final @NonNull BundleFunctionEntry f, final @NonNull ImportJob job) {
+    boolean created = false;
     try {
       // State may have changed since the dry-run; re-check rather than fail.
       if (this.keycloakAdminClient.functionExists(f.id())) {
         return new ImportItemOutcome(f.id(), "skipped_duplicate", "function already exists");
       }
       this.keycloakAdminClient.createFunction(f.id(), f.nameSv(), f.nameEn(), f.descriptionSv(), f.descriptionEn());
+      created = true;
+      this.audit(job, IamAuditEvent.functionCreated(f.id(), importData(job)));
       this.materializeOnAllFunctionsClients(f.id());
       return new ImportItemOutcome(f.id(), "created", null);
     }
+    catch (final AuditEventWriteException e) {
+      throw new AuditWriteFailure(new ImportItemOutcome(f.id(), created ? "created" : "error", AUDIT_WRITE_FAILED), e);
+    }
     catch (final RuntimeException e) {
       log.error("Import: failed to create function '{}': {}", f.id(), e.getMessage(), e);
-      return new ImportItemOutcome(f.id(), "error", e.getMessage());
+      final ImportItemOutcome outcome = new ImportItemOutcome(f.id(), "error", e.getMessage());
+      this.auditFailure(job, outcome, AuditOperations.CREATE_FUNCTION, AuditData.Target.none().function(f.id()), e);
+      return outcome;
     }
   }
 
@@ -447,9 +524,12 @@ public class ImportExportServiceImpl implements ImportExportService {
   private @NonNull ImportItemOutcome importOrganization(
       final @NonNull BundleOrganizationEntry o,
       final @NonNull Map<String, Set<String>> orgFunctions,
-      final @NonNull FunctionAttachContext context) {
+      final @NonNull FunctionAttachContext context,
+      final @NonNull ImportJob job) {
 
     final String orgIdentifier = o.orgIdentifier();
+    // What has been done to the organization so far, for the outcome if an audit write stops the import
+    String done = null;
     try {
       final Set<String> existing = orgFunctions.get(orgIdentifier);
       if (existing != null) {
@@ -460,7 +540,8 @@ public class ImportExportServiceImpl implements ImportExportService {
         if (missing.isEmpty()) {
           return new ImportItemOutcome(orgIdentifier, "skipped_duplicate", "organization already exists");
         }
-        final List<String> failed = this.attachFunctions(orgIdentifier, missing, existing, context);
+        done = "updated";
+        final List<String> failed = this.attachFunctions(orgIdentifier, missing, existing, context, job);
         this.refreshOrganization(orgIdentifier);
         return failed.isEmpty()
             ? new ImportItemOutcome(orgIdentifier, "updated", "function(s) attached: " + missing)
@@ -470,6 +551,8 @@ public class ImportExportServiceImpl implements ImportExportService {
 
       final OrganizationInfo created = this.organizationService.create(
           orgIdentifier, o.legalName(), o.nameSv(), o.nameEn(), o.contactEmail(), o.contactPhone());
+      done = "created";
+      this.audit(job, IamAuditEvent.organizationCreated(orgIdentifier, o.legalName(), importData(job)));
       final Set<String> attached = new HashSet<>();
       orgFunctions.put(orgIdentifier, attached);
       context.putOrgGroupId(orgIdentifier, created.groupId());
@@ -478,16 +561,23 @@ public class ImportExportServiceImpl implements ImportExportService {
       if (functionIds.isEmpty()) {
         return new ImportItemOutcome(orgIdentifier, "created", null);
       }
-      final List<String> failed = this.attachFunctions(orgIdentifier, functionIds, attached, context);
+      final List<String> failed = this.attachFunctions(orgIdentifier, functionIds, attached, context, job);
       this.refreshOrganization(orgIdentifier);
       return failed.isEmpty()
           ? new ImportItemOutcome(orgIdentifier, "created", null)
           : new ImportItemOutcome(orgIdentifier, "partial",
               "organization created, but function(s) could not be attached: " + failed);
     }
+    catch (final AuditEventWriteException e) {
+      throw new AuditWriteFailure(
+          new ImportItemOutcome(orgIdentifier, done != null ? done : "error", AUDIT_WRITE_FAILED), e);
+    }
     catch (final RuntimeException e) {
       log.error("Import: failed to create organization '{}': {}", orgIdentifier, e.getMessage(), e);
-      return new ImportItemOutcome(orgIdentifier, "error", e.getMessage());
+      final ImportItemOutcome outcome = new ImportItemOutcome(orgIdentifier, "error", e.getMessage());
+      this.auditFailure(job, outcome, AuditOperations.CREATE_ORGANIZATION,
+          AuditData.Target.none().organization(orgIdentifier), e);
+      return outcome;
     }
   }
 
@@ -496,24 +586,32 @@ public class ImportExportServiceImpl implements ImportExportService {
    * {@code attached}.
    *
    * @return the functions that could not be attached
+   * @throws AuditEventWriteException if an audit entry could not be written
    */
   private @NonNull List<String> attachFunctions(
       final @NonNull String orgIdentifier,
       final @NonNull List<String> functionIds,
       final @NonNull Set<String> attached,
-      final @NonNull FunctionAttachContext context) {
+      final @NonNull FunctionAttachContext context,
+      final @NonNull ImportJob job) {
 
     final List<String> failed = new ArrayList<>();
     for (final String functionId : functionIds) {
       try {
         this.keycloakAdminClient.attachFunctionToOrg(orgIdentifier, functionId, context);
-        attached.add(functionId);
       }
       catch (final RuntimeException e) {
         log.warn("Import: function '{}' could not be attached to organization '{}': {}",
             functionId, orgIdentifier, e.getMessage());
         failed.add(functionId);
+        this.audit(job, IamErrorAuditEvent.operationFailed(
+            new AuditData.Operation(AuditOperations.ATTACH_FUNCTION, null),
+            AuditData.Target.none().organization(orgIdentifier).function(functionId).importData(importData(job)),
+            e));
+        continue;
       }
+      attached.add(functionId);
+      this.audit(job, IamAuditEvent.functionAttached(orgIdentifier, functionId, importData(job)));
     }
     return failed;
   }
@@ -529,11 +627,13 @@ public class ImportExportServiceImpl implements ImportExportService {
     }
   }
 
-  private @NonNull ImportItemOutcome importUser(final @NonNull BundleUserEntry u, final boolean allowSelectUserId) {
+  private @NonNull ImportItemOutcome importUser(
+      final @NonNull BundleUserEntry u, final boolean allowSelectUserId, final @NonNull ImportJob job) {
     final String pin = trimToNull(u.personalIdentityNumber());
     final String orgAffiliation = trimToNull(u.orgAffiliation());
     final String key = pin != null ? pin : orgAffiliation;
 
+    boolean created = false;
     try {
       final boolean duplicate =
           (pin != null && this.keycloakAdminClient.findUserIdByPersonalIdentityNumber(pin).isPresent())
@@ -553,7 +653,20 @@ public class ImportExportServiceImpl implements ImportExportService {
 
       final String userId = this.keycloakAdminClient.createUser(
           username, u.name(), u.email(), pin, orgAffiliation, u.phoneNumber(), null);
+      created = true;
+      // TODO: hsaId and efosId are passed here when those eID attributes are implemented.
+      final AuditData.User auditUser =
+          new AuditData.User(userId, u.name(), pin, orgAffiliation, null, null, username, false);
+      this.audit(job, IamAuditEvent.userCreated(auditUser, importData(job)));
+      final AuditData.User rightsHolder = AuditData.User.of(userId, u.name());
+
       for (final BundleUserRightEntry r : u.rights()) {
+        final AuditData.Target target = AuditData.Target.none()
+            .user(rightsHolder)
+            .organization(r.orgIdentifier())
+            .function(r.functionId())
+            .right(r.right())
+            .importData(importData(job));
         // Re-check rather than trust the dry-run outcome: allow-org-rights is deployment
         // config and may have changed since, and this call must never be reachable through a
         // path the equivalent manual endpoint (UserRightsController) would refuse.
@@ -561,6 +674,9 @@ public class ImportExportServiceImpl implements ImportExportService {
           log.warn("Import: user '{}' created but organization-wide right {}/{} could not be granted: "
                   + "allow-org-rights is false",
               key, r.orgIdentifier(), r.right());
+          this.audit(job, IamAuditEvent.operationRejected(
+              new AuditData.Operation(AuditOperations.ASSIGN_USER_RIGHT, AuditOperations.ORG_RIGHTS_DISABLED),
+              target));
           continue;
         }
         try {
@@ -574,13 +690,23 @@ public class ImportExportServiceImpl implements ImportExportService {
         catch (final RuntimeException e) {
           log.warn("Import: user '{}' created but right {}/{}/{} could not be granted: {}",
               key, r.orgIdentifier(), r.functionId(), r.right(), e.getMessage());
+          this.audit(job, IamErrorAuditEvent.operationFailed(
+              new AuditData.Operation(AuditOperations.ASSIGN_USER_RIGHT, null), target, e));
+          continue;
         }
+        this.audit(job, IamAuditEvent.userRightAssigned(
+            rightsHolder, r.orgIdentifier(), r.functionId(), r.right(), null, importData(job)));
       }
       return new ImportItemOutcome(key, "created", null);
     }
+    catch (final AuditEventWriteException e) {
+      throw new AuditWriteFailure(new ImportItemOutcome(key, created ? "created" : "error", AUDIT_WRITE_FAILED), e);
+    }
     catch (final RuntimeException e) {
       log.error("Import: failed to create user '{}': {}", key, e.getMessage(), e);
-      return new ImportItemOutcome(key, "error", e.getMessage());
+      final ImportItemOutcome outcome = new ImportItemOutcome(key, "error", e.getMessage());
+      this.auditFailure(job, outcome, AuditOperations.CREATE_USER, AuditData.Target.none(), e);
+      return outcome;
     }
   }
 
@@ -714,6 +840,115 @@ public class ImportExportServiceImpl implements ImportExportService {
       log.warn("Import: function '{}' was created but could not be added to the client_functions of the"
               + " all-functions clients: {}. Run add-function.sh for those clients.",
           functionId, e.getMessage());
+      this.eventPublisher.publishEvent(new SystemAlertEvent(
+          "Function '%s' could not be added to the all-functions clients".formatted(functionId), e));
+    }
+  }
+
+  /**
+   * Writes the {@code import_completed} audit event for a job that has ended.
+   *
+   * <p>A failure to write it is reported on the job itself, which is then marked as failed, so that
+   * the report shows the failure even though the audit log cannot.</p>
+   *
+   * @param job the job
+   */
+  private void auditCompleted(final @NonNull ImportJob job) {
+    final ImportJobStatus status = job.snapshot();
+    final List<ImportItemOutcome> outcomes = new ArrayList<>();
+    outcomes.addAll(job.functions());
+    outcomes.addAll(job.organizations());
+    outcomes.addAll(job.users());
+    try {
+      this.audit(job, IamAuditEvent.importCompleted(AuditData.Import.ended(job.batchId(), job.jobId(),
+          status.status(),
+          countStatus(outcomes, "created"),
+          countStatus(outcomes, "updated"),
+          countStatus(outcomes, "partial"),
+          countStatus(outcomes, "skipped_duplicate"),
+          countStatus(outcomes, "error"),
+          ImportJobStatus.FAILED.equals(status.status()) ? status.error() : null)));
+    }
+    catch (final AuditEventWriteException e) {
+      log.error("Import job {}: the import_completed audit entry could not be written: {}",
+          job.jobId(), e.getMessage());
+      final String previous = ImportJobStatus.FAILED.equals(status.status()) ? status.error() + "; " : "";
+      job.fail(previous + "the import_completed audit entry could not be written");
+    }
+  }
+
+  /**
+   * Publishes an audit event produced by an import, with the user who confirmed the import as
+   * principal.
+   *
+   * @param job the import job
+   * @param event the event
+   * @throws AuditEventWriteException if the audit entry could not be written
+   */
+  private void audit(final @NonNull ImportJob job, final @NonNull ApplicationEvent event) {
+    if (event instanceof final IamAuditEvent auditEvent) {
+      this.eventPublisher.publishEvent(auditEvent.withPrincipal(job.ownerUserId()));
+    }
+    else if (event instanceof final IamErrorAuditEvent errorEvent) {
+      this.eventPublisher.publishEvent(errorEvent.withPrincipal(job.ownerUserId()));
+    }
+    else {
+      this.eventPublisher.publishEvent(event);
+    }
+  }
+
+  /**
+   * Writes the {@code operation_failed} audit event for an import entry that failed.
+   *
+   * @param job the import job
+   * @param outcome the outcome of the entry, reported if the audit entry cannot be written
+   * @param operation the operation that failed
+   * @param target what the operation was aimed at
+   * @param e the error
+   * @throws AuditWriteFailure if the audit entry could not be written
+   */
+  private void auditFailure(final @NonNull ImportJob job, final @NonNull ImportItemOutcome outcome,
+      final @NonNull String operation, final AuditData.@NonNull Target target, final @NonNull RuntimeException e) {
+    try {
+      this.audit(job, IamErrorAuditEvent.operationFailed(
+          new AuditData.Operation(operation, null), target.importData(importData(job)), e));
+    }
+    catch (final AuditEventWriteException writeError) {
+      throw new AuditWriteFailure(outcome, writeError);
+    }
+  }
+
+  /**
+   * The {@code import} object carried by every change an import makes.
+   *
+   * @param job the import job
+   * @return the import object
+   */
+  private static AuditData.@NonNull Import importData(final @NonNull ImportJob job) {
+    return AuditData.Import.job(job.batchId(), job.jobId());
+  }
+
+  /**
+   * Stops an import whose audit entry could not be written, carrying the outcome of the entry that
+   * was being handled.
+   */
+  private static final class AuditWriteFailure extends RuntimeException {
+
+    @java.io.Serial
+    private static final long serialVersionUID = 1L;
+
+    /** The outcome of the entry being handled. */
+    private final transient ImportItemOutcome outcome;
+
+    /**
+     * Constructor.
+     *
+     * @param outcome the outcome of the entry being handled
+     * @param cause the failed write
+     */
+    AuditWriteFailure(final @NonNull ImportItemOutcome outcome, final @NonNull AuditEventWriteException cause) {
+      super(cause.getMessage(), cause);
+      this.outcome = outcome;
     }
   }
 

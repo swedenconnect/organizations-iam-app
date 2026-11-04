@@ -44,9 +44,10 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <java.version>21</java.version>
 
-    <spring-boot.version>4.1.1</spring-boot.version>
-    <bc.version>1.85</bc.version>
-    <credentials-support.version>2.2.1</credentials-support.version>
+    <spring-boot.version>4.1.2</spring-boot.version>
+    <bc.version>1.86</bc.version>
+    <credentials-support.version>2.3.0</credentials-support.version>
+    <audit-support.version>1.0.2</audit-support.version>
   </properties>
 
   <repositories>
@@ -98,7 +99,7 @@
       <dependency>
         <groupId>org.bouncycastle</groupId>
         <artifactId>bcprov-jdk18on</artifactId>
-        <version>1.85.2</version>
+        <version>${bc.version}</version>
       </dependency>
 
       <dependency>
@@ -144,9 +145,15 @@
       </dependency>
 
       <dependency>
+        <groupId>se.swedenconnect.spring.audit</groupId>
+        <artifactId>audit-support-spring-boot-starter</artifactId>
+        <version>${audit-support.version}</version>
+      </dependency>
+
+      <dependency>
         <groupId>com.nimbusds</groupId>
         <artifactId>nimbus-jose-jwt</artifactId>
-        <version>10.9.1</version>
+        <version>10.10</version>
       </dependency>
 
       <dependency>
@@ -207,7 +214,7 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-compiler-plugin</artifactId>
-          <version>3.15.0</version>
+          <version>3.16.0</version>
           <configuration>
             <release>${java.version}</release>
           </configuration>
@@ -216,7 +223,7 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-jar-plugin</artifactId>
-          <version>3.5.0</version>
+          <version>3.5.1</version>
         </plugin>
 
         <plugin>
@@ -228,7 +235,7 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-deploy-plugin</artifactId>
-          <version>3.1.4</version>
+          <version>3.2.0</version>
         </plugin>
 
         <plugin>
@@ -266,13 +273,13 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-surefire-plugin</artifactId>
-          <version>3.5.6</version>
+          <version>3.6.1</version>
         </plugin>
 
         <plugin>
           <groupId>org.jacoco</groupId>
           <artifactId>jacoco-maven-plugin</artifactId>
-          <version>0.8.15</version>
+          <version>0.8.16</version>
           <configuration>
             <excludes>
               <!-- Ignore coverage for exception classes -->
@@ -298,7 +305,7 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-enforcer-plugin</artifactId>
-          <version>3.6.3</version>
+          <version>3.7.0</version>
           <executions>
             <execution>
               <id>enforce</id>
@@ -460,7 +467,7 @@
           <plugin>
             <groupId>org.sonatype.central</groupId>
             <artifactId>central-publishing-maven-plugin</artifactId>
-            <version>0.11.0</version>
+            <version>0.12.0</version>
             <extensions>true</extensions>
             <configuration>
               <publishingServerId>central</publishingServerId>

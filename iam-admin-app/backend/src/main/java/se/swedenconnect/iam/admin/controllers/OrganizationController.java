@@ -18,7 +18,9 @@ package se.swedenconnect.iam.admin.controllers;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -30,14 +32,20 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import se.swedenconnect.iam.admin.audit.AuditData;
+import se.swedenconnect.iam.admin.audit.AuditOperations;
+import se.swedenconnect.iam.admin.audit.IamAuditEvent;
+import se.swedenconnect.iam.admin.audit.IamErrorAuditEvent;
 import se.swedenconnect.iam.admin.controllers.dto.CreateOrganizationRequest;
 import se.swedenconnect.iam.admin.controllers.dto.OrganizationPageResponse;
 import se.swedenconnect.iam.admin.controllers.dto.OrganizationResponse;
 import se.swedenconnect.iam.admin.controllers.dto.UpdateOrganizationRequest;
 import se.swedenconnect.iam.admin.keycloak.AdminSessionBootstrapHandler;
+import se.swedenconnect.iam.admin.keycloak.KeycloakAdminClient;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminException;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
 import se.swedenconnect.iam.admin.keycloak.model.OrganizationInfo;
+import se.swedenconnect.iam.admin.keycloak.model.RightHolder;
 import se.swedenconnect.iam.admin.service.OrganizationService;
 
 import java.util.LinkedHashMap;
@@ -58,6 +66,10 @@ import java.util.Map;
 public class OrganizationController {
 
   private final OrganizationService organizationService;
+
+  private final KeycloakAdminClient keycloakAdminClient;
+
+  private final ApplicationEventPublisher eventPublisher;
 
   private static final int DEFAULT_PAGE_SIZE = 50;
 
@@ -83,8 +95,8 @@ public class OrganizationController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null) {
-      log.info("GET /api/organizations — rejected: no valid admin session");
-      return ResponseEntity.status(403).build();
+      log.info("GET /api/organizations — denied: no valid admin session");
+      return this.denied(AuditOperations.LIST_ORGANIZATIONS, AuditOperations.NO_ADMIN_SESSION, null);
     }
 
     final int effectiveSize = size > 0 ? size : DEFAULT_PAGE_SIZE;
@@ -140,13 +152,13 @@ public class OrganizationController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null) {
-      log.info("GET /api/organizations/{} — rejected: no valid admin session", orgIdentifier);
-      return ResponseEntity.status(403).build();
+      log.info("GET /api/organizations/{} — denied: no valid admin session", orgIdentifier);
+      return this.denied(AuditOperations.READ_ORGANIZATION, AuditOperations.NO_ADMIN_SESSION, orgIdentifier);
     }
 
     if (!data.currentUserIsSuperuser() && !data.adminOrgIdentifiers().contains(orgIdentifier)) {
-      log.info("GET /api/organizations/{} — rejected: caller lacks org access", orgIdentifier);
-      return ResponseEntity.status(403).build();
+      log.info("GET /api/organizations/{} — denied: caller lacks org access", orgIdentifier);
+      return this.denied(AuditOperations.READ_ORGANIZATION, AuditOperations.INSUFFICIENT_RIGHTS, orgIdentifier);
     }
 
     return this.organizationService.findByOrgNumber(orgIdentifier)
@@ -174,8 +186,9 @@ public class OrganizationController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null || !data.currentUserIsSuperuser()) {
-      log.info("POST /api/organizations — rejected: caller is not a superuser");
-      return ResponseEntity.status(403).build();
+      log.info("POST /api/organizations — denied: {}", deniedReason(data));
+      return this.denied(AuditOperations.CREATE_ORGANIZATION,
+          deniedReason(data), req.organizationNumber());
     }
 
     final String orgNumber = req.organizationNumber();
@@ -202,8 +215,17 @@ public class OrganizationController {
       return ResponseEntity.status(409).build();
     }
 
-    this.organizationService.create(orgNumber, legalName, nameSv, nameEn, contactEmail, contactPhone);
+    try {
+      this.organizationService.create(orgNumber, legalName, nameSv, nameEn, contactEmail, contactPhone);
+    }
+    catch (final KeycloakAdminException e) {
+      this.eventPublisher.publishEvent(IamErrorAuditEvent.operationFailed(
+          new AuditData.Operation(AuditOperations.CREATE_ORGANIZATION, null),
+          AuditData.Target.none().organization(orgNumber), e));
+      throw e;
+    }
     log.info("POST /api/organizations — organization '{}' created successfully", orgNumber);
+    this.eventPublisher.publishEvent(IamAuditEvent.organizationCreated(orgNumber, legalName, null));
 
     final LinkedHashMap<String, Object> body = new LinkedHashMap<>();
     body.put("id", orgNumber);
@@ -238,8 +260,8 @@ public class OrganizationController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null) {
-      log.info("PUT /api/organizations/{} — rejected: no valid admin session", orgIdentifier);
-      return ResponseEntity.status(403).build();
+      log.info("PUT /api/organizations/{} — denied: no valid admin session", orgIdentifier);
+      return this.denied(AuditOperations.UPDATE_ORGANIZATION, AuditOperations.NO_ADMIN_SESSION, orgIdentifier);
     }
 
     final boolean isSuperuser = data.currentUserIsSuperuser();
@@ -247,13 +269,13 @@ public class OrganizationController {
     // Sending any name field at all, blank included, is a name change and is reserved to superusers.
     final boolean hasNameChange = req.legalName() != null || req.nameSv() != null || req.nameEn() != null;
     if (!isSuperuser && hasNameChange) {
-      log.info("PUT /api/organizations/{} — rejected: non-superuser attempted name change", orgIdentifier);
-      return ResponseEntity.status(403).build();
+      log.info("PUT /api/organizations/{} — denied: non-superuser attempted name change", orgIdentifier);
+      return this.denied(AuditOperations.UPDATE_ORGANIZATION, AuditOperations.NAME_CHANGE_NOT_ALLOWED, orgIdentifier);
     }
 
     if (!isSuperuser && !hasOrgAdminRight(data, orgIdentifier)) {
-      log.info("PUT /api/organizations/{} — rejected: caller lacks org-admin right", orgIdentifier);
-      return ResponseEntity.status(403).build();
+      log.info("PUT /api/organizations/{} — denied: caller lacks org-admin right", orgIdentifier);
+      return this.denied(AuditOperations.UPDATE_ORGANIZATION, AuditOperations.INSUFFICIENT_RIGHTS, orgIdentifier);
     }
 
     // A legal name is mandatory, so it may be omitted but not emptied. Display names may be emptied,
@@ -264,6 +286,7 @@ public class OrganizationController {
     }
 
     try {
+      final OrganizationInfo before = this.organizationService.findByOrgNumber(orgIdentifier).orElse(null);
       final OrganizationInfo updated = this.organizationService.update(
           orgIdentifier,
           isSuperuser ? req.legalName() : null,
@@ -272,6 +295,11 @@ public class OrganizationController {
           req.contactEmail(),
           req.contactPhone());
       log.info("PUT /api/organizations/{} — updated successfully", orgIdentifier);
+      final AuditData.Change change = AuditData.Change.between(
+          before != null ? organizationFields(before) : Map.of(), organizationFields(updated), false);
+      if (change != null) {
+        this.eventPublisher.publishEvent(IamAuditEvent.organizationUpdated(orgIdentifier, change));
+      }
 
       final LinkedHashMap<String, Object> responseBody = new LinkedHashMap<>();
       responseBody.put("orgIdentifier", updated.orgIdentifier());
@@ -288,6 +316,9 @@ public class OrganizationController {
         return ResponseEntity.notFound().build();
       }
       log.error("PUT /api/organizations/{} — Keycloak error: {}", orgIdentifier, e.getMessage());
+      this.eventPublisher.publishEvent(IamErrorAuditEvent.operationFailed(
+          new AuditData.Operation(AuditOperations.UPDATE_ORGANIZATION, null),
+          AuditData.Target.none().organization(orgIdentifier), e));
       return ResponseEntity.status(500).body(e.getMessage());
     }
   }
@@ -310,8 +341,9 @@ public class OrganizationController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null || !data.currentUserIsSuperuser()) {
-      log.info("DELETE /api/organizations/{} — rejected: caller is not a superuser", orgIdentifier);
-      return ResponseEntity.status(403).build();
+      log.info("DELETE /api/organizations/{} — denied: {}", orgIdentifier, deniedReason(data));
+      return this.denied(AuditOperations.DELETE_ORGANIZATION,
+          deniedReason(data), orgIdentifier);
     }
 
     if (!this.organizationService.exists(orgIdentifier)) {
@@ -321,18 +353,31 @@ public class OrganizationController {
 
     if (this.organizationService.hasFunctionsAttached(orgIdentifier)) {
       log.info("DELETE /api/organizations/{} — rejected: org has attached functions", orgIdentifier);
+      this.eventPublisher.publishEvent(IamAuditEvent.operationRejected(
+          new AuditData.Operation(AuditOperations.DELETE_ORGANIZATION, AuditOperations.ORGANIZATION_HAS_FUNCTIONS),
+          AuditData.Target.none().organization(orgIdentifier)));
       return ResponseEntity.status(409).body("Organization has attached functions; detach them first");
     }
 
+    // What the audit entry records has to be read before the organization is gone.
+    final String legalName = this.organizationService.findByOrgNumber(orgIdentifier)
+        .map(OrganizationInfo::legalName)
+        .orElse(null);
+    final List<RightHolder> removedRights;
     try {
+      removedRights = this.keycloakAdminClient.fetchRightHolders(orgIdentifier, null);
       this.organizationService.delete(orgIdentifier);
       log.info("DELETE /api/organizations/{} — deleted successfully", orgIdentifier);
-      return ResponseEntity.noContent().build();
     }
     catch (final KeycloakAdminException e) {
       log.error("DELETE /api/organizations/{} — Keycloak error: {}", orgIdentifier, e.getMessage());
+      this.eventPublisher.publishEvent(IamErrorAuditEvent.operationFailed(
+          new AuditData.Operation(AuditOperations.DELETE_ORGANIZATION, null),
+          AuditData.Target.none().organization(orgIdentifier), e));
       return ResponseEntity.status(500).body(e.getMessage());
     }
+    this.eventPublisher.publishEvent(IamAuditEvent.organizationDeleted(orgIdentifier, legalName, removedRights));
+    return ResponseEntity.noContent().build();
   }
 
   // ---------------------------------------------------------------------------
@@ -370,6 +415,48 @@ public class OrganizationController {
         o.attachedFunctions(),
         o.contactEmail(),
         o.contactPhone());
+  }
+
+  /**
+   * The organization fields an update may change, by audit field name.
+   *
+   * @param o the organization
+   * @return the fields
+   */
+  private static Map<String, @Nullable String> organizationFields(final @NonNull OrganizationInfo o) {
+    final Map<String, @Nullable String> fields = new LinkedHashMap<>();
+    fields.put("legal_name", o.legalName());
+    fields.put("name_sv", o.displayName("sv"));
+    fields.put("name_en", o.displayName("en"));
+    fields.put("contact_email", o.contactEmail());
+    fields.put("contact_phone", o.contactPhone());
+    return fields;
+  }
+
+  /**
+   * The reason a superuser-only operation is refused.
+   *
+   * @param data the caller's session data, or {@code null}
+   * @return the reason
+   */
+  private static @NonNull String deniedReason(final @Nullable AdminSessionData data) {
+    return data == null ? AuditOperations.NO_ADMIN_SESSION : AuditOperations.NOT_SUPERUSER;
+  }
+
+  /**
+   * Records an {@code access_denied} audit event and returns the 403 response.
+   *
+   * @param operation     the operation refused
+   * @param reason        the reason
+   * @param orgIdentifier the organization addressed, or {@code null}
+   * @param <T>           the response body type
+   * @return a 403 response
+   */
+  private <T> ResponseEntity<T> denied(
+      final @NonNull String operation, final @NonNull String reason, final @Nullable String orgIdentifier) {
+    this.eventPublisher.publishEvent(IamAuditEvent.accessDenied(
+        new AuditData.Operation(operation, reason), AuditData.Target.none().organization(orgIdentifier)));
+    return ResponseEntity.status(403).build();
   }
 
   private static @Nullable String blankToNull(final @Nullable String value) {

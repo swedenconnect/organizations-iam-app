@@ -19,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -29,6 +30,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import se.swedenconnect.iam.admin.audit.AuditData;
+import se.swedenconnect.iam.admin.audit.AuditOperations;
+import se.swedenconnect.iam.admin.audit.IamAuditEvent;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminClient;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminException;
 import se.swedenconnect.iam.admin.keycloak.model.OrganizationInfo;
@@ -59,6 +63,7 @@ public class IamServiceOrganizationController {
 
   private final KeycloakAdminClient keycloakAdminClient;
   private final OrgRightsClaimParser claimParser;
+  private final ApplicationEventPublisher eventPublisher;
 
   /**
    * Lists all organizations with their full attributes.
@@ -137,8 +142,11 @@ public class IamServiceOrganizationController {
         this.claimParser.checkAdminConstraint(claim, orgIdentifier, functionId);
       }
       catch (final InsufficientRightsException e) {
-        log.info("GET /iam-api/v1/organizations/{}/functions/{}/users — rejected: {}",
+        log.info("GET /iam-api/v1/organizations/{}/functions/{}/users — denied: {}",
             orgIdentifier, functionId, e.getMessage());
+        this.eventPublisher.publishEvent(IamAuditEvent.accessDenied(
+            new AuditData.Operation(AuditOperations.LIST_RIGHTS_HOLDERS, AuditOperations.INSUFFICIENT_RIGHTS),
+            AuditData.Target.none().organization(orgIdentifier).function(functionId)));
         return ResponseEntity.status(403).build();
       }
     }
