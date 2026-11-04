@@ -20,6 +20,12 @@ into three distinct areas:
 3. **IAM Admin configuration** (`iam.admin.*`) - application-specific settings described
    in detail in this document.
 
+4. **Audit logging** (`audit.*`) - where the audit events are written. See
+   [Audit Logging](#audit-logging).
+
+5. **Management endpoints** (`management.*`) - the Spring Boot Actuator endpoints. See
+   [Management Endpoints](#management-endpoints).
+
 Also check the
 [application.yml](../iam-admin-app/backend/src/main/resources/application.yml) and
 [application-local.yml](../iam-admin-app/backend/src/main/resources/application-local.yml)
@@ -91,7 +97,7 @@ for the source definition.
 
 | Property | Description | Type | Default value |
 | :--- | :--- | :--- | :--- |
-| `iam.admin.sso-login-path` | The request path that initiates an SSO login (without forced re-authentication). External applications redirect users to this path, optionally with `org` and `func` query parameters. | `String` | `/sso/login` |
+| `iam.admin.sso-login-path` | The request path that initiates an SSO login (without forced re-authentication). External applications redirect users to this path, optionally with `org` and `func` query parameters, and an optional `correlation-id` parameter. A `correlation-id` becomes the correlation ID of the audit events of the session. It may contain letters, digits, `-`, `_`, `.` and `:`, and at most 128 characters. An invalid value is ignored and does not fail the login, and a session that already has a correlation ID keeps it. See [Audit Events](audit-events.md#common-structure). | `String` | `/sso/login` |
 | `iam.admin.realm` | Keycloak realm name. Used to construct the Admin REST API base URL. | `String` | `orgiam` |
 | `iam.admin.admin-api-base` | Base URL of the Keycloak Admin REST API for the configured realm, e.g. `https://keycloak.example.com/admin/realms/orgiam`. | `String` | - |
 | `iam.admin.theme` | UI theme / white-label profile. Controls which CSS variables and logo assets are served under `/theme/`. See [IAM Admin Themes](iam-admin-themes.md). | `String` | `digg` |
@@ -122,6 +128,94 @@ The following properties are available:
 
 > **Note:** At least one eID attribute must be enabled when `eid-attribute-required` is `true`.
 > The application refuses to start otherwise.
+
+<a name="management-endpoints"></a>
+## Management Endpoints
+
+The application includes [Spring Boot Actuator](https://docs.spring.io/spring-boot/reference/actuator/index.html).
+A deployment should serve its endpoints on a port of their own, by setting `management.server.port`, so that
+they can be kept off the network that the application is reached through and exposed only to its monitoring.
+
+The application's own configuration sets the following. Each can be overridden by the deployment.
+
+| Property | Description | Value |
+| :--- | :--- | :--- |
+| `management.endpoints.web.exposure.include` | The endpoints exposed over HTTP. | `health,info` |
+| `management.endpoint.health.show-details` | Whether the health endpoint shows the state of each component. | `never` |
+| `management.endpoint.health.probes.enabled` | Exposes the liveness and readiness groups, `/actuator/health/liveness` and `/actuator/health/readiness`, for container orchestration. | `true` |
+
+**The exposed endpoints require no authentication**, on the management port as well as anywhere else. This is why
+only `health` and `info` are exposed, and why health details are not shown.
+
+Other endpoints a deployment may want to expose, on a management port that is not reachable from outside:
+
+| Endpoint | Use | Note |
+| :--- | :--- | :--- |
+| `auditevents` | Reading the most recent audit events. | Contains personal data, see [Audit Events](audit-events.md). Only returns events from a queryable repository, that is, not from a file or syslog repository. |
+| `metrics` | Reading JVM and HTTP request metrics. | Reveals load and usage of the application. Exporting to a monitoring system, such as Prometheus, needs a Micrometer registry dependency in addition. |
+| `loggers` | Reading and changing log levels at runtime. | Lets anyone reaching the port change the logging, for example turn on debug logging of request contents. |
+
+`env`, `configprops` and `heapdump` should not be exposed, since they can reveal credentials and personal data.
+
+The port is set with `management.server.port`. The endpoints use the TLS settings of the application unless
+`management.server.ssl.*` is set. When the port is not set, the endpoints are served on the application's port and
+are reachable on the same network as the application, still without authentication.
+
+<a name="audit-logging"></a>
+## Audit Logging
+
+The application writes an audit event for every login, every change it makes, and every refused or failed
+operation. The events are described in [Audit Events](audit-events.md). Audit logging is provided by
+[spring-audit-support](https://docs.swedenconnect.se/spring-audit-support/) and configured with its `audit.*`
+properties, which are described in the library's
+[Configuration](https://docs.swedenconnect.se/spring-audit-support/configuration.html) page. Where the events can be
+written, and what each backend requires, is described under
+[Repositories](https://docs.swedenconnect.se/spring-audit-support/repositories.html).
+
+**Default behaviour.** The application's own configuration sets `audit.default-principal` to `system` and
+configures no repository. The events are then only kept in memory, a bounded number of the most recent ones, and
+are lost when the application stops. The local and compose profiles write the events to a file, one JSON event
+per line.
+
+**Production must configure a durable repository**, for example a database, a file collected by the log
+infrastructure, or syslog.
+
+**Write failures.** `audit.repository.throw-on-write-fail` keeps the library default `true`. A missing audit entry
+is considered worse than a failed request, so when an event cannot be written the operation fails:
+
+- The caller gets an error, even if the change has already been made in Keycloak.
+- A login whose `login_succeeded` event cannot be written is stopped.
+- An import stops, with status `failed`, so that no further changes are made without an audit trail.
+
+Setting the property to `false` makes a write failure log an error and let the operation through instead.
+
+The audit events can be read through the actuator's `auditevents` endpoint, which is not exposed by default. See
+[Management Endpoints](#management-endpoints).
+
+Changes made directly in Keycloak, or through the scripts, do not pass through the application and are not
+audited.
+
+The following example writes the events to a file and to a PostgreSQL database. The `jdbc` backend uses the
+`DataSource` configured with `spring.datasource.*`. The application does not include `spring-jdbc` or a database
+driver, so these must be added to the classpath, see the library's documentation.
+
+```yaml
+spring:
+  application:
+    name: iam-admin
+  datasource:
+    url: jdbc:postgresql://db.example.com:5432/iam_audit
+    username: iam_audit
+    password: ${AUDIT_DB_PASSWORD}
+
+audit:
+  default-principal: system
+  repository:
+    file:
+      log-file: /var/log/iam-admin/audit.log
+    jdbc:
+      table-name: audit_events
+```
 
 <a name="example"></a>
 ## Example Configuration

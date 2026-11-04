@@ -157,12 +157,14 @@ IAM Admin Application for managing organizations, users, and group memberships.
 **Ports:**
 
 - `17005` - IAM Admin Application HTTPS port.
+- `17006` - Management (Actuator) port.
 
 **Image:** `iam-admin-app:latest`, built locally, see [Building the service images](#building-the-service-images).
 
 **URL:s**
 
 - https://local.dev.swedenconnect.se:17005 - IAM Admin Application
+- https://local.dev.swedenconnect.se:17006/actuator/health - Health
 
 **Configuration directory:** [config/iam-admin-app](config/iam-admin-app)
 

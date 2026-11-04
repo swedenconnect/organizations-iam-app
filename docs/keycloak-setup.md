@@ -6,7 +6,7 @@ For an overview of the rights model and key concepts, see
 [Organization and Function-Based Rights Model](rights-model.md).
 
 **Realm:** `orgiam`
-**Keycloak Version:** 26.5.7
+**Keycloak Version:** 26.8.1
 
 ---
 

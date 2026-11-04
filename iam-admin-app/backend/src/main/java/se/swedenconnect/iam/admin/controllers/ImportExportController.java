@@ -18,7 +18,9 @@ package se.swedenconnect.iam.admin.controllers;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -32,11 +34,15 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import se.swedenconnect.iam.admin.audit.AuditData;
+import se.swedenconnect.iam.admin.audit.AuditOperations;
+import se.swedenconnect.iam.admin.audit.IamAuditEvent;
 import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportExportBundle;
+import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportJobStatus;
 import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportPreviewReport;
-import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportReport;
 import se.swedenconnect.iam.admin.keycloak.AdminSessionBootstrapHandler;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
+import se.swedenconnect.iam.admin.service.ImportAlreadyRunningException;
 import se.swedenconnect.iam.admin.service.ImportBatchNotFoundException;
 import se.swedenconnect.iam.admin.service.ImportExportService;
 import se.swedenconnect.iam.admin.service.ImportValidationException;
@@ -62,6 +68,8 @@ public class ImportExportController {
 
   private final ImportExportService importExportService;
 
+  private final ApplicationEventPublisher eventPublisher;
+
   /**
    * Exports every function, organization and non-superuser user (with rights) in the realm as a
    * single downloadable JSON file.
@@ -73,11 +81,13 @@ public class ImportExportController {
   public ResponseEntity<?> exportAll(final HttpServletRequest request) {
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null || !data.currentUserIsSuperuser()) {
-      log.info("GET /api/export — rejected: caller is not a superuser");
-      return ResponseEntity.status(403).build();
+      log.info("GET /api/export — denied: {}", deniedReason(data));
+      return this.denied(AuditOperations.EXPORT_DATA, data, null);
     }
 
     final ImportExportBundle bundle = this.importExportService.exportAll();
+    this.eventPublisher.publishEvent(IamAuditEvent.dataExported(new AuditData.Export(
+        bundle.functions().size(), bundle.organizations().size(), bundle.users().size())));
     return ResponseEntity.ok()
         .header(HttpHeaders.CACHE_CONTROL, "no-store")
         .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"iam-export.json\"")
@@ -99,13 +109,13 @@ public class ImportExportController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null || !data.currentUserIsSuperuser()) {
-      log.info("POST /api/import/dry-run — rejected: caller is not a superuser");
-      return ResponseEntity.status(403).build();
+      log.info("POST /api/import/dry-run — denied: {}", deniedReason(data));
+      return this.denied(AuditOperations.IMPORT_DRY_RUN, data, null);
     }
 
     final String actorUserId = getCurrentUserId();
     if (actorUserId == null) {
-      return ResponseEntity.status(403).build();
+      return this.denied(AuditOperations.IMPORT_DRY_RUN, null, null);
     }
 
     if (file.isEmpty()) {
@@ -129,12 +139,14 @@ public class ImportExportController {
   }
 
   /**
-   * Creates every entry in the pending batch identified by {@code batchId}.
+   * Starts creating every entry in the pending batch identified by {@code batchId}. The import
+   * runs in the background; its progress and final report are read with {@link #getImportJob}.
    *
    * @param batchId the batch id returned by the preceding {@link #dryRun} call
    * @param request the HTTP servlet request
-   * @return 200 with the import report, 403 if not superuser,
-   *         409 if the batch is unknown, expired, or belongs to another session
+   * @return 202 with the progress of the started import, 403 if not superuser,
+   *         409 if the batch is unknown, expired, or belongs to another session, or if another
+   *         import is still running
    */
   @PostMapping(value = "/import/{batchId}/confirm", produces = MediaType.APPLICATION_JSON_VALUE)
   public ResponseEntity<?> confirm(
@@ -143,25 +155,58 @@ public class ImportExportController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null || !data.currentUserIsSuperuser()) {
-      log.info("POST /api/import/{}/confirm — rejected: caller is not a superuser", batchId);
-      return ResponseEntity.status(403).build();
+      log.info("POST /api/import/{}/confirm — denied: {}", batchId, deniedReason(data));
+      return this.denied(AuditOperations.CONFIRM_IMPORT, data, batchId);
     }
 
     final String actorUserId = getCurrentUserId();
     if (actorUserId == null) {
-      return ResponseEntity.status(403).build();
+      return this.denied(AuditOperations.CONFIRM_IMPORT, null, batchId);
     }
 
     try {
-      final ImportReport report =
-          this.importExportService.confirm(batchId, actorUserId, request.getSession(true));
-      log.info("POST /api/import/{}/confirm — superuser '{}' completed import", batchId, actorUserId);
-      return ResponseEntity.ok(report);
+      final ImportJobStatus job =
+          this.importExportService.startImport(batchId, actorUserId, request.getSession(true));
+      log.info("POST /api/import/{}/confirm — superuser '{}' started import, jobId={}",
+          batchId, actorUserId, job.jobId());
+      return ResponseEntity.accepted().body(job);
     }
-    catch (final ImportBatchNotFoundException e) {
+    catch (final ImportBatchNotFoundException | ImportAlreadyRunningException e) {
       log.info("POST /api/import/{}/confirm — rejected: {}", batchId, e.getMessage());
       return ResponseEntity.status(409).body(e.getMessage());
     }
+  }
+
+  /**
+   * Returns the progress of an import started by {@link #confirm}, and its report once it has
+   * finished.
+   *
+   * @param jobId the job id returned by {@link #confirm}
+   * @param request the HTTP servlet request
+   * @return 200 with the progress, 403 if not superuser, 404 if no such import was started by the
+   *         caller or it finished too long ago
+   */
+  @GetMapping(value = "/import/jobs/{jobId}", produces = MediaType.APPLICATION_JSON_VALUE)
+  public ResponseEntity<?> getImportJob(
+      @PathVariable final String jobId,
+      final HttpServletRequest request) {
+
+    final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
+    if (data == null || !data.currentUserIsSuperuser()) {
+      log.info("GET /api/import/jobs/{} — denied: {}", jobId, deniedReason(data));
+      return this.denied(AuditOperations.READ_IMPORT_JOB, data, null);
+    }
+
+    final String actorUserId = getCurrentUserId();
+    if (actorUserId == null) {
+      return this.denied(AuditOperations.READ_IMPORT_JOB, null, null);
+    }
+
+    return this.importExportService.getImportJob(jobId, actorUserId)
+        .<ResponseEntity<?>>map(job -> ResponseEntity.ok()
+            .header(HttpHeaders.CACHE_CONTROL, "no-store")
+            .body(job))
+        .orElseGet(() -> ResponseEntity.notFound().build());
   }
 
   /**
@@ -178,8 +223,8 @@ public class ImportExportController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null || !data.currentUserIsSuperuser()) {
-      log.info("DELETE /api/import/{} — rejected: caller is not a superuser", batchId);
-      return ResponseEntity.status(403).build();
+      log.info("DELETE /api/import/{} — denied: {}", batchId, deniedReason(data));
+      return this.denied(AuditOperations.CANCEL_IMPORT, data, batchId);
     }
 
     final boolean removed = this.importExportService.cancel(batchId, request.getSession(true));
@@ -188,7 +233,35 @@ public class ImportExportController {
       return ResponseEntity.notFound().build();
     }
     log.info("DELETE /api/import/{} — batch discarded", batchId);
+    this.eventPublisher.publishEvent(IamAuditEvent.importCancelled(batchId));
     return ResponseEntity.noContent().build();
+  }
+
+  /**
+   * The reason a superuser-only operation is refused.
+   *
+   * @param data the caller's session data, or {@code null}
+   * @return the reason
+   */
+  private static @NonNull String deniedReason(final @Nullable AdminSessionData data) {
+    return data == null ? AuditOperations.NO_ADMIN_SESSION : AuditOperations.NOT_SUPERUSER;
+  }
+
+  /**
+   * Records an {@code access_denied} audit event and returns the 403 response. The endpoints of this
+   * controller are reserved to superusers.
+   *
+   * @param operation the operation refused
+   * @param data      the caller's session data, or {@code null}
+   * @param batchId   the import batch addressed, or {@code null}
+   * @return a 403 response
+   */
+  private ResponseEntity<?> denied(
+      final @NonNull String operation, final @Nullable AdminSessionData data, final @Nullable String batchId) {
+    final String reason = deniedReason(data);
+    this.eventPublisher.publishEvent(IamAuditEvent.accessDenied(new AuditData.Operation(operation, reason),
+        AuditData.Target.none().importData(batchId != null ? AuditData.Import.batch(batchId) : null)));
+    return ResponseEntity.status(403).build();
   }
 
   private static @Nullable String getCurrentUserId() {

@@ -46,10 +46,18 @@ a Spring Boot admin application.
 
 - [Export and Import](export-import.md) – Bulk-export and -import of organizations, functions, and users to/from a single JSON file.
 
+- [Audit Events](audit-events.md) – The audit events the admin application writes, and
+  what each of them contains.
+
 ### Operations
 
 - [Keycloak Setup](keycloak-setup.md) — Step-by-step Keycloak realm configuration,
   client registration, and automation scripts.
+
+- [Configuring eID Login for a Realm](eid-identity-provider.md) — Registering an eID
+  identity provider that matches users the admin application has already provisioned,
+  rather than creating them. Covers the proxy and direct topologies, one flow per
+  identity family, and the failures that give no useful message.
 
 ---
 

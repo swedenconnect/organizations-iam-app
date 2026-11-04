@@ -21,14 +21,20 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.security.web.authentication.SavedRequestAwareAuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
+import se.swedenconnect.iam.admin.audit.AuditData;
+import se.swedenconnect.iam.admin.audit.IamAuditEvent;
 import se.swedenconnect.iam.admin.auth.OrgRightsOidcUserService;
 import se.swedenconnect.iam.security.claims.OrgRightsClaim;
 import se.swedenconnect.iam.security.claims.OrgRightsClaimParser;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
+import se.swedenconnect.spring.audit.appevents.SystemAlertEvent;
+import se.swedenconnect.spring.audit.repository.AuditEventWriteException;
 
 import java.io.IOException;
 import java.util.Optional;
@@ -67,12 +73,22 @@ public class AdminSessionBootstrapHandler extends SavedRequestAwareAuthenticatio
 
   private final AdminDataBootstrapService bootstrapService;
   private final OrgRightsClaimParser claimParser;
+  private final ApplicationEventPublisher eventPublisher;
 
+  /**
+   * Constructor.
+   *
+   * @param bootstrapService the service building the session data
+   * @param claimParser the {@code org_rights} claim parser
+   * @param eventPublisher the publisher of audit events
+   */
   public AdminSessionBootstrapHandler(
       final @NonNull AdminDataBootstrapService bootstrapService,
-      final @NonNull OrgRightsClaimParser claimParser) {
+      final @NonNull OrgRightsClaimParser claimParser,
+      final @NonNull ApplicationEventPublisher eventPublisher) {
     this.bootstrapService = bootstrapService;
     this.claimParser = claimParser;
+    this.eventPublisher = eventPublisher;
     this.setDefaultTargetUrl("/");
     this.setAlwaysUseDefaultTargetUrl(true);
   }
@@ -96,6 +112,19 @@ public class AdminSessionBootstrapHandler extends SavedRequestAwareAuthenticatio
           : null;
 
       try {
+        this.eventPublisher.publishEvent(IamAuditEvent.loginSucceeded(AuditData.User.of(oidcUser),
+            OrgRightsOidcUserService.auditLogin(session, claim.superuser(), null)));
+      }
+      catch (final AuditEventWriteException e) {
+        // A login that cannot be audited is not let through
+        SecurityContextHolder.clearContext();
+        if (session != null) {
+          session.invalidate();
+        }
+        throw e;
+      }
+
+      try {
         final AdminSessionData sessionData = this.bootstrapService.bootstrap(claim, subject,
             functionConstraint, orgConstraint);
         request.getSession(true).setAttribute(SESSION_DATA_ATTR, sessionData);
@@ -103,6 +132,8 @@ public class AdminSessionBootstrapHandler extends SavedRequestAwareAuthenticatio
       catch (final KeycloakAdminException e) {
         log.error("Session data bootstrap failed for user '{}' — proceeding without data",
             subject, e);
+        this.eventPublisher.publishEvent(
+            new SystemAlertEvent("Session data could not be set up after login", e));
       }
     }
 

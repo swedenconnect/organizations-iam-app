@@ -219,11 +219,13 @@ export interface ImportExportBundle {
 }
 
 /** Outcome of one entry from an ImportExportBundle. `key` is a function id, org identifier, or
- *  a user's personal_identity_number/org_affiliation. `status` is 'new'/'skipped_duplicate'/'error'
- *  in a dry-run preview, and 'created'/'skipped_duplicate'/'error' in a final import report. */
+ *  a user's personal_identity_number/org_affiliation. `status` is 'new'/'update'/'skipped_duplicate'/'error'
+ *  in a dry-run preview, and 'created'/'updated'/'partial'/'skipped_duplicate'/'error' in a final
+ *  import report. 'update'/'updated' is an existing organization that gets the functions it lacks;
+ *  'partial' is an organization whose functions could not all be attached. */
 export interface ImportItemOutcome {
   key: string;
-  status: 'new' | 'created' | 'skipped_duplicate' | 'error';
+  status: 'new' | 'update' | 'created' | 'updated' | 'partial' | 'skipped_duplicate' | 'error';
   reason?: string | null;
 }
 
@@ -238,6 +240,18 @@ export interface ImportReport {
   functions: ImportItemOutcome[];
   organizations: ImportItemOutcome[];
   users: ImportItemOutcome[];
+}
+
+/** Progress of an import running in the background. `report` is set once it is no longer running. */
+export interface ImportJobStatus {
+  job_id: string;
+  status: 'running' | 'completed' | 'failed';
+  total: number;
+  processed: number;
+  started_at: string;
+  finished_at?: string | null;
+  error?: string | null;
+  report?: ImportReport | null;
 }
 
 /** The iam.admin.user-registration settings, telling the create-user forms what to render. */

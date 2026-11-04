@@ -20,6 +20,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -29,6 +31,7 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.oauth2.client.endpoint.RestClientAuthorizationCodeTokenResponseClient;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
@@ -40,6 +43,9 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
 import org.springframework.web.filter.CommonsRequestLoggingFilter;
+import se.swedenconnect.iam.admin.audit.AuditData;
+import se.swedenconnect.iam.admin.audit.IamAuditEvent;
+import se.swedenconnect.iam.admin.audit.IamErrorAuditEvent;
 import se.swedenconnect.iam.admin.auth.OrgRightsOidcUserService;
 import se.swedenconnect.iam.admin.keycloak.AdminSessionBootstrapHandler;
 
@@ -65,6 +71,17 @@ public class SecurityConfiguration {
 
   @Value("${server.servlet.context-path:/}")
   private String contextPath;
+
+  private final ApplicationEventPublisher eventPublisher;
+
+  /**
+   * Constructor.
+   *
+   * @param eventPublisher the publisher of audit events
+   */
+  public SecurityConfiguration(final @NonNull ApplicationEventPublisher eventPublisher) {
+    this.eventPublisher = eventPublisher;
+  }
 
   /**
    * Returns a context-path-prefixed path, e.g. "/admin" + "/index.html" → "/admin/index.html".
@@ -130,8 +147,7 @@ public class SecurityConfiguration {
         )
         .logout(logout -> logout
             .logoutUrl("/logout")
-            .logoutSuccessHandler((request, response, authentication) ->
-                response.sendRedirect(this.getPrefixedPath("/")))
+            .logoutSuccessHandler(this::handleLogoutSuccess)
         )
         .exceptionHandling(ex -> ex
             .authenticationEntryPoint(authenticationEntryPoint)
@@ -140,7 +156,16 @@ public class SecurityConfiguration {
     return http.build();
   }
 
-  private void handleAuthenticationFailure(
+  /**
+   * Handles a failed login, and records it as a {@code login_failed} audit event. A login rejected
+   * for lack of rights also ends up here, but has already been recorded as {@code login_rejected}.
+   *
+   * @param request the request
+   * @param response the response
+   * @param exception what made the login fail
+   * @throws java.io.IOException on redirect errors
+   */
+  void handleAuthenticationFailure(
       final @NonNull HttpServletRequest request,
       final @NonNull HttpServletResponse response,
       final @NonNull Exception exception) throws java.io.IOException {
@@ -149,12 +174,42 @@ public class SecurityConfiguration {
     final boolean ssoLogin = session != null
         && Boolean.TRUE.equals(session.getAttribute(OrgRightsOidcUserService.SSO_ACTIVE_ATTR));
 
+    if (!Boolean.TRUE.equals(request.getAttribute(OrgRightsOidcUserService.LOGIN_REJECTION_AUDITED_ATTR))) {
+      final Object user = request.getAttribute(OrgRightsOidcUserService.LOGIN_USER_ATTR);
+      this.eventPublisher.publishEvent(IamErrorAuditEvent.loginFailed(
+          user instanceof final AuditData.User u ? u : null,
+          OrgRightsOidcUserService.auditLogin(session, null, null),
+          exception));
+    }
+
     if (ssoLogin) {
       log.debug("SSO login failed — redirecting to login page with error");
     } else {
       log.debug("Standard login failed — redirecting to login page");
     }
     response.sendRedirect(this.getPrefixedPath("/?loginError"));
+  }
+
+  /**
+   * Handles a completed logout, and records it as a {@code logout} audit event.
+   *
+   * @param request the request
+   * @param response the response
+   * @param authentication the authentication of the user that logged out, or {@code null}
+   * @throws java.io.IOException on redirect errors
+   */
+  void handleLogoutSuccess(
+      final @NonNull HttpServletRequest request,
+      final @NonNull HttpServletResponse response,
+      final @Nullable Authentication authentication) throws java.io.IOException {
+
+    if (authentication != null) {
+      this.eventPublisher.publishEvent(IamAuditEvent.logout(
+          authentication.getPrincipal() instanceof final OidcUser oidcUser
+              ? AuditData.User.of(oidcUser)
+              : AuditData.User.of(authentication.getName(), null)));
+    }
+    response.sendRedirect(this.getPrefixedPath("/"));
   }
 
   void handleUnauthenticated(

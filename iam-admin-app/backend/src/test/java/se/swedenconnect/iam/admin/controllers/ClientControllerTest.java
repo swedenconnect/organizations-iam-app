@@ -15,6 +15,7 @@
  */
 package se.swedenconnect.iam.admin.controllers;
 
+import org.springframework.context.ApplicationEventPublisher;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,6 +46,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -91,7 +93,7 @@ class ClientControllerTest {
 
   @BeforeEach
   void setUp() {
-    this.controller = new ClientController(this.keycloakAdminClient, this.reconciliationService);
+    this.controller = new ClientController(this.keycloakAdminClient, this.reconciliationService, mock(ApplicationEventPublisher.class));
 
     when(this.request.getSession(false)).thenReturn(this.session);
     when(this.keycloakAdminClient.fetchAllFunctions()).thenReturn(List.of(

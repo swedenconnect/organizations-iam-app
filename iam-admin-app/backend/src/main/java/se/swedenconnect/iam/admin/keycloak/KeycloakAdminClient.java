@@ -33,6 +33,7 @@ import se.swedenconnect.iam.admin.keycloak.model.ClientArtifactState;
 import se.swedenconnect.iam.admin.keycloak.model.FunctionInfo;
 import se.swedenconnect.iam.admin.keycloak.model.ManagedClientInfo;
 import se.swedenconnect.iam.admin.keycloak.model.OrganizationInfo;
+import se.swedenconnect.iam.admin.keycloak.model.RightHolder;
 import se.swedenconnect.iam.admin.keycloak.model.RightsHolderEntry;
 import se.swedenconnect.iam.admin.keycloak.model.UserInfo;
 import se.swedenconnect.iam.admin.keycloak.model.UserRight;
@@ -71,6 +72,9 @@ import java.util.concurrent.TimeUnit;
 public class KeycloakAdminClient {
 
   private static final int PAGE_SIZE = 500;
+
+  /** A cached service account token is renewed this long before it actually expires. */
+  private static final long TOKEN_RENEWAL_MARGIN_MILLIS = TimeUnit.SECONDS.toMillis(30);
 
   /** The name of the protocol mapper emitting the {@code org_rights} claim. */
   private static final String ORG_RIGHTS_MAPPER = "org-rights-mapper";
@@ -127,7 +131,7 @@ public class KeycloakAdminClient {
   private final RestClient restClient;
   private final OAuth2AuthorizedClientManager authorizedClientManager;
   private final String adminApiBase;
-  private CacheToken cacheToken;
+  private volatile CacheToken cacheToken;
 
   public KeycloakAdminClient(
       final @NonNull OAuth2AuthorizedClientManager authorizedClientManager,
@@ -146,8 +150,9 @@ public class KeycloakAdminClient {
   // ---------------------------------------------------------------------------
 
   private String getAccessToken() {
-    if (this.cacheToken != null && !this.cacheToken.expired()) {
-      return cacheToken.tokenValue;
+    final CacheToken cached = this.cacheToken;
+    if (cached != null && !cached.expired()) {
+      return cached.tokenValue;
     }
     final OAuth2AuthorizeRequest authorizeRequest = OAuth2AuthorizeRequest
         .withClientRegistrationId("iam-admin-sa")
@@ -164,12 +169,13 @@ public class KeycloakAdminClient {
 
     log.debug("Service account access token obtained (expires at {})",
         authorizedClient.getAccessToken().getExpiresAt());
-    cacheToken = new CacheToken(authorizedClient.getAccessToken().getExpiresAt().toEpochMilli(),
+    final CacheToken fresh = new CacheToken(authorizedClient.getAccessToken().getExpiresAt().toEpochMilli(),
         authorizedClient.getAccessToken().getTokenValue());
-    return cacheToken.tokenValue;
+    this.cacheToken = fresh;
+    return fresh.tokenValue;
   }
 
-  private class CacheToken {
+  private static class CacheToken {
     public final long expiryTime;
     public final String tokenValue;
 
@@ -179,8 +185,7 @@ public class KeycloakAdminClient {
     }
 
     public boolean expired() {
-      return System.currentTimeMillis() >
-          Math.min(this.expiryTime, this.expiryTime - TimeUnit.HOURS.toMillis(1));
+      return System.currentTimeMillis() > this.expiryTime - TOKEN_RENEWAL_MARGIN_MILLIS;
     }
   }
 
@@ -1127,15 +1132,42 @@ public class KeycloakAdminClient {
   public void attachFunctionToOrg(
       final @NonNull String orgIdentifier,
       final @NonNull String functionId) {
+    this.attachFunctionToOrg(orgIdentifier, functionId, new FunctionAttachContext());
+  }
+
+  /**
+   * Attaches a function to an organization in Keycloak, as {@link #attachFunctionToOrg(String, String)}
+   * does, but takes the lookups it needs from {@code context} and records what it creates there.
+   * A bulk operation that attaches many functions passes the same context to every call, so that
+   * the lookups are made once rather than once per attachment.
+   *
+   * @param orgIdentifier the organization identifier
+   * @param functionId the function identifier
+   * @param context the lookups shared with the other attachments of the same bulk operation
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  public void attachFunctionToOrg(
+      final @NonNull String orgIdentifier,
+      final @NonNull String functionId,
+      final @NonNull FunctionAttachContext context) {
 
     // Step 1 — Resolve org group id
-    final String orgGroupId = this.resolveOrgGroupId(orgIdentifier);
+    String orgGroupId = context.getOrgGroupId(orgIdentifier);
     if (orgGroupId == null) {
-      throw new KeycloakAdminException("Org group not found for: " + orgIdentifier);
+      orgGroupId = this.resolveOrgGroupId(orgIdentifier);
+      if (orgGroupId == null) {
+        throw new KeycloakAdminException("Org group not found for: " + orgIdentifier);
+      }
+      context.putOrgGroupId(orgIdentifier, orgGroupId);
     }
 
     // Resolve the managed clients that handle this function
-    final List<ManagedClientInfo> clients = this.resolveManagedClientsForFunction(functionId);
+    if (context.getManagedClients() == null) {
+      context.setManagedClients(this.resolveIamAdminManagedClients());
+    }
+    final List<ManagedClientInfo> clients = context.getManagedClients().stream()
+        .filter(c -> c.handles(functionId))
+        .toList();
 
     // Step 2 — Create function sub-group under org group
     log.debug("Creating function sub-group '{}' under org group '{}'", functionId, orgIdentifier);
@@ -1159,7 +1191,10 @@ public class KeycloakAdminClient {
 
     // Step 4 — Ensure the three realm client scopes exist. They are shared between clients, so
     // they are created even when no managed client handles the function.
-    final Map<String, String> realmScopeIds = this.fetchRealmClientScopeIds();
+    if (context.getRealmScopeIds() == null) {
+      context.setRealmScopeIds(this.fetchRealmClientScopeIds());
+    }
+    final Map<String, String> realmScopeIds = context.getRealmScopeIds();
     for (final String level : RIGHT_LEVELS) {
       this.ensureRealmClientScope(scopeName(orgIdentifier, functionId, level), realmScopeIds);
     }
@@ -1167,9 +1202,26 @@ public class KeycloakAdminClient {
     // Step 5 — Create the per-client authz scopes, group policies, scope permissions and optional
     // client scope assignments
     for (final ManagedClientInfo client : clients) {
-      final ClientArtifactState state = this.fetchClientArtifactState(client.uuid());
+      ClientArtifactState state = context.getClientState(client.uuid());
+      if (state == null) {
+        // Copied into mutable sets, so that what this and later attachments create can be recorded.
+        final ClientArtifactState fetched = this.fetchClientArtifactState(client.uuid());
+        state = new ClientArtifactState(
+            new HashSet<>(fetched.authzScopeNames()),
+            new HashSet<>(fetched.policyNames()),
+            new HashSet<>(fetched.permissionNames()),
+            new HashSet<>(fetched.optionalScopeIds()));
+        context.putClientState(client.uuid(), state);
+      }
       final int created = this.ensureFunctionArtifacts(
           client.uuid(), orgIdentifier, functionId, realmScopeIds, state);
+      for (final String level : RIGHT_LEVELS) {
+        final String scope = scopeName(orgIdentifier, functionId, level);
+        state.authzScopeNames().add(scope);
+        state.policyNames().add(policyName(orgIdentifier, functionId, level));
+        state.permissionNames().add(permissionName(orgIdentifier, functionId, level));
+        state.optionalScopeIds().add(realmScopeIds.get(scope));
+      }
       log.debug("Created {} artifacts on client '{}' for '{}:{}'",
           created, client.clientId(), orgIdentifier, functionId);
     }
@@ -3828,6 +3880,70 @@ public class KeycloakAdminClient {
     }
     return this.fetchGroupMembers(funcAdminGroupId).stream()
         .anyMatch(u -> !u.userId().equals(excludeUserId));
+  }
+
+  /**
+   * Returns every right held within an organization, or within one function of it, read from the
+   * members of the right groups.
+   *
+   * <p>Without a function, both the organization-wide rights and the rights on every function
+   * attached to the organization are returned. An organization or function that does not exist
+   * holds no rights.</p>
+   *
+   * @param orgIdentifier the organization identifier
+   * @param functionId the function identifier, or {@code null} for the whole organization
+   * @return the rights; never {@code null}
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  public @NonNull List<RightHolder> fetchRightHolders(
+      final @NonNull String orgIdentifier, final @Nullable String functionId) {
+
+    final String orgGroupId = this.resolveOrgGroupId(orgIdentifier);
+    if (orgGroupId == null) {
+      return List.of();
+    }
+    final List<RightHolder> holders = new ArrayList<>();
+    for (final Map<String, Object> child : this.fetchGroupChildren(orgGroupId)) {
+      final String name = getString(child, "name");
+      final String id = getString(child, "id");
+      if (name == null || id == null) {
+        continue;
+      }
+      if (isRightGroupName(name)) {
+        if (functionId == null) {
+          this.collectRightHolders(holders, id, orgIdentifier, null, rightFromName(name));
+        }
+      }
+      else if (functionId == null || functionId.equals(name)) {
+        for (final Map<String, Object> rightGroup : this.fetchGroupChildren(id)) {
+          final String rightName = getString(rightGroup, "name");
+          final String rightId = getString(rightGroup, "id");
+          if (rightName != null && rightId != null && isRightGroupName(rightName)) {
+            this.collectRightHolders(holders, rightId, orgIdentifier, name, rightFromName(rightName));
+          }
+        }
+      }
+    }
+    return List.copyOf(holders);
+  }
+
+  /**
+   * Adds a right holder for every member of a right group.
+   *
+   * @param holders the list to add to
+   * @param groupId the right group
+   * @param orgIdentifier the organization
+   * @param functionId the function, or {@code null} for an organization-wide right group
+   * @param right the right level of the group
+   */
+  private void collectRightHolders(final @NonNull List<RightHolder> holders, final @NonNull String groupId,
+      final @NonNull String orgIdentifier, final @Nullable String functionId, final @NonNull String right) {
+    for (final UserInfo user : this.fetchGroupMembers(groupId)) {
+      final String first = user.firstName() != null ? user.firstName() : "";
+      final String last = user.lastName() != null ? user.lastName() : "";
+      final String name = (first + " " + last).trim();
+      holders.add(new RightHolder(user.userId(), name.isEmpty() ? null : name, orgIdentifier, functionId, right));
+    }
   }
 
   // ---------------------------------------------------------------------------

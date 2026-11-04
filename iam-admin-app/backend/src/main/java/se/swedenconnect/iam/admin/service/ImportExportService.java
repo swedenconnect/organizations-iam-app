@@ -18,8 +18,10 @@ package se.swedenconnect.iam.admin.service;
 import jakarta.servlet.http.HttpSession;
 import org.jspecify.annotations.NonNull;
 import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportExportBundle;
+import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportJobStatus;
 import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportPreviewReport;
-import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportReport;
+
+import java.util.Optional;
 
 /**
  * Service backing the superuser-only export/import feature: a full-realm JSON snapshot of
@@ -68,28 +70,42 @@ public interface ImportExportService {
       @NonNull HttpSession session);
 
   /**
-   * Creates every entry in the pending batch identified by {@code batchId}, in the order
-   * functions, then organizations (with their function attachments), then users (with their
-   * rights). Re-checks each entry against the current state of Keycloak immediately before
-   * creating it — state may have changed since the dry-run — and re-reports it as a duplicate
-   * rather than creating it again if so. A failure creating one entry is logged and reported as
-   * an error; it does not stop the rest of the batch, since Keycloak offers no cross-entity
-   * transaction to roll back.
+   * Starts creating every entry in the pending batch identified by {@code batchId} on a thread of
+   * its own, and returns at once. The entries are created in the order functions, then
+   * organizations (with their function attachments), then users (with their rights). Each entry
+   * is re-checked against the current state of Keycloak immediately before it is created — state
+   * may have changed since the dry-run — and re-reported as a duplicate rather than created again
+   * if so. An organization that already exists gets the functions from the file that it lacks
+   * attached. A failure on one entry is logged and reported as an error; it does not stop the rest
+   * of the batch, since Keycloak offers no cross-entity transaction to roll back.
    *
-   * <p>The batch is removed from {@code session} once this method returns, whether or not every
-   * entry succeeded — confirming is single-use.</p>
+   * <p>The batch is removed from {@code session} when the import starts — confirming is
+   * single-use. Its progress, and finally the outcome of every entry, is read with
+   * {@link #getImportJob}.</p>
    *
    * @param batchId     the batch id returned by the {@link #dryRun} call this confirms
    * @param actorUserId the Keycloak subject of the confirming superuser; must match the one that
    *                    ran the dry-run
    * @param session     the caller's HTTP session
-   * @return the outcome of every entry in the batch
-   * @throws ImportBatchNotFoundException if no matching, unexpired batch is held in the session
+   * @return the progress of the import just started
+   * @throws ImportBatchNotFoundException  if no matching, unexpired batch is held in the session
+   * @throws ImportAlreadyRunningException if another import is still running
    */
-  @NonNull ImportReport confirm(
+  @NonNull ImportJobStatus startImport(
       @NonNull String batchId,
       @NonNull String actorUserId,
       @NonNull HttpSession session);
+
+  /**
+   * Returns the progress of an import started by {@link #startImport}. A finished import can be
+   * read for an hour after it finished.
+   *
+   * @param jobId       the job id returned by {@link #startImport}
+   * @param actorUserId the Keycloak subject of the caller; must match the one that started it
+   * @return the progress, or empty if no such import was started by the caller or it is no
+   *         longer kept
+   */
+  @NonNull Optional<ImportJobStatus> getImportJob(@NonNull String jobId, @NonNull String actorUserId);
 
   /**
    * Discards the pending batch identified by {@code batchId} without creating anything.

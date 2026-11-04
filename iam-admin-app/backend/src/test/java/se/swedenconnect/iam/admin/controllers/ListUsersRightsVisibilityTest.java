@@ -15,6 +15,7 @@
  */
 package se.swedenconnect.iam.admin.controllers;
 
+import org.springframework.context.ApplicationEventPublisher;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,6 +43,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
+import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.Mockito.when;
@@ -80,7 +82,7 @@ class ListUsersRightsVisibilityTest {
 
   @BeforeEach
   void setUp() {
-    this.controller = new UserController(this.keycloakAdminClient, new IamAdminProperties());
+    this.controller = new UserController(this.keycloakAdminClient, new IamAdminProperties(), mock(ApplicationEventPublisher.class));
     when(this.request.getSession(false)).thenReturn(this.session);
   }
 

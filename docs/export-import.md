@@ -27,7 +27,9 @@
 
    5.3. [Import — Confirm](#import-confirm)
 
-   5.4. [Import — Cancel](#import-cancel)
+   5.4. [Import — Progress](#import-progress)
+
+   5.5. [Import — Cancel](#import-cancel)
 
 ---
 
@@ -51,10 +53,14 @@ Import is a **two-step** process:
    [Duplicate Detection](#duplicate-detection)) and reported, but nothing is created. The
    validated, duplicate-filtered batch is held server-side under a `batchId`.
 2. **Confirm** — the batch identified by `batchId` is created. The file itself is uploaded
-   only once, in the dry-run step.
+   only once, in the dry-run step. The import runs in the background on the server, and its
+   progress and final report are polled (see [Import — Progress](#import-progress)), so a large
+   file is not bound by the time limit of a single HTTP request. Only one import runs at a time.
 
-A duplicate is always **skipped entirely**, so if a person in the file already exists, neither
-the person nor any rights listed for them are created. Managed OAuth clients are out of scope
+A duplicate is **skipped entirely**, so if a person in the file already exists, neither
+the person nor any rights listed for them are created. The one exception is an existing
+organization, which gets the functions from the file that it lacks (see
+[Duplicate Detection](#duplicate-detection)). Managed OAuth clients are out of scope
 for this feature; they have a separate lifecycle and are managed under `/api/clients` (see
 [Registering a Client](registering-a-client.md)).
 
@@ -289,10 +295,17 @@ username already taken belongs to a different person, and is reported as an erro
 a duplicate (see [The Username](#the-username)).
 
 A duplicate is **skipped in full**. If a person in the file already exists, none of the rights
-listed for them are applied either, not even ones the existing account does not yet hold. This
-keeps the outcome simple to reason about and to report: every entry in the preview and the
-final report is exactly `new`/`created`, `skipped_duplicate`, or `error`, never partially
-applied.
+listed for them are applied either, not even ones the existing account does not yet hold.
+
+An existing **organization** is the exception. It is not created again, but the functions in its
+`attached_functions` that it does not already have are attached. Its outcome is `update` in the
+preview and `updated` in the final report. An organization that already has every function in
+the file is a plain `skipped_duplicate`. This also mends an organization left without its
+functions by an earlier import that stopped half-way: importing the same file again attaches
+what is missing.
+
+If an organization is created or updated but one of its functions cannot be attached, its outcome
+is `partial`, with the functions that failed in `reason`. Importing the file again attaches them.
 
 ---
 
@@ -327,7 +340,7 @@ whole batch.
 <a name="endpoints"></a>
 ## 5. Endpoints
 
-All four endpoints require a superuser session and return `403 Forbidden` otherwise.
+All five endpoints require a superuser session and return `403 Forbidden` otherwise.
 
 <a name="export"></a>
 ### 5.1. Export
@@ -373,11 +386,11 @@ Content-Type: application/json
 }
 ```
 
-Every entry in the uploaded file gets exactly one outcome, `status` one of `new`,
-`skipped_duplicate`, or `error`. `key` is the entity's duplicate key (see
+Every entry in the uploaded file gets exactly one outcome, `status` one of `new`, `update` (an
+existing organization that gets the functions it lacks), `skipped_duplicate`, or `error`. `key` is the entity's duplicate key (see
 [Duplicate Detection](#duplicate-detection)); for a user with neither eID attribute it falls
 back to `row-N` (1-based position in the file) so the entry can still be located. `reason` is
-set for `skipped_duplicate` and `error`.
+set for `update`, `skipped_duplicate` and `error`.
 
 `batch_id` identifies the validated, duplicate-filtered batch held server-side (in the caller's
 session, bound to the confirming superuser, for 15 minutes) for the confirm step.
@@ -396,35 +409,88 @@ session, bound to the confirming superuser, for 15 minutes) for the confirm step
 POST /api/import/{batchId}/confirm
 ```
 
-**Response:** `200 OK`
+Starts creating the batch in the background and returns at once.
+
+**Response:** `202 Accepted`
 
 ```json
 {
-  "functions": [
-    { "key": "walletreg", "status": "created", "reason": null }
-  ],
-  "organizations": [],
-  "users": [
-    { "key": "197001011234", "status": "created", "reason": null }
-  ]
+  "job_id": "8d2e4b1c-...-0f9a7c6d5e4b",
+  "status": "running",
+  "total": 352,
+  "processed": 0,
+  "started_at": "2026-10-16T12:00:00Z",
+  "finished_at": null,
+  "error": null,
+  "report": null
 }
 ```
 
-Same shape as the dry-run report, but only for the `new` entries the dry run identified, and
-`status` is now `created`, `skipped_duplicate` (state changed since the dry run, see
-[Validation](#validation)), or `error` (the username was taken in the meantime, or the Keycloak
-write itself failed; logged server-side, and does not stop the rest of the batch). The batch is single-use: it is removed from the session
-once this call returns, whether or not every entry succeeded.
+The body is the progress of the import, the same as [Import — Progress](#import-progress)
+returns. The batch is single-use: it is removed from the session when the import starts.
 
 **Error responses:**
 
 | Status | Condition                                                              |
 |--------|-------------------------------------------------------------------------|
 | 403    | Caller is not a superuser                                               |
-| 409    | No matching, unexpired batch for `batchId` in this session, so the dry run has to be run again |
+| 409    | No matching, unexpired batch for `batchId` in this session, so the dry run has to be run again; or another import is still running |
+
+<a name="import-progress"></a>
+### 5.4. Import — Progress
+
+```
+GET /api/import/jobs/{jobId}
+```
+
+**Response:** `200 OK`
+
+```json
+{
+  "job_id": "8d2e4b1c-...-0f9a7c6d5e4b",
+  "status": "completed",
+  "total": 3,
+  "processed": 3,
+  "started_at": "2026-10-16T12:00:00Z",
+  "finished_at": "2026-10-16T12:00:04Z",
+  "error": null,
+  "report": {
+    "functions": [
+      { "key": "walletreg", "status": "created", "reason": null }
+    ],
+    "organizations": [
+      { "key": "2021006883", "status": "updated", "reason": "function(s) attached: [walletreg]" }
+    ],
+    "users": [
+      { "key": "197001011234", "status": "created", "reason": null }
+    ]
+  }
+}
+```
+
+`status` is `running` while entries are being created, then `completed`, or `failed` if the
+import stopped before every entry was handled; `error` then tells why. `processed` counts the
+entries handled so far, whatever their outcome.
+
+`report` is set once the import is no longer running, also for a failed one, where it holds what
+was done before it stopped. It has the same shape as the dry-run report, but only for the `new`
+and `update` entries the dry run identified. `status` is now `created`, `updated`, `partial` (see
+[Duplicate Detection](#duplicate-detection)), `skipped_duplicate` (state changed since the dry
+run, see [Validation](#validation)), or `error` (the username was taken in the meantime, or the
+Keycloak write itself failed; logged server-side, and does not stop the rest of the batch).
+
+An import can only be read by the superuser who started it, and is kept for an hour after it
+finished.
+
+**Error responses:**
+
+| Status | Condition                                                              |
+|--------|-------------------------------------------------------------------------|
+| 403    | Caller is not a superuser                                               |
+| 404    | No import with `jobId` started by the caller, or it finished more than an hour ago |
 
 <a name="import-cancel"></a>
-### 5.4. Import — Cancel
+### 5.5. Import — Cancel
 
 ```
 DELETE /api/import/{batchId}

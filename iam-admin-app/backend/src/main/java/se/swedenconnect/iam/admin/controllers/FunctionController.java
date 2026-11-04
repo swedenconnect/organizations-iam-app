@@ -18,6 +18,7 @@ package se.swedenconnect.iam.admin.controllers;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -29,6 +30,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import se.swedenconnect.iam.admin.audit.AuditData;
+import se.swedenconnect.iam.admin.audit.AuditOperations;
+import se.swedenconnect.iam.admin.audit.IamAuditEvent;
+import se.swedenconnect.iam.admin.audit.IamErrorAuditEvent;
 import se.swedenconnect.iam.admin.config.IamAdminProperties;
 import se.swedenconnect.iam.admin.controllers.dto.CreateFunctionRequest;
 import se.swedenconnect.iam.admin.controllers.dto.FunctionResponse;
@@ -41,11 +46,17 @@ import se.swedenconnect.iam.admin.keycloak.KeycloakAdminException;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
 import se.swedenconnect.iam.admin.keycloak.model.FunctionInfo;
 import se.swedenconnect.iam.admin.keycloak.model.OrganizationInfo;
+import se.swedenconnect.iam.admin.keycloak.model.RightHolder;
 import se.swedenconnect.iam.admin.service.OrganizationService;
+import se.swedenconnect.spring.audit.appevents.SystemAlertEvent;
 
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * REST controller for function management operations.
@@ -64,6 +75,7 @@ public class FunctionController {
   private final KeycloakAdminClient keycloakAdminClient;
   private final IamAdminProperties properties;
   private final OrganizationService organizationService;
+  private final ApplicationEventPublisher eventPublisher;
 
   /**
    * Lists all canonical function definitions.
@@ -106,8 +118,8 @@ public class FunctionController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null) {
-      log.info("GET /api/functions/{}/organizations — rejected: no valid admin session", functionId);
-      return ResponseEntity.status(403).build();
+      log.info("GET /api/functions/{}/organizations — denied: no valid admin session", functionId);
+      return this.denied(AuditOperations.LIST_FUNCTION_ORGANIZATIONS, AuditOperations.NO_ADMIN_SESSION, functionId);
     }
 
     final int effectiveSize = size > 0 ? size : 50;
@@ -166,8 +178,8 @@ public class FunctionController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null || !data.currentUserIsSuperuser()) {
-      log.info("POST /api/functions — rejected: caller is not a superuser");
-      return ResponseEntity.status(403).build();
+      log.info("POST /api/functions — denied: {}", deniedReason(data));
+      return this.denied(AuditOperations.CREATE_FUNCTION, deniedReason(data), req.name());
     }
 
     final String name = req.name();
@@ -193,8 +205,11 @@ public class FunctionController {
     }
     catch (final KeycloakAdminException e) {
       log.error("POST /api/functions — Keycloak error: {}", e.getMessage(), e);
+      this.eventPublisher.publishEvent(IamErrorAuditEvent.operationFailed(
+          new AuditData.Operation(AuditOperations.CREATE_FUNCTION, null), AuditData.Target.none().function(name), e));
       return ResponseEntity.status(500).body(e.getMessage());
     }
+    this.eventPublisher.publishEvent(IamAuditEvent.functionCreated(name, null));
 
     this.materializeOnAllFunctionsClients(name);
 
@@ -234,6 +249,8 @@ public class FunctionController {
       log.warn("Function '{}' was created but could not be added to the client_functions of the"
           + " all-functions clients: {}. Run add-function.sh for those clients.",
           functionId, e.getMessage());
+      this.eventPublisher.publishEvent(new SystemAlertEvent(
+          "Function '%s' could not be added to the all-functions clients".formatted(functionId), e));
     }
   }
 
@@ -258,8 +275,8 @@ public class FunctionController {
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null || !data.currentUserIsSuperuser()) {
-      log.info("PUT /api/functions/{} — rejected: caller is not a superuser", functionId);
-      return ResponseEntity.status(403).build();
+      log.info("PUT /api/functions/{} — denied: {}", functionId, deniedReason(data));
+      return this.denied(AuditOperations.UPDATE_FUNCTION, deniedReason(data), functionId);
     }
 
     if (req.nameSv().isBlank()) {
@@ -274,13 +291,32 @@ public class FunctionController {
       return ResponseEntity.notFound().build();
     }
 
+    final FunctionInfo before;
     try {
+      before = this.keycloakAdminClient.fetchAllFunctions().stream()
+          .filter(f -> functionId.equals(f.id()))
+          .findFirst()
+          .orElse(null);
       this.keycloakAdminClient.updateFunction(
           functionId, req.nameSv(), req.nameEn(), req.descriptionSv(), req.descriptionEn());
     }
     catch (final KeycloakAdminException e) {
       log.error("PUT /api/functions/{} — Keycloak error: {}", functionId, e.getMessage(), e);
+      this.eventPublisher.publishEvent(IamErrorAuditEvent.operationFailed(
+          new AuditData.Operation(AuditOperations.UPDATE_FUNCTION, null),
+          AuditData.Target.none().function(functionId), e));
       return ResponseEntity.status(500).body(e.getMessage());
+    }
+    final AuditData.Change change = AuditData.Change.between(
+        before != null
+            ? functionFields(before.name().get("sv"), before.name().get("en"),
+                before.description() != null ? before.description().get("sv") : null,
+                before.description() != null ? before.description().get("en") : null)
+            : Map.of(),
+        functionFields(req.nameSv(), req.nameEn(), req.descriptionSv(), req.descriptionEn()),
+        false);
+    if (change != null) {
+      this.eventPublisher.publishEvent(IamAuditEvent.functionUpdated(functionId, change));
     }
 
     log.info("PUT /api/functions/{} — updated successfully", functionId);
@@ -305,14 +341,14 @@ public class FunctionController {
       final HttpServletRequest request) {
 
     if (!this.properties.isAllowFunctionRemoval()) {
-      log.info("DELETE /api/functions/{} — rejected: allow-function-removal is false", functionId);
-      return ResponseEntity.status(403).build();
+      log.info("DELETE /api/functions/{} — denied: allow-function-removal is false", functionId);
+      return this.denied(AuditOperations.DELETE_FUNCTION, AuditOperations.FUNCTION_REMOVAL_DISABLED, functionId);
     }
 
     final AdminSessionData data = AdminSessionBootstrapHandler.resolveSession(request).orElse(null);
     if (data == null || !data.currentUserIsSuperuser()) {
-      log.info("DELETE /api/functions/{} — rejected: caller is not a superuser", functionId);
-      return ResponseEntity.status(403).build();
+      log.info("DELETE /api/functions/{} — denied: {}", functionId, deniedReason(data));
+      return this.denied(AuditOperations.DELETE_FUNCTION, deniedReason(data), functionId);
     }
 
     if (!this.keycloakAdminClient.functionExists(functionId)) {
@@ -320,13 +356,22 @@ public class FunctionController {
       return ResponseEntity.notFound().build();
     }
 
+    // The rights disappear with the function's groups, so they are read before the deletion.
+    final List<RightHolder> removedRights = new ArrayList<>();
     try {
+      for (final String orgIdentifier : this.keycloakAdminClient.fetchOrgIdentifiersForFunction(functionId)) {
+        removedRights.addAll(this.keycloakAdminClient.fetchRightHolders(orgIdentifier, functionId));
+      }
       this.keycloakAdminClient.deleteFunction(functionId);
     }
     catch (final KeycloakAdminException e) {
       log.error("DELETE /api/functions/{} — Keycloak error: {}", functionId, e.getMessage(), e);
+      this.eventPublisher.publishEvent(IamErrorAuditEvent.operationFailed(
+          new AuditData.Operation(AuditOperations.DELETE_FUNCTION, null),
+          AuditData.Target.none().function(functionId), e));
       return ResponseEntity.status(500).body(e.getMessage());
     }
+    this.eventPublisher.publishEvent(IamAuditEvent.functionDeleted(functionId, removedRights));
 
     // The function is gone from every organization that had it attached, so the cached attached
     // function lists are stale across the board.
@@ -334,6 +379,51 @@ public class FunctionController {
 
     log.info("DELETE /api/functions/{} — deleted successfully", functionId);
     return ResponseEntity.noContent().build();
+  }
+
+  /**
+   * The function fields an update may change, by audit field name.
+   *
+   * @param nameSv        the Swedish name
+   * @param nameEn        the English name
+   * @param descriptionSv the Swedish description
+   * @param descriptionEn the English description
+   * @return the fields
+   */
+  private static Map<String, @Nullable String> functionFields(final @Nullable String nameSv,
+      final @Nullable String nameEn, final @Nullable String descriptionSv, final @Nullable String descriptionEn) {
+    final Map<String, @Nullable String> fields = new LinkedHashMap<>();
+    fields.put("name_sv", nameSv);
+    fields.put("name_en", nameEn);
+    fields.put("description_sv", descriptionSv);
+    fields.put("description_en", descriptionEn);
+    return fields;
+  }
+
+  /**
+   * The reason a superuser-only operation is refused.
+   *
+   * @param data the caller's session data, or {@code null}
+   * @return the reason
+   */
+  private static @NonNull String deniedReason(final @Nullable AdminSessionData data) {
+    return data == null ? AuditOperations.NO_ADMIN_SESSION : AuditOperations.NOT_SUPERUSER;
+  }
+
+  /**
+   * Records an {@code access_denied} audit event and returns the 403 response.
+   *
+   * @param operation  the operation refused
+   * @param reason     the reason
+   * @param functionId the function addressed, or {@code null}
+   * @param <T>        the response body type
+   * @return a 403 response
+   */
+  private <T> ResponseEntity<T> denied(
+      final @NonNull String operation, final @NonNull String reason, final @Nullable String functionId) {
+    this.eventPublisher.publishEvent(IamAuditEvent.accessDenied(
+        new AuditData.Operation(operation, reason), AuditData.Target.none().function(functionId)));
+    return ResponseEntity.status(403).build();
   }
 
 }
