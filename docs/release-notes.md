@@ -12,7 +12,9 @@
 
 - First official release.
 
-- 
+- **Switching organization no longer reuses the access token obtained for the previous organization.**
+  Applications using the iam-security starter now keep access tokens per user, organization and
+  function in the session. See [issue #99](https://github.com/swedenconnect/organizations-iam-app/issues/99).
 
 ### Version 0.9.8
 

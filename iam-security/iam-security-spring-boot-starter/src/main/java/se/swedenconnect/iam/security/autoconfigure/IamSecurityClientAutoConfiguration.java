@@ -22,6 +22,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager;
@@ -66,6 +67,10 @@ import se.swedenconnect.security.credential.spring.autoconfigure.SpringCredentia
  *       {@code private_key_jwt} authentication so that expired access tokens can be
  *       refreshed transparently</li>
  *   <li>{@link OAuthClientContext} — session-scoped context holding the current org and function</li>
+ *   <li>{@link OAuth2AuthorizedClientRepository} — an {@link OrgKeyedAuthorizedClientRepository} that keeps
+ *       authorized clients in the session per user, client registration, organization and function. Processed
+ *       before Spring Boot's OAuth2 client web security auto-configuration so that it replaces Boot's default
+ *       repository.</li>
  *   <li>{@link OAuth2AuthorizedClientManager} — a {@link DefaultOAuth2AuthorizedClientManager}
  *       that is request-bound and can redirect the browser to Keycloak when no token is cached.
  *       Scope placeholder resolution and {@code resource} parameter injection are handled by
@@ -79,7 +84,10 @@ import se.swedenconnect.security.credential.spring.autoconfigure.SpringCredentia
  *
  * @author Martin Lindström
  */
-@AutoConfiguration(after = SpringCredentialBundlesAutoConfiguration.class)
+@AutoConfiguration(
+    after = SpringCredentialBundlesAutoConfiguration.class,
+    afterName = "org.springframework.boot.security.oauth2.client.autoconfigure.OAuth2ClientAutoConfiguration",
+    beforeName = "org.springframework.boot.security.oauth2.client.autoconfigure.servlet.OAuth2ClientWebSecurityAutoConfiguration")
 @ConditionalOnClass(ClientRegistration.class)
 @Import(OAuthClientContext.class)
 public class IamSecurityClientAutoConfiguration {
@@ -183,6 +191,30 @@ public class IamSecurityClientAutoConfiguration {
   }
 
   /**
+   * Provides a default {@link OAuth2AuthorizedClientRepository}, an {@link OrgKeyedAuthorizedClientRepository}
+   * that keeps authorized clients in the HTTP session per user, client registration, organization and function.
+   *
+   * <p>Only registered for servlet web applications that have client registrations. Applications may
+   * define their own {@link OAuth2AuthorizedClientRepository} bean to override this default.</p>
+   *
+   * @param clientRegistrationRepository the client registration repository; must not be null
+   * @param oAuthClientContext the OAuth client context; must not be null
+   * @param properties the IAM security properties; must not be null
+   * @return the repository; never null
+   */
+  @Bean
+  @ConditionalOnMissingBean(OAuth2AuthorizedClientRepository.class)
+  @ConditionalOnBean(ClientRegistrationRepository.class)
+  @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+  OAuth2AuthorizedClientRepository authorizedClientRepository(
+      final ClientRegistrationRepository clientRegistrationRepository,
+      final OAuthClientContext oAuthClientContext,
+      final IamSecurityProperties properties) {
+    return new OrgKeyedAuthorizedClientRepository(
+        clientRegistrationRepository, oAuthClientContext, properties.getFunction());
+  }
+
+  /**
    * Provides a default {@link OAuth2AuthorizedClientManager} based on
    * {@link DefaultOAuth2AuthorizedClientManager}.
    *
@@ -206,7 +238,7 @@ public class IamSecurityClientAutoConfiguration {
    */
   @Bean
   @ConditionalOnMissingBean(OAuth2AuthorizedClientManager.class)
-  @ConditionalOnBean(OAuth2AuthorizedClientRepository.class)
+  @ConditionalOnBean({ ClientRegistrationRepository.class, OAuth2AuthorizedClientRepository.class })
   OAuth2AuthorizedClientManager authorizedClientManager(
       final ClientRegistrationRepository clientRegistrationRepository,
       final OAuth2AuthorizedClientRepository authorizedClientRepository,
@@ -256,25 +288,6 @@ public class IamSecurityClientAutoConfiguration {
   @ConditionalOnProperty(name = "iam.security.debug", havingValue = "true")
   OidcTokenEndpointLoggingInterceptor oidcTokenEndpointLoggingInterceptor() {
     return new OidcTokenEndpointLoggingInterceptor();
-  }
-
-  /**
-   * Provides a default {@link OAuth2AuthorizedClientRepository} bean.
-   * <p>
-   * The default implementation is {@link OrgKeyedAuthorizedClientRepository}.
-   * which adds the dimenstion of organization stored in OAuthCLientContext
-   * for individual storage of authorized clients per organization context.
-   * <p>
-   * Applications may override this default by defining their own
-   * {@link OAuth2AuthorizedClientRepository} bean.
-   *
-   * @param context the OAuth client context; must not be null
-   * @return the configured {@link OrgKeyedAuthorizedClientRepository}; never null
-   */
-  @Bean
-  @ConditionalOnMissingBean
-  OAuth2AuthorizedClientRepository authorizedClientRepository(OAuthClientContext context) {
-    return new OrgKeyedAuthorizedClientRepository(context);
   }
 
 }

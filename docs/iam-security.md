@@ -251,6 +251,12 @@ Or dynamically:
   ```java
   client.addParametersConverter(authCodeJwtConverter);
   ```
+- `OAuth2AuthorizedClientRepository` bean — an `OrgKeyedAuthorizedClientRepository` that keeps
+  access tokens in the HTTP session per user, organization and function. Registered when the
+  application has client registrations. See [Token storage](#token-storage).
+- `OAuth2AuthorizedClientManager` bean — a `DefaultOAuth2AuthorizedClientManager` that uses
+  the repository above. See
+  [When to define your own `OAuth2AuthorizedClientManager`](#when-to-define-your-own-oauth2authorizedclientmanager).
 
 ### For resource servers (when `spring-security-oauth2-resource-server` is on the classpath)
 
@@ -330,7 +336,7 @@ downstream resource server. Both flows use the same `ClientRegistration` and the
 
 The org-scoped access token is obtained lazily — Spring Security requests it when the
 application makes the first call to the resource server. If a valid token is already
-cached in `OAuth2AuthorizedClientService`, it is reused; if it has expired and a refresh
+stored for the current user, organization and function, it is reused; if it has expired and a refresh
 token is available, it is refreshed automatically. The refresh token grant uses
 `private_key_jwt` client authentication, which is configured by the starter's
 auto-configured `RestClientRefreshTokenTokenResponseClient`.
@@ -359,6 +365,40 @@ oAuthClientContext.setFunction("my-function");
 // On logout:
 oAuthClientContext.clear();
 ```
+
+### Token storage
+
+Because the scope contains `{org}` and `{function}`, a user can hold several access tokens
+for the same client registration, one for each organization and function. The starter's
+`OrgKeyedAuthorizedClientRepository` keeps each of them separately in the HTTP session, so
+a token obtained for one organization is never used when another organization is selected.
+Switching back to an earlier organization reuses the token already obtained for it.
+
+A stored token is identified by:
+
+- the authenticated user,
+- the client registration,
+- the organization, if the registration's scope contains `{org}`,
+- the function, if the registration's scope contains `{function}`.
+
+A registration without placeholders, such as the login registration, therefore has one token
+per user, and that token is still found after an organization has been selected.
+
+When a token is looked up, the organization and function are taken from `OAuthClientContext`.
+The function falls back to `iam.security.function` when the context has none, in the same way
+as when the authorization request is built. When a token is stored, the organization and
+function are read from the scope granted with the token. If the granted scope does not match
+the registration's scope template unambiguously, the values in `OAuthClientContext` are used.
+
+Tokens are only stored for authenticated users, and a different user in the same browser
+session never gets another user's token. All tokens are removed when the session ends. They
+are stored as a serializable session attribute, so they work with session replication or
+Spring Session.
+
+To use a different storage, define your own `OAuth2AuthorizedClientRepository` bean. It
+replaces the starter's repository and is used by the auto-configured
+`OAuth2AuthorizedClientManager`. An application that defines its own
+`OAuth2AuthorizedClientManager` must pass the repository to it.
 
 ### Registration configuration
 
