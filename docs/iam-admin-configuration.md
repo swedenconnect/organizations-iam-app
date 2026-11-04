@@ -192,9 +192,6 @@ Setting the property to `false` makes a write failure log an error and let the o
 The audit events can be read through the actuator's `auditevents` endpoint, which is not exposed by default. See
 [Management Endpoints](#management-endpoints).
 
-`spring.application.name` must be set, since the library fails at startup without it. The application's own
-configuration sets it to `iam-admin`, which is the name written in each event.
-
 Changes made directly in Keycloak, or through the scripts, do not pass through the application and are not
 audited.
 
