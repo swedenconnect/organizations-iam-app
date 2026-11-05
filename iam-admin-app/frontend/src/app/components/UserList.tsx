@@ -244,6 +244,7 @@ export function UserList({ users, organizations, functions, currentUserId, isSup
                   {!isSelf && (
                     <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                       <Button
+                        aria-label={t('common.edit')}
                         variant="outline"
                         size="sm"
                         onClick={() => onEdit(user)}
@@ -251,6 +252,7 @@ export function UserList({ users, organizations, functions, currentUserId, isSup
                         <Pencil className="w-4 h-4" />
                       </Button>
                       <Button
+                        aria-label={t('common.delete')}
                         variant="outline"
                         size="sm"
                         onClick={() => {
@@ -365,6 +367,7 @@ export function UserList({ users, organizations, functions, currentUserId, isSup
                                             </Badge>
                                           )}
                                           <Button
+                                            aria-label={t('common.remove')}
                                             variant="ghost"
                                             size="sm"
                                             className="h-7 w-7 p-0 hover:bg-red-50"
@@ -436,6 +439,7 @@ export function UserList({ users, organizations, functions, currentUserId, isSup
                                             </Badge>
                                           )}
                                           <Button
+                                            aria-label={t('common.remove')}
                                             variant="ghost"
                                             size="sm"
                                             className="h-7 w-7 p-0 hover:bg-red-50"

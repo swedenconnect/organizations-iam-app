@@ -23,7 +23,7 @@
 
 - The admin application now has Spring Boot Actuator endpoints, `health` and `info`. See [Management Endpoints](iam-admin-configuration.md#management-endpoints).
 
-- Accessibility fixes in the admin application: the import file field has a visible label, the pages fit narrow screens and high zoom without sideways scrolling, and the page language follows the selected interface language ([#129](https://github.com/swedenconnect/organizations-iam-app/issues/129), [#130](https://github.com/swedenconnect/organizations-iam-app/issues/130), [#131](https://github.com/swedenconnect/organizations-iam-app/issues/131)).
+- Accessibility fixes in the admin application: the import file field has a visible label, the pages fit narrow screens and high zoom without sideways scrolling, the page language follows the selected interface language, and icon buttons and form fields have names that screen readers announce ([#125](https://github.com/swedenconnect/organizations-iam-app/issues/125), [#126](https://github.com/swedenconnect/organizations-iam-app/issues/126), [#129](https://github.com/swedenconnect/organizations-iam-app/issues/129), [#130](https://github.com/swedenconnect/organizations-iam-app/issues/130), [#131](https://github.com/swedenconnect/organizations-iam-app/issues/131)).
 
 
 ### Version 0.9.8

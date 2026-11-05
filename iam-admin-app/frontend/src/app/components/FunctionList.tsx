@@ -117,6 +117,7 @@ export function FunctionList({
                   {isSuperuser && (
                     <div className="flex gap-2">
                       <Button
+                        aria-label={t('common.edit')}
                         variant="outline"
                         size="sm"
                         onClick={() => onEdit(func)}
@@ -125,6 +126,7 @@ export function FunctionList({
                       </Button>
                       {allowFunctionRemoval && (
                         <Button
+                          aria-label={t('common.delete')}
                           variant="outline"
                           size="sm"
                           onClick={() => setConfirmDeleteFunc(func)}

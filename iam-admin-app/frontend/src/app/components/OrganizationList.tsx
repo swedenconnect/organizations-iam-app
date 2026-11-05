@@ -301,6 +301,7 @@ export function OrganizationList({
                   <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                     {canAdminOrg(isSuperuser, orgRights, org.id) && (
                       <Button
+                        aria-label={t('common.edit')}
                         variant="outline"
                         size="sm"
                         onClick={() => onEdit(org)}
@@ -310,6 +311,7 @@ export function OrganizationList({
                     )}
                     {isSuperuser && (
                       <Button
+                        aria-label={t('common.delete')}
                         variant="outline"
                         size="sm"
                         onClick={() => {
@@ -417,6 +419,7 @@ export function OrganizationList({
                                 )}
                                 {!isSelf && !rightLocked && (
                                   <Button
+                                    aria-label={t('common.remove')}
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => setConfirmRemove({ orgId: org.id, userId: user!.id, right: role })}
@@ -588,6 +591,7 @@ export function OrganizationList({
                                         )}
                                         {!isSelf && !rightLocked && (
                                           <Button
+                                            aria-label={t('common.remove')}
                                             variant="ghost"
                                             size="sm"
                                             onClick={() => setConfirmRemove({ orgId: org.id, userId: user.id, functionId: func.id, right: role })}

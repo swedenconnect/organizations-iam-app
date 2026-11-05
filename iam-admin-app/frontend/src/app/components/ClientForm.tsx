@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { FunctionType, ManagedClient, ManagedClientInput } from '@/types';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -64,6 +64,7 @@ export function clientPayload(values: ClientFormValues): ManagedClientInput {
 
 export function ClientForm({ client, functions, isOpen, onClose, onSave }: ClientFormProps) {
   const { t, language } = useLanguage();
+  const idPrefix = useId();
   const [clientId, setClientId] = useState('');
   const [name, setName] = useState('');
   const [oidcClient, setOidcClient] = useState(true);
@@ -211,8 +212,8 @@ export function ClientForm({ client, functions, isOpen, onClose, onSave }: Clien
         <form onSubmit={handleSubmit} className="space-y-4">
 
           {/* Roles — a client may be either or both */}
-          <div className="space-y-2">
-            <Label>{t('clients.roles')} *</Label>
+          <div className="space-y-2" role="group" aria-labelledby={`${idPrefix}-roles`}>
+            <Label id={`${idPrefix}-roles`}>{t('clients.roles')} *</Label>
             <div className="border rounded-md divide-y">
               <label className="flex items-start gap-3 p-3 cursor-pointer">
                 <input
@@ -248,9 +249,9 @@ export function ClientForm({ client, functions, isOpen, onClose, onSave }: Clien
 
           {/* Client ID — immutable after creation */}
           <div className="space-y-2">
-            <Label htmlFor="clientId">{t('clients.clientId')} *</Label>
+            <Label htmlFor={`${idPrefix}-clientId`}>{t('clients.clientId')} *</Label>
             <Input
-              id="clientId"
+              id={`${idPrefix}-clientId`}
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
               disabled={Boolean(client)}
@@ -269,14 +270,14 @@ export function ClientForm({ client, functions, isOpen, onClose, onSave }: Clien
           {/* Display name. Optional, and shown for every role: a resource server carries one too,
               and it is what identifies the client in the Keycloak admin console */}
           <div className="space-y-2">
-            <Label htmlFor="clientName">{t('clients.name')}</Label>
-            <Input id="clientName" value={name} onChange={(e) => setName(e.target.value)} />
+            <Label htmlFor={`${idPrefix}-clientName`}>{t('clients.name')}</Label>
+            <Input id={`${idPrefix}-clientName`} value={name} onChange={(e) => setName(e.target.value)} />
           </div>
 
           {/* Redirect URIs — OIDC client only */}
           {oidcClient && (
-          <div className="space-y-2">
-            <Label>{t('clients.redirectUris')} *</Label>
+          <div className="space-y-2" role="group" aria-labelledby={`${idPrefix}-redirectUris`}>
+            <Label id={`${idPrefix}-redirectUris`}>{t('clients.redirectUris')} *</Label>
             {redirectUris.map((uri, index) => (
               <div key={index} className="flex gap-2 items-center">
                 <Input
@@ -314,8 +315,8 @@ export function ClientForm({ client, functions, isOpen, onClose, onSave }: Clien
 
           {/* Functions. A client marked as handling all functions has its list maintained by the
               server as functions are created, so there is nothing here to pick */}
-          <div className="space-y-2">
-            <Label>{t('clients.functions')}</Label>
+          <div className="space-y-2" role="group" aria-labelledby={`${idPrefix}-functions`}>
+            <Label id={`${idPrefix}-functions`}>{t('clients.functions')}</Label>
             <div className="flex flex-wrap gap-2">
               {functions.map((func) => {
                 const selected = allFunctions || selectedFunctions.includes(func.id);
@@ -344,8 +345,8 @@ export function ClientForm({ client, functions, isOpen, onClose, onSave }: Clien
 
           {/* Client keys — OIDC client only */}
           {oidcClient && (
-          <div className="space-y-2">
-            <Label>{t('clients.jwks')} *</Label>
+          <div className="space-y-2" role="group" aria-labelledby={`${idPrefix}-jwks`}>
+            <Label id={`${idPrefix}-jwks`}>{t('clients.jwks')} *</Label>
             <div className="flex gap-4">
               <label className="flex items-center gap-2 text-sm">
                 <input
@@ -388,8 +389,8 @@ export function ClientForm({ client, functions, isOpen, onClose, onSave }: Clien
 
           {/* Token settings — OIDC client only */}
           {oidcClient && (
-          <div className="space-y-2">
-            <Label>{t('clients.tokenSettings')}</Label>
+          <div className="space-y-2" role="group" aria-labelledby={`${idPrefix}-tokenSettings`}>
+            <Label id={`${idPrefix}-tokenSettings`}>{t('clients.tokenSettings')}</Label>
             <div className="border rounded-md divide-y">
               <label className="flex items-start gap-3 p-3 cursor-pointer">
                 <input

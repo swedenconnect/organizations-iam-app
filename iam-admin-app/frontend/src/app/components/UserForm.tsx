@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { User, Organization, FunctionType, UserRightData } from '@/types';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -58,6 +58,7 @@ interface UserFormProps {
 
 export function UserForm({ user, organizations, functions, isOpen, currentUserId, canAssignAdmin, onClose, onSave, onRemoveRight, onChangeRight }: UserFormProps) {
   const { t, language } = useLanguage();
+  const idPrefix = useId();
   const settings = useUserRegistration();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -210,9 +211,9 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Name */}
           <div className="space-y-2">
-            <Label htmlFor="name">{t('users.name')} *</Label>
+            <Label htmlFor={`${idPrefix}-name`}>{t('users.name')} *</Label>
             <Input
-              id="name"
+              id={`${idPrefix}-name`}
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder=""
@@ -245,16 +246,16 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
               settings={settings}
               values={identity}
               errors={identityErrors}
-              idPrefix="userForm"
+              idPrefix={idPrefix}
               onChange={(values) => { setIdentity(values); setIdentityErrors({}); }}
             />
           )}
 
           {/* Email */}
           <div className="space-y-2">
-            <Label htmlFor="email">{t('users.email')} *</Label>
+            <Label htmlFor={`${idPrefix}-email`}>{t('users.email')} *</Label>
             <Input
-              id="email"
+              id={`${idPrefix}-email`}
               type="text"
               value={email}
               onChange={(e) => { setEmail(e.target.value); setEmailError(''); }}
@@ -266,9 +267,9 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
 
           {/* Phone number */}
           <div className="space-y-2">
-            <Label htmlFor="phoneNumber">{t('users.phoneNumber')}</Label>
+            <Label htmlFor={`${idPrefix}-phoneNumber`}>{t('users.phoneNumber')}</Label>
             <Input
-              id="phoneNumber"
+              id={`${idPrefix}-phoneNumber`}
               type="tel"
               value={phoneNumber}
               onChange={(e) => { setPhoneNumber(e.target.value); setPhoneError(''); }}
@@ -280,8 +281,8 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
           {/* Rights panel (edit mode only) */}
           <div className="space-y-2">
             {user && (orgRights.length > 0 || funcRights.length > 0) && (
-              <div className="space-y-3">
-                <Label>{t('users.assignedRights')}</Label>
+              <div className="space-y-3" role="group" aria-labelledby={`${idPrefix}-assignedRights`}>
+                <Label id={`${idPrefix}-assignedRights`}>{t('users.assignedRights')}</Label>
 
                 {/* Organization-level rights */}
                 {orgRights.length > 0 && (
@@ -329,6 +330,7 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
                                   </Badge>
                                 )}
                                 <Button
+                                  aria-label={t('common.remove')}
                                   type="button"
                                   variant="ghost"
                                   size="sm"
@@ -396,6 +398,7 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
                                   </Badge>
                                 )}
                                 <Button
+                                  aria-label={t('common.remove')}
                                   type="button"
                                   variant="ghost"
                                   size="sm"
