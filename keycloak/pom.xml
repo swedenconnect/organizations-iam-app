@@ -66,15 +66,19 @@
 
       <!--
         Jackson is declared provided: the mapper JARs must not bundle it because
-        Keycloak already ships Jackson on its own classpath. The version is pinned to
-        the Jackson 2.17.x line that Keycloak 26.x bundles at runtime. Using a higher
-        minor version (2.18+) would risk referencing APIs that are absent in the
-        container. Update this version in step with Keycloak upgrades.
+        Keycloak already ships Jackson on its own classpath. The version must match the
+        one managed by the Keycloak version in keycloak.version, currently 2.21.7 for
+        Keycloak 26.8.1. A newer version could reference APIs that are absent at runtime.
+
+        Update this version by hand whenever Keycloak is upgraded. Read the value from
+        the Quarkus BOM (io.quarkus:quarkus-bom) version that Keycloak's parent POM
+        (org.keycloak:keycloak-parent) refers to, and the jackson-databind version
+        managed by that BOM. Dependabot is told to ignore this artifact.
       -->
       <dependency>
         <groupId>com.fasterxml.jackson.core</groupId>
         <artifactId>jackson-databind</artifactId>
-        <version>2.17.3</version>
+        <version>2.21.7</version>
       </dependency>
 
       <!-- Test dependencies -->
@@ -87,13 +91,13 @@
       <dependency>
         <groupId>org.mockito</groupId>
         <artifactId>mockito-core</artifactId>
-        <version>5.23.0</version>
+        <version>5.24.0</version>
       </dependency>
 
       <dependency>
         <groupId>org.mockito</groupId>
         <artifactId>mockito-junit-jupiter</artifactId>
-        <version>5.23.0</version>
+        <version>5.24.0</version>
       </dependency>
 
     </dependencies>

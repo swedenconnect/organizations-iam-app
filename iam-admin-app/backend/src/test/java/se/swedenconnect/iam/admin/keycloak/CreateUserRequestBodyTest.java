@@ -15,8 +15,6 @@
  */
 package se.swedenconnect.iam.admin.keycloak;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,6 +31,8 @@ import org.springframework.security.oauth2.core.OAuth2AccessToken;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 import se.swedenconnect.iam.admin.config.IamAdminProperties;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.net.URI;
 import java.time.Instant;
@@ -66,7 +66,7 @@ class CreateUserRequestBodyTest {
 
   private static final String CREATED_ID = "d1f0c0de-0000-4000-8000-000000000001";
 
-  private static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
   @Mock
   private OAuth2AuthorizedClientManager authorizedClientManager;
@@ -93,11 +93,11 @@ class CreateUserRequestBodyTest {
     final JsonNode body = this.create(
         () -> this.newClient().createUser(null, "Martin Lindström", null, "196911292032", null, null, null));
 
-    final String username = body.path("username").asText();
+    final String username = body.path("username").asString();
     assertThatCode(() -> UUID.fromString(username)).doesNotThrowAnyException();
-    assertThat(body.path("firstName").asText()).isEqualTo("Martin");
-    assertThat(body.path("lastName").asText()).isEqualTo("Lindström");
-    assertThat(body.path("attributes").path("personalIdentityNumber").get(0).asText())
+    assertThat(body.path("firstName").asString()).isEqualTo("Martin");
+    assertThat(body.path("lastName").asString()).isEqualTo("Lindström");
+    assertThat(body.path("attributes").path("personalIdentityNumber").get(0).asString())
         .isEqualTo("196911292032");
     assertThat(body.has("credentials")).isFalse();
   }
@@ -108,7 +108,7 @@ class CreateUserRequestBodyTest {
     final JsonNode body = this.create(
         () -> this.newClient().createUser("martin", "Martin Lindström", null, "196911292032", null, null, null));
 
-    assertThat(body.path("username").asText()).isEqualTo("martin");
+    assertThat(body.path("username").asString()).isEqualTo("martin");
   }
 
   /** A blank user ID is treated as absent. */
@@ -117,7 +117,7 @@ class CreateUserRequestBodyTest {
     final JsonNode body = this.create(
         () -> this.newClient().createUser("  ", "Martin Lindström", null, "196911292032", null, null, null));
 
-    assertThatCode(() -> UUID.fromString(body.path("username").asText())).doesNotThrowAnyException();
+    assertThatCode(() -> UUID.fromString(body.path("username").asString())).doesNotThrowAnyException();
   }
 
   /**
@@ -133,14 +133,14 @@ class CreateUserRequestBodyTest {
         null, "Martin Lindström", "martin@example.com", null, "martin@2021006883", "+46701234567", null));
 
     final JsonNode attributes = body.path("attributes");
-    assertThat(attributes.path("orgAffiliation").get(0).asText()).isEqualTo("martin@2021006883");
-    assertThat(attributes.path("orgNumber").get(0).asText()).isEqualTo("2021006883");
-    assertThat(attributes.path("orgName").get(0).asText())
+    assertThat(attributes.path("orgAffiliation").get(0).asString()).isEqualTo("martin@2021006883");
+    assertThat(attributes.path("orgNumber").get(0).asString()).isEqualTo("2021006883");
+    assertThat(attributes.path("orgName").get(0).asString())
         .isEqualTo("Myndigheten för Digital förvaltning");
     assertThat(attributes.has("orgUnit")).isFalse();
-    assertThat(attributes.path("phoneNumber").get(0).asText()).isEqualTo("+46701234567");
+    assertThat(attributes.path("phoneNumber").get(0).asString()).isEqualTo("+46701234567");
     assertThat(attributes.has("personalIdentityNumber")).isFalse();
-    assertThat(body.path("email").asText()).isEqualTo("martin@example.com");
+    assertThat(body.path("email").asString()).isEqualTo("martin@example.com");
   }
 
   /**
@@ -155,8 +155,8 @@ class CreateUserRequestBodyTest {
         null, "Martin Lindström", null, null, "martin@5561234567", null, null));
 
     final JsonNode attributes = body.path("attributes");
-    assertThat(attributes.path("orgAffiliation").get(0).asText()).isEqualTo("martin@5561234567");
-    assertThat(attributes.path("orgNumber").get(0).asText()).isEqualTo("5561234567");
+    assertThat(attributes.path("orgAffiliation").get(0).asString()).isEqualTo("martin@5561234567");
+    assertThat(attributes.path("orgNumber").get(0).asString()).isEqualTo("5561234567");
     assertThat(attributes.has("orgName")).isFalse();
   }
 
@@ -170,7 +170,7 @@ class CreateUserRequestBodyTest {
         null, "Martin Lindström", null, null, "martin@2021006883", null, null));
 
     final JsonNode attributes = body.path("attributes");
-    assertThat(attributes.path("orgNumber").get(0).asText()).isEqualTo("2021006883");
+    assertThat(attributes.path("orgNumber").get(0).asString()).isEqualTo("2021006883");
     assertThat(attributes.has("orgName")).isFalse();
   }
 
@@ -219,8 +219,8 @@ class CreateUserRequestBodyTest {
         "martin", "Martin Lindström", null, "196911292032", null, null, "initial-secret"));
 
     final JsonNode credential = body.path("credentials").get(0);
-    assertThat(credential.path("type").asText()).isEqualTo("password");
-    assertThat(credential.path("value").asText()).isEqualTo("initial-secret");
+    assertThat(credential.path("type").asString()).isEqualTo("password");
+    assertThat(credential.path("value").asString()).isEqualTo("initial-secret");
     assertThat(credential.path("temporary").asBoolean()).isTrue();
   }
 
