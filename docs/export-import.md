@@ -163,6 +163,8 @@ Keycloak, or to an entry earlier in the same file.
       "email": "anna.andersson@digg.se",
       "personal_identity_number": "197001011234",
       "org_affiliation": null,
+      "hsa_id": null,
+      "efos_id": null,
       "phone_number": "+46701112233",
       "rights": [
         { "org_identifier": "2021006883", "function_id": "walletreg", "right": "admin" },
@@ -175,6 +177,8 @@ Keycloak, or to an entry earlier in the same file.
       "email": "bertil@exempel.se",
       "personal_identity_number": null,
       "org_affiliation": "bertil@5561234567",
+      "hsa_id": "SE2321000016-A1B2",
+      "efos_id": null,
       "phone_number": null,
       "rights": [
         { "org_identifier": "5561234567", "function_id": "demo", "right": "write" }
@@ -225,21 +229,20 @@ honoured.
 | `email`                     | string \| null  | Optional email address. Must contain `@` if given.                    |
 | `personal_identity_number`  | string \| null  | 12-digit Swedish personal identity number.                            |
 | `org_affiliation`           | string \| null  | Organizational affiliation, format `userID@organization-number`.      |
+| `hsa_id`                    | string \| null  | HSA-ID. Any value that is not blank.                                  |
+| `efos_id`                   | string \| null  | EFOS-ID. Any value that is not blank.                                 |
 | `phone_number`              | string \| null  | Optional phone number.                                                |
 | `rights`                    | array           | `{ org_identifier, function_id, right }`. `function_id: null` means the right is organization-wide. `right` is `read`, `write`, or `admin`. |
 
-**At least one of `personal_identity_number` or `org_affiliation` is required**, see
-[Duplicate Detection](#duplicate-detection). A user entry with neither is rejected as an error,
-regardless of the deployment's `eidAttributeRequired` setting for the manual registration form.
+**At least one of `personal_identity_number`, `org_affiliation`, `hsa_id` or `efos_id` is
+required**, see [Duplicate Detection](#duplicate-detection). A blank value counts as absent. A
+user entry with none of them is rejected as an error, regardless of the deployment's
+`eid-attribute-required` setting for the manual registration form.
 
-**HSA-ID and EFOS-ID are planned.** They are eID attributes the application will support, along
-with the two above, and the registration settings already name them (`hsa-id-enabled` and
-`efos-id-enabled`, see
-[User Registration Settings](iam-admin-configuration.md#user-registration-settings)). They are
-not part of the bundle format yet. When the attributes themselves are implemented, they will be
-added to a user entry as `hsa_id` and `efos_id`, and they are expected to satisfy the
-requirement above in the same way the personal identity number and the organizational
-affiliation do today.
+Import does not look at the registration settings that enable each eID attribute
+(`personal-number-enabled`, `org-affiliation-enabled`, `hsa-id-enabled` and `efos-id-enabled`,
+see [User Registration Settings](iam-admin-configuration.md#user-registration-settings)). A
+value in the file is imported whether or not the registration form offers that field.
 
 There is no `superuser` field: superuser status cannot be granted through import.
 
@@ -256,8 +259,7 @@ administrator choose the user ID, that is when
 [User Registration Settings](iam-admin-configuration.md#user-registration-settings)). For one
 person the outcomes are decided in this order:
 
-1. **The person already exists**, matched on personal identity number or organizational
-   affiliation. The entry is skipped as a duplicate and no username rule is applied to it.
+1. **The person already exists**, matched on any of the four eID attributes. The entry is skipped as a duplicate and no username rule is applied to it.
    Re-importing an export into the realm it came from is therefore quiet, whatever the setting
    is and whatever usernames the file carries.
 2. **`allow-select-user-id` is off and the entry carries a username.** The entry is an error,
@@ -269,8 +271,7 @@ person the outcomes are decided in this order:
 
 An entry without a username is created the way any other user without a chosen user ID is, with
 Keycloak assigning a random UUID as username. The username is **not** a duplicate key: duplicate
-detection is on personal identity number and organizational affiliation only, and the key
-reported for a user entry is unchanged.
+detection is on the eID attributes only, and the key reported for a user entry is unchanged.
 
 ---
 
@@ -281,14 +282,17 @@ reported for a user entry is unchanged.
 |---------------|-------------------------------------------------------------------|
 | Function      | `id`                                                               |
 | Organization  | `org_identifier`                                                   |
-| User          | `personal_identity_number` if given, otherwise `org_affiliation`   |
+| User          | `personal_identity_number`, `org_affiliation`, `hsa_id` and `efos_id` |
 
 Functions and organizations are matched on their natural identifier, which is the only sane
 choice since it is also what every reference to them uses.
 
-Users are matched on `personal_identity_number` / `org_affiliation`, the same two eID attributes
-`POST /api/users` already enforces uniqueness on when a user is created through the regular
-form (see [Rights Model — Users](rights-model.md#users)). **Email is deliberately not used as a
+Users are matched on `personal_identity_number`, `org_affiliation`, `hsa_id` and `efos_id`, in
+that order, the same four eID attributes `POST /api/users` enforces uniqueness on when a user
+is created through the regular form (see [Rights Model — Users](rights-model.md#users)). A
+match on any one of them means the person exists. The key a user entry is reported under is the
+first of the four that the entry has, so an entry with a personal identity number is reported
+under it whatever else it carries. **Email is deliberately not used as a
 duplicate key**: it is a plain profile field with no uniqueness constraint elsewhere in the
 system, so using it here would be a new and inconsistent rule. **Neither is `username`**: a
 username already taken belongs to a different person, and is reported as an error rather than as
@@ -333,7 +337,7 @@ State can change between the dry run and the confirm step (for example, another 
 creates the same organization in the meantime, or somebody registers the username a user entry
 names). Confirm re-checks every entry immediately before creating it, and re-reports it as
 `skipped_duplicate` or, for a username taken in the meantime, as `error` rather than failing the
-whole batch.
+whole batch. The duplicate re-check covers all four eID attributes.
 
 ---
 
@@ -381,14 +385,14 @@ Content-Type: application/json
   ],
   "users": [
     { "key": "197001011234", "status": "new", "reason": null },
-    { "key": "row-2", "status": "error", "reason": "at least one of personal_identity_number or org_affiliation must be given" }
+    { "key": "row-2", "status": "error", "reason": "at least one of personal_identity_number, org_affiliation, hsa_id or efos_id must be given" }
   ]
 }
 ```
 
 Every entry in the uploaded file gets exactly one outcome, `status` one of `new`, `update` (an
 existing organization that gets the functions it lacks), `skipped_duplicate`, or `error`. `key` is the entity's duplicate key (see
-[Duplicate Detection](#duplicate-detection)); for a user with neither eID attribute it falls
+[Duplicate Detection](#duplicate-detection)); for a user with no eID attribute it falls
 back to `row-N` (1-based position in the file) so the entry can still be located. `reason` is
 set for `update`, `skipped_duplicate` and `error`.
 

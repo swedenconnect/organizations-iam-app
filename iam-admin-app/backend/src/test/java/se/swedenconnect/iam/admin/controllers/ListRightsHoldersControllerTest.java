@@ -83,7 +83,7 @@ class ListRightsHoldersControllerTest {
     when(this.keycloakAdminClient.organizationExists(ORG)).thenReturn(true);
     when(this.keycloakAdminClient.isFunctionAttachedToOrg(ORG, FUNC)).thenReturn(true);
     when(this.keycloakAdminClient.fetchFunctionRightsHolders(ORG, FUNC)).thenReturn(List.of(
-        new RightsHolderEntry("u1", "197001011234", "Anna Andersson", "admin", "function")));
+        new RightsHolderEntry("u1", "197001011234", null, null, null, "Anna Andersson", "admin", "function")));
 
     final ResponseEntity<?> response = this.controller.listRightsHolders(ORG, FUNC, superuserJwt());
 
@@ -92,6 +92,25 @@ class ListRightsHoldersControllerTest {
     final var body = (IamServiceOrganizationController.RightsHoldersResponse) response.getBody();
     assertThat(body.users()).hasSize(1);
     assertThat(body.users().getFirst().userId()).isEqualTo("u1");
+  }
+
+  /** Every eID attribute is returned with its JSON name, and an absent one as null. */
+  @Test
+  void listRightsHolders_returnsTheEidAttributes() throws Exception {
+    setupSuperuserAuth();
+    when(this.keycloakAdminClient.organizationExists(ORG)).thenReturn(true);
+    when(this.keycloakAdminClient.isFunctionAttachedToOrg(ORG, FUNC)).thenReturn(true);
+    when(this.keycloakAdminClient.fetchFunctionRightsHolders(ORG, FUNC)).thenReturn(List.of(
+        new RightsHolderEntry("u1", null, "anna@2021006883", "SE2321000016-1234", "efos-4711", "Anna Andersson",
+            "admin", "function")));
+
+    final Object body = this.controller.listRightsHolders(ORG, FUNC, superuserJwt()).getBody();
+    final String json = tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(body);
+
+    assertThat(json).contains("\"personal_identity_number\":null")
+        .contains("\"org_affiliation\":\"anna@2021006883\"")
+        .contains("\"hsa_id\":\"SE2321000016-1234\"")
+        .contains("\"efos_id\":\"efos-4711\"");
   }
 
   // -----------------------------------------------------------------------

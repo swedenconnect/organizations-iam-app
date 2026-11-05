@@ -32,8 +32,9 @@ export class LastAdminError extends Error {
 }
 
 /**
- * Thrown when POST /api/users returns 409 because an identity given for the new user, the
- * personal identity number or the organizational affiliation, is already registered. The
+ * Thrown when POST /api/users returns 409 because an eID attribute given for the new user, the
+ * personal identity number, the organizational affiliation, the HSA-ID or the EFOS-ID, is already
+ * registered. The
  * existing user's Keycloak ID is included when the backend provides it, so the caller can
  * offer that user instead.
  */
@@ -68,6 +69,8 @@ export async function createUser(user: CreateUserInput): Promise<User> {
       userId: user.userId ?? null,
       personalIdentityNumber: user.personalIdentityNumber?.replace(/-/g, '') ?? null,
       orgAffiliation: user.orgAffiliation ?? null,
+      hsaId: user.hsaId ?? null,
+      efosId: user.efosId ?? null,
       phoneNumber: user.phoneNumber ?? null,
       temporaryPassword: user.temporaryPassword ?? null,
     }),
@@ -92,6 +95,8 @@ export async function createUser(user: CreateUserInput): Promise<User> {
     email: data.email ?? '',
     personalIdentityNumber: data.personalIdentityNumber ?? '',
     orgAffiliation: data.orgAffiliation || undefined,
+    hsaId: data.hsaId || undefined,
+    efosId: data.efosId || undefined,
     phoneNumber: data.phoneNumber ?? undefined,
     superuser: false,
     rights: [],
@@ -120,6 +125,8 @@ export async function updateUser(id: string, user: Partial<User>): Promise<User>
     email: data.email ?? '',
     personalIdentityNumber: data.personalIdentityNumber ?? '',
     orgAffiliation: data.orgAffiliation || undefined,
+    hsaId: data.hsaId || undefined,
+    efosId: data.efosId || undefined,
     phoneNumber: data.phoneNumber || undefined,
     superuser: user.superuser ?? false,
     rights: user.rights ?? [],
@@ -149,6 +156,8 @@ export async function getUserById(id: string): Promise<User | null> {
     email: data.email ?? '',
     personalIdentityNumber: data.personalIdentityNumber ?? '',
     orgAffiliation: data.orgAffiliation || undefined,
+    hsaId: data.hsaId || undefined,
+    efosId: data.efosId || undefined,
     phoneNumber: data.phoneNumber || undefined,
     superuser: false,
     rights: [],

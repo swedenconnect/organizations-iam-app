@@ -102,8 +102,10 @@ class ImportExportServiceTest {
     when(this.keycloakAdminClient.fetchAllUsers()).thenReturn(List.of());
     when(this.keycloakAdminClient.findUserIdByPersonalIdentityNumber(anyString())).thenReturn(Optional.empty());
     when(this.keycloakAdminClient.findUserIdByOrgAffiliation(anyString())).thenReturn(Optional.empty());
+    when(this.keycloakAdminClient.findUserIdByHsaId(anyString())).thenReturn(Optional.empty());
+    when(this.keycloakAdminClient.findUserIdByEfosId(anyString())).thenReturn(Optional.empty());
     when(this.keycloakAdminClient.usernameExists(anyString())).thenReturn(false);
-    when(this.keycloakAdminClient.createUser(any(), anyString(), any(), any(), any(), any(), any()))
+    when(this.keycloakAdminClient.createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any()))
         .thenReturn(CREATED_ID);
   }
 
@@ -132,7 +134,8 @@ class ImportExportServiceTest {
 
     final Map<String, Object> user = firstOf(json, "users");
     assertThat(user).containsOnlyKeys(
-        "name", "username", "email", "personal_identity_number", "org_affiliation", "phone_number", "rights");
+        "name", "username", "email", "personal_identity_number", "org_affiliation", "hsa_id", "efos_id",
+        "phone_number", "rights");
     assertThat(user).containsEntry("username", "anna").containsEntry("personal_identity_number", PIN);
     assertThat(((List<?>) user.get("rights")).getFirst())
         .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
@@ -229,7 +232,7 @@ class ImportExportServiceTest {
     assertThat(report.organizations().getFirst().reason()).isEqualTo("org_identifier must be exactly 10 digits");
     assertThat(report.users().getFirst().status()).isEqualTo("error");
     assertThat(report.users().getFirst().reason())
-        .isEqualTo("at least one of personal_identity_number or org_affiliation must be given");
+        .isEqualTo("at least one of personal_identity_number, org_affiliation, hsa_id or efos_id must be given");
   }
 
   @Test
@@ -272,7 +275,7 @@ class ImportExportServiceTest {
 
     assertThat(statuses(result.users())).containsExactly("created");
     verify(this.keycloakAdminClient)
-        .createUser(eq("anna"), eq("Anna Andersson"), any(), eq(PIN), isNull(), any(), isNull());
+        .createUser(eq("anna"), eq("Anna Andersson"), any(), eq(PIN), isNull(), isNull(), isNull(), any(), isNull());
   }
 
   @Test
@@ -285,7 +288,7 @@ class ImportExportServiceTest {
     this.confirm(report.batchId());
 
     verify(this.keycloakAdminClient)
-        .createUser(isNull(), eq("Anna Andersson"), any(), eq(PIN), isNull(), any(), isNull());
+        .createUser(isNull(), eq("Anna Andersson"), any(), eq(PIN), isNull(), isNull(), isNull(), any(), isNull());
   }
 
   @Test
@@ -299,7 +302,7 @@ class ImportExportServiceTest {
     assertThat(report.users().getFirst().reason()).isEqualTo("username 'anna' is already taken");
 
     this.confirm(report.batchId());
-    verify(this.keycloakAdminClient, never()).createUser(any(), anyString(), any(), any(), any(), any(), any());
+    verify(this.keycloakAdminClient, never()).createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any());
   }
 
   @Test
@@ -314,7 +317,7 @@ class ImportExportServiceTest {
             + "(iam.admin.user-registration.allow-select-user-id is false)");
 
     this.confirm(report.batchId());
-    verify(this.keycloakAdminClient, never()).createUser(any(), anyString(), any(), any(), any(), any(), any());
+    verify(this.keycloakAdminClient, never()).createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any());
   }
 
   @Test
@@ -328,7 +331,7 @@ class ImportExportServiceTest {
 
     assertThat(statuses(result.users())).containsExactly("created");
     verify(this.keycloakAdminClient)
-        .createUser(isNull(), eq("Anna Andersson"), any(), eq(PIN), isNull(), any(), isNull());
+        .createUser(isNull(), eq("Anna Andersson"), any(), eq(PIN), isNull(), isNull(), isNull(), any(), isNull());
   }
 
   @Test
@@ -384,7 +387,7 @@ class ImportExportServiceTest {
 
     assertThat(result.users().getFirst().status()).isEqualTo("error");
     assertThat(result.users().getFirst().reason()).isEqualTo("username 'anna' is already taken");
-    verify(this.keycloakAdminClient, never()).createUser(any(), anyString(), any(), any(), any(), any(), any());
+    verify(this.keycloakAdminClient, never()).createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any());
   }
 
   @Test
@@ -398,7 +401,126 @@ class ImportExportServiceTest {
 
     assertThat(result.users().getFirst().status()).isEqualTo("error");
     assertThat(result.users().getFirst().reason()).contains("usernames are not accepted");
-    verify(this.keycloakAdminClient, never()).createUser(any(), anyString(), any(), any(), any(), any(), any());
+    verify(this.keycloakAdminClient, never()).createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any());
+  }
+
+  // ---------------------------------------------------------------------------
+  // HSA-ID and EFOS-ID
+  // ---------------------------------------------------------------------------
+
+  @Test
+  void anHsaIdAloneIdentifiesAUserAndIsAcceptedWithTheRegistrationSettingOff() {
+    assertThat(this.properties.getUserRegistration().isHsaIdEnabled()).isFalse();
+
+    final ImportPreviewReport report = this.dryRun(identityFile("\"hsa_id\": \" SE2321000016-1234 \""));
+
+    assertThat(report.users().getFirst().status()).isEqualTo("new");
+    assertThat(report.users().getFirst().key()).isEqualTo("SE2321000016-1234");
+
+    final ImportReport result = this.confirm(report.batchId());
+
+    assertThat(statuses(result.users())).containsExactly("created");
+    verify(this.keycloakAdminClient).createUser(isNull(), eq("Anna Andersson"), any(), isNull(), isNull(),
+        eq("SE2321000016-1234"), isNull(), any(), isNull());
+  }
+
+  @Test
+  void anEfosIdAloneIdentifiesAUserAndIsAcceptedWithTheRegistrationSettingOff() {
+    assertThat(this.properties.getUserRegistration().isEfosIdEnabled()).isFalse();
+
+    final ImportPreviewReport report = this.dryRun(identityFile("\"efos_id\": \"efos-4711\""));
+
+    assertThat(report.users().getFirst().status()).isEqualTo("new");
+    assertThat(report.users().getFirst().key()).isEqualTo("efos-4711");
+
+    this.confirm(report.batchId());
+
+    verify(this.keycloakAdminClient).createUser(isNull(), eq("Anna Andersson"), any(), isNull(), isNull(),
+        isNull(), eq("efos-4711"), any(), isNull());
+  }
+
+  @Test
+  void blankHsaIdAndEfosIdDoNotIdentifyAUser() {
+    final ImportPreviewReport report = this.dryRun(identityFile("\"hsa_id\": \"  \", \"efos_id\": \"\""));
+
+    assertThat(report.users().getFirst().status()).isEqualTo("error");
+    assertThat(report.users().getFirst().key()).isEqualTo("row-1");
+  }
+
+  @Test
+  void theReportedKeyIsTheFirstIdentifierPresentInDuplicateCheckOrder() {
+    assertThat(this.dryRun(identityFile("\"personal_identity_number\": \"" + PIN + "\", "
+        + "\"org_affiliation\": \"anna@2021006883\", \"hsa_id\": \"hsa-1\", \"efos_id\": \"efos-1\""))
+        .users().getFirst().key()).isEqualTo(PIN);
+    assertThat(this.dryRun(identityFile("\"org_affiliation\": \"anna@2021006883\", "
+        + "\"hsa_id\": \"hsa-1\", \"efos_id\": \"efos-1\""))
+        .users().getFirst().key()).isEqualTo("anna@2021006883");
+    assertThat(this.dryRun(identityFile("\"hsa_id\": \"hsa-1\", \"efos_id\": \"efos-1\""))
+        .users().getFirst().key()).isEqualTo("hsa-1");
+  }
+
+  @Test
+  void aUserMatchedOnHsaIdIsADuplicate() {
+    when(this.keycloakAdminClient.findUserIdByHsaId("hsa-1")).thenReturn(Optional.of("existing"));
+
+    final ImportPreviewReport report = this.dryRun(identityFile(
+        "\"personal_identity_number\": \"" + PIN + "\", \"hsa_id\": \"hsa-1\""));
+
+    assertThat(report.users().getFirst().status()).isEqualTo("skipped_duplicate");
+    assertThat(report.users().getFirst().key()).isEqualTo(PIN);
+  }
+
+  @Test
+  void aUserMatchedOnEfosIdIsADuplicate() {
+    when(this.keycloakAdminClient.findUserIdByEfosId("efos-1")).thenReturn(Optional.of("existing"));
+
+    final ImportPreviewReport report = this.dryRun(identityFile(
+        "\"hsa_id\": \"hsa-1\", \"efos_id\": \"efos-1\""));
+
+    assertThat(report.users().getFirst().status()).isEqualTo("skipped_duplicate");
+    assertThat(report.users().getFirst().key()).isEqualTo("hsa-1");
+  }
+
+  @Test
+  void confirmReChecksDuplicatesOnHsaIdAndEfosId() {
+    final ImportPreviewReport report = this.dryRun(identityFile(
+        "\"hsa_id\": \"hsa-1\", \"efos_id\": \"efos-1\""));
+    assertThat(statuses(report.users())).containsExactly("new");
+
+    // Somebody registers a user with the same EFOS-ID between the dry run and the confirm.
+    when(this.keycloakAdminClient.findUserIdByEfosId("efos-1")).thenReturn(Optional.of("existing"));
+
+    final ImportReport result = this.confirm(report.batchId());
+
+    assertThat(statuses(result.users())).containsExactly("skipped_duplicate");
+    verify(this.keycloakAdminClient, never())
+        .createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any());
+  }
+
+  @Test
+  void anExportWithHsaIdAndEfosIdImportsIntoAnEmptyRealmAndIsADuplicateTheSecondTime() {
+    this.properties.getUserRegistration().setAllowSelectUserId(true);
+    when(this.keycloakAdminClient.fetchAllUsers()).thenReturn(List.of(new UserInfo("anna-id", "anna", "Anna",
+        "Andersson", null, null, null, "hsa-1", "efos-1", null, false, List.of())));
+    final byte[] exported = this.objectMapper.writeValueAsBytes(this.service.exportAll());
+    assertThat(firstOf(this.asJson(this.service.exportAll()), "users"))
+        .containsEntry("hsa_id", "hsa-1")
+        .containsEntry("efos_id", "efos-1");
+
+    // An empty realm
+    when(this.keycloakAdminClient.fetchAllUsers()).thenReturn(List.of());
+    final ImportPreviewReport first = this.service.dryRun(exported, "actor", this.session);
+    assertThat(statuses(first.users())).containsExactly("new");
+    final ImportReport result = this.confirm(first.batchId());
+    assertThat(statuses(result.users())).containsExactly("created");
+    verify(this.keycloakAdminClient).createUser(eq("anna"), eq("Anna Andersson"), any(), isNull(), isNull(),
+        eq("hsa-1"), eq("efos-1"), any(), isNull());
+
+    // The users now exist
+    when(this.keycloakAdminClient.findUserIdByHsaId("hsa-1")).thenReturn(Optional.of(CREATED_ID));
+    when(this.keycloakAdminClient.findUserIdByEfosId("efos-1")).thenReturn(Optional.of(CREATED_ID));
+    final ImportPreviewReport second = this.service.dryRun(exported, "actor", this.session);
+    assertThat(statuses(second.users())).containsExactly("skipped_duplicate");
   }
 
   // ---------------------------------------------------------------------------
@@ -419,7 +541,7 @@ class ImportExportServiceTest {
     assertThat(started.total()).isEqualTo(1);
     assertThat(started.processed()).isZero();
     assertThat(started.report()).isNull();
-    verify(this.keycloakAdminClient, never()).createUser(any(), anyString(), any(), any(), any(), any(), any());
+    verify(this.keycloakAdminClient, never()).createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any());
 
     pending.getFirst().run();
 
@@ -571,7 +693,7 @@ class ImportExportServiceTest {
       assertThat(result.organizations()).isEmpty();
       assertThat(result.users()).isEmpty();
     }
-    verify(this.keycloakAdminClient, never()).createUser(any(), anyString(), any(), any(), any(), any(), any());
+    verify(this.keycloakAdminClient, never()).createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any());
   }
 
   // ---------------------------------------------------------------------------
@@ -641,6 +763,18 @@ class ImportExportServiceTest {
         """.formatted(extraFields);
   }
 
+  /** A one-user file with the given identity fields, as raw JSON, and nothing else identifying. */
+  private static String identityFile(final String identityFields) {
+    return """
+        {
+          "schema_version": "1.0",
+          "functions": [],
+          "organizations": [],
+          "users": [ { "name": "Anna Andersson", %s, "rights": [] } ]
+        }
+        """.formatted(identityFields);
+  }
+
   private static FunctionInfo functionInfo() {
     final LocalizedString name = new LocalizedString();
     name.add("sv", "Walletregistrering");
@@ -658,7 +792,7 @@ class ImportExportServiceTest {
 
   private static UserInfo userInfo(final String username, final boolean superuser) {
     return new UserInfo(username + "-id", username, "Anna", "Andersson", "anna@digg.se",
-        PIN, null, "+46701112233", superuser, List.of());
+        PIN, null, null, null, "+46701112233", superuser, List.of());
   }
 
 }

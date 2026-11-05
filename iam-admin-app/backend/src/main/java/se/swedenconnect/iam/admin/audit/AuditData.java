@@ -69,8 +69,8 @@ public final class AuditData {
    * @param displayName the user's name, or {@code null} if not available
    * @param personalIdentityNumber the personal identity number, or {@code null}
    * @param orgAffiliation the organizational affiliation, or {@code null}
-   * @param hsaId the HSA-ID, or {@code null} (not yet implemented in the application)
-   * @param efosId the EFOS-ID, or {@code null} (not yet implemented in the application)
+   * @param hsaId the HSA-ID, or {@code null}
+   * @param efosId the EFOS-ID, or {@code null}
    * @param username the Keycloak username chosen at creation, or {@code null}
    * @param temporaryPasswordSet whether a temporary password was set, or {@code null} when not
    *     relevant to the event
@@ -131,9 +131,8 @@ public final class AuditData {
      * @return the user object
      */
     public static @NonNull User withIdentity(final @NonNull UserInfo user) {
-      // TODO: hsaId and efosId are taken from the user when those eID attributes are implemented.
       return new User(user.userId(), displayName(user), user.personalIdentityNumber(), user.orgAffiliation(),
-          null, null, null, null);
+          user.hsaId(), user.efosId(), null, null);
     }
 
     /**

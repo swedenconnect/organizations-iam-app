@@ -17,6 +17,8 @@ export interface User {
   personalIdentityNumber: string;
   /** Organizational affiliation on the format userID@organization-number. */
   orgAffiliation?: string;
+  hsaId?: string;
+  efosId?: string;
   name: string;
   email: string;
   phoneNumber?: string;
@@ -33,6 +35,8 @@ export interface CreateUserInput {
   userId?: string;
   personalIdentityNumber?: string;
   orgAffiliation?: string;
+  hsaId?: string;
+  efosId?: string;
   phoneNumber?: string;
   /** Initial password that the user must change at first login. */
   temporaryPassword?: string;
@@ -110,6 +114,8 @@ export interface UserData {
   email: string | null;
   personalIdentityNumber: string | null;
   orgAffiliation?: string | null;
+  hsaId?: string | null;
+  efosId?: string | null;
   phoneNumber?: string | null;
   superuser: boolean;
   rights: UserRightData[];
@@ -206,6 +212,8 @@ export interface BundleUserEntry {
   email?: string | null;
   personal_identity_number?: string | null;
   org_affiliation?: string | null;
+  hsa_id?: string | null;
+  efos_id?: string | null;
   phone_number?: string | null;
   rights: BundleUserRightEntry[];
 }
@@ -219,7 +227,7 @@ export interface ImportExportBundle {
 }
 
 /** Outcome of one entry from an ImportExportBundle. `key` is a function id, org identifier, or
- *  a user's personal_identity_number/org_affiliation. `status` is 'new'/'update'/'skipped_duplicate'/'error'
+ *  the first of a user's personal_identity_number, org_affiliation, hsa_id and efos_id that is present. `status` is 'new'/'update'/'skipped_duplicate'/'error'
  *  in a dry-run preview, and 'created'/'updated'/'partial'/'skipped_duplicate'/'error' in a final
  *  import report. 'update'/'updated' is an existing organization that gets the functions it lacks;
  *  'partial' is an organization whose functions could not all be attached. */

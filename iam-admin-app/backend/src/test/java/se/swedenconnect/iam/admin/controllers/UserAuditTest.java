@@ -106,10 +106,10 @@ class UserAuditTest {
     this.superuser();
     this.properties.getUserRegistration().setPersonalNumberEnabled(true);
     this.properties.getUserRegistration().setAllowTemporaryPassword(true);
-    when(this.keycloakAdminClient.createUser(any(), anyString(), any(), any(), any(), any(), any())).thenReturn(TARGET);
+    when(this.keycloakAdminClient.createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any())).thenReturn(TARGET);
 
     this.userController.createUser(new CreateUserRequest(
-        "Klara Karlsson", null, null, "198001011234", null, null, "secret"), this.request);
+        "Klara Karlsson", null, null, "198001011234", null, null, null, null, "secret"), this.request);
 
     final AuditEvent event = this.publisher.single("user_created");
     assertThat(event.getPrincipal()).isEqualTo(CALLER);
@@ -120,19 +120,35 @@ class UserAuditTest {
         Map.entry("temporary_password_set", true));
   }
 
+  /** The HSA-ID and EFOS-ID are recorded on {@code user_created} when their settings are on. */
+  @Test
+  void createUser_userCreatedWithHsaIdAndEfosId() {
+    this.superuser();
+    this.properties.getUserRegistration().setHsaIdEnabled(true);
+    this.properties.getUserRegistration().setEfosIdEnabled(true);
+    when(this.keycloakAdminClient.createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any())).thenReturn(TARGET);
+
+    this.userController.createUser(new CreateUserRequest(
+        "Klara Karlsson", null, null, null, null, "SE2321000016-1234", "efos-4711", null, null), this.request);
+
+    assertThat(object(this.publisher.single("user_created"), "user"))
+        .containsEntry("hsa_id", "SE2321000016-1234")
+        .containsEntry("efos_id", "efos-4711");
+  }
+
   /** A 400 is not audited. */
   @Test
   void createUser_validationError_notAudited() {
     this.superuser();
 
-    this.userController.createUser(new CreateUserRequest(" ", null, null, null, null, null, null), this.request);
+    this.userController.createUser(new CreateUserRequest(" ", null, null, null, null, null, null, null, null), this.request);
 
     assertThat(this.publisher.events()).isEmpty();
   }
 
   @Test
   void createUser_noSession_accessDenied() {
-    this.userController.createUser(new CreateUserRequest("A", null, null, null, null, null, null), this.request);
+    this.userController.createUser(new CreateUserRequest("A", null, null, null, null, null, null, null, null), this.request);
 
     assertThat(object(this.publisher.single("access_denied"), "operation"))
         .containsExactly(Map.entry("name", "create_user"), Map.entry("reason", "no_admin_session"));
@@ -223,6 +239,21 @@ class UserAuditTest {
         Map.entry("personal_identity_number", "198001011234"));
     assertThat(event.getData().get("removed_rights")).isEqualTo(List.of(
         Map.of("organization_identifier", ICA, "function_id", "demo", "right", "write")));
+  }
+
+  @Test
+  void deleteUser_userDeletedWithHsaIdAndEfosId() {
+    this.superuser();
+    when(this.keycloakAdminClient.fetchUserById(TARGET)).thenReturn(Optional.of(new UserInfo(TARGET, "klara",
+        "Klara", "Karlsson", null, null, null, "SE2321000016-1234", "efos-4711", null, false, List.of())));
+
+    this.userController.deleteUser(TARGET, this.request);
+
+    assertThat(object(this.publisher.single("user_deleted"), "user")).containsExactly(
+        Map.entry("user_id", TARGET),
+        Map.entry("display_name", "Klara Karlsson"),
+        Map.entry("hsa_id", "SE2321000016-1234"),
+        Map.entry("efos_id", "efos-4711"));
   }
 
   @Test
@@ -414,7 +445,7 @@ class UserAuditTest {
   }
 
   private static UserInfo target() {
-    return new UserInfo(TARGET, "klara", "Klara", "Karlsson", "klara@example.com", "198001011234", null, null,
+    return new UserInfo(TARGET, "klara", "Klara", "Karlsson", "klara@example.com", "198001011234", null, null, null, null,
         false, List.of());
   }
 

@@ -56,6 +56,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -272,15 +273,18 @@ public class ImportExportServiceImpl implements ImportExportService {
       rowIndex++;
       final String pin = trimToNull(u.personalIdentityNumber());
       final String orgAffiliation = trimToNull(u.orgAffiliation());
-      final String key = pin != null ? pin : (orgAffiliation != null ? orgAffiliation : "row-" + rowIndex);
+      final String hsaId = trimToNull(u.hsaId());
+      final String efosId = trimToNull(u.efosId());
+      final String identityKey = userKey(pin, orgAffiliation, hsaId, efosId);
+      final String key = identityKey != null ? identityKey : "row-" + rowIndex;
 
       if (blank(u.name())) {
         userOutcomes.add(new ImportItemOutcome(key, "error", "name must not be blank"));
         continue;
       }
-      if (pin == null && orgAffiliation == null) {
+      if (identityKey == null) {
         userOutcomes.add(new ImportItemOutcome(key, "error",
-            "at least one of personal_identity_number or org_affiliation must be given"));
+            "at least one of personal_identity_number, org_affiliation, hsa_id or efos_id must be given"));
         continue;
       }
       if (pin != null && !PIN_PATTERN.matcher(pin).matches()) {
@@ -305,11 +309,7 @@ public class ImportExportServiceImpl implements ImportExportService {
         continue;
       }
 
-      final boolean duplicate =
-          (pin != null && this.keycloakAdminClient.findUserIdByPersonalIdentityNumber(pin).isPresent())
-              || (orgAffiliation != null
-                  && this.keycloakAdminClient.findUserIdByOrgAffiliation(orgAffiliation).isPresent());
-      if (duplicate) {
+      if (this.userExists(pin, orgAffiliation, hsaId, efosId)) {
         // A duplicate is skipped before the username is looked at, so re-importing an export into
         // the realm it came from is quiet whatever the deployment allows and whatever usernames
         // the file carries.
@@ -631,15 +631,13 @@ public class ImportExportServiceImpl implements ImportExportService {
       final @NonNull BundleUserEntry u, final boolean allowSelectUserId, final @NonNull ImportJob job) {
     final String pin = trimToNull(u.personalIdentityNumber());
     final String orgAffiliation = trimToNull(u.orgAffiliation());
-    final String key = pin != null ? pin : orgAffiliation;
+    final String hsaId = trimToNull(u.hsaId());
+    final String efosId = trimToNull(u.efosId());
+    final String key = Objects.requireNonNull(userKey(pin, orgAffiliation, hsaId, efosId));
 
     boolean created = false;
     try {
-      final boolean duplicate =
-          (pin != null && this.keycloakAdminClient.findUserIdByPersonalIdentityNumber(pin).isPresent())
-              || (orgAffiliation != null
-                  && this.keycloakAdminClient.findUserIdByOrgAffiliation(orgAffiliation).isPresent());
-      if (duplicate) {
+      if (this.userExists(pin, orgAffiliation, hsaId, efosId)) {
         return new ImportItemOutcome(key, "skipped_duplicate", "user already exists");
       }
 
@@ -652,11 +650,10 @@ public class ImportExportServiceImpl implements ImportExportService {
       }
 
       final String userId = this.keycloakAdminClient.createUser(
-          username, u.name(), u.email(), pin, orgAffiliation, u.phoneNumber(), null);
+          username, u.name(), u.email(), pin, orgAffiliation, hsaId, efosId, u.phoneNumber(), null);
       created = true;
-      // TODO: hsaId and efosId are passed here when those eID attributes are implemented.
       final AuditData.User auditUser =
-          new AuditData.User(userId, u.name(), pin, orgAffiliation, null, null, username, false);
+          new AuditData.User(userId, u.name(), pin, orgAffiliation, hsaId, efosId, username, false);
       this.audit(job, IamAuditEvent.userCreated(auditUser, importData(job)));
       final AuditData.User rightsHolder = AuditData.User.of(userId, u.name());
 
@@ -673,7 +670,7 @@ public class ImportExportServiceImpl implements ImportExportService {
         if (r.functionId() == null && !this.properties.isAllowOrgRights()) {
           log.warn("Import: user '{}' created but organization-wide right {}/{} could not be granted: "
                   + "allow-org-rights is false",
-              key, r.orgIdentifier(), r.right());
+              userId, r.orgIdentifier(), r.right());
           this.audit(job, IamAuditEvent.operationRejected(
               new AuditData.Operation(AuditOperations.ASSIGN_USER_RIGHT, AuditOperations.ORG_RIGHTS_DISABLED),
               target));
@@ -689,7 +686,7 @@ public class ImportExportServiceImpl implements ImportExportService {
         }
         catch (final RuntimeException e) {
           log.warn("Import: user '{}' created but right {}/{}/{} could not be granted: {}",
-              key, r.orgIdentifier(), r.functionId(), r.right(), e.getMessage());
+              userId, r.orgIdentifier(), r.functionId(), r.right(), e.getMessage());
           this.audit(job, IamErrorAuditEvent.operationFailed(
               new AuditData.Operation(AuditOperations.ASSIGN_USER_RIGHT, null), target, e));
           continue;
@@ -703,7 +700,7 @@ public class ImportExportServiceImpl implements ImportExportService {
       throw new AuditWriteFailure(new ImportItemOutcome(key, created ? "created" : "error", AUDIT_WRITE_FAILED), e);
     }
     catch (final RuntimeException e) {
-      log.error("Import: failed to create user '{}': {}", key, e.getMessage(), e);
+      log.error("Import: failed to create user '{}': {}", u.name(), e.getMessage(), e);
       final ImportItemOutcome outcome = new ImportItemOutcome(key, "error", e.getMessage());
       this.auditFailure(job, outcome, AuditOperations.CREATE_USER, AuditData.Target.none(), e);
       return outcome;
@@ -990,8 +987,43 @@ public class ImportExportServiceImpl implements ImportExportService {
         u.email(),
         u.personalIdentityNumber(),
         u.orgAffiliation(),
+        u.hsaId(),
+        u.efosId(),
         u.phoneNumber(),
         rights.stream().map(r -> new BundleUserRightEntry(r.orgIdentifier(), r.functionId(), r.right())).toList());
+  }
+
+  /**
+   * Returns the key a user entry is reported under: the first of its eID attributes that is present,
+   * in the order the duplicate check uses.
+   *
+   * @param pin the personal identity number, or {@code null}
+   * @param orgAffiliation the organizational affiliation, or {@code null}
+   * @param hsaId the HSA-ID, or {@code null}
+   * @param efosId the EFOS-ID, or {@code null}
+   * @return the key, or {@code null} if the entry has no eID attribute
+   */
+  private static @Nullable String userKey(final @Nullable String pin, final @Nullable String orgAffiliation,
+      final @Nullable String hsaId, final @Nullable String efosId) {
+    return pin != null ? pin : orgAffiliation != null ? orgAffiliation : hsaId != null ? hsaId : efosId;
+  }
+
+  /**
+   * Tells whether a user with any of the given eID attributes already exists. The attributes are
+   * checked in order, and the first match decides.
+   *
+   * @param pin the personal identity number, or {@code null}
+   * @param orgAffiliation the organizational affiliation, or {@code null}
+   * @param hsaId the HSA-ID, or {@code null}
+   * @param efosId the EFOS-ID, or {@code null}
+   * @return {@code true} if a user with one of the values exists
+   */
+  private boolean userExists(final @Nullable String pin, final @Nullable String orgAffiliation,
+      final @Nullable String hsaId, final @Nullable String efosId) {
+    return (pin != null && this.keycloakAdminClient.findUserIdByPersonalIdentityNumber(pin).isPresent())
+        || (orgAffiliation != null && this.keycloakAdminClient.findUserIdByOrgAffiliation(orgAffiliation).isPresent())
+        || (hsaId != null && this.keycloakAdminClient.findUserIdByHsaId(hsaId).isPresent())
+        || (efosId != null && this.keycloakAdminClient.findUserIdByEfosId(efosId).isPresent());
   }
 
   private static boolean blank(final @Nullable String value) {

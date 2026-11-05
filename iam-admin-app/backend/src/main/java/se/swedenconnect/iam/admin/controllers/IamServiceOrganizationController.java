@@ -164,8 +164,8 @@ public class IamServiceOrganizationController {
           this.keycloakAdminClient.fetchFunctionRightsHolders(orgIdentifier, functionId);
 
       final List<UserRightEntryDto> dtos = entries.stream()
-          .map(e -> new UserRightEntryDto(
-              e.userId(), e.personalIdentityNumber(), e.name(), e.right(), e.scope()))
+          .map(e -> new UserRightEntryDto(e.userId(), e.personalIdentityNumber(), e.orgAffiliation(),
+              e.hsaId(), e.efosId(), e.name(), e.right(), e.scope()))
           .toList();
 
       log.debug("Returning {} rights holders for {}/{}", dtos.size(), orgIdentifier, functionId);
@@ -184,6 +184,9 @@ public class IamServiceOrganizationController {
   record UserRightEntryDto(
       @JsonProperty("user_id") @NonNull String userId,
       @JsonProperty("personal_identity_number") @Nullable String personalIdentityNumber,
+      @JsonProperty("org_affiliation") @Nullable String orgAffiliation,
+      @JsonProperty("hsa_id") @Nullable String hsaId,
+      @JsonProperty("efos_id") @Nullable String efosId,
       @Nullable String name,
       @NonNull String right,
       @NonNull String scope) {

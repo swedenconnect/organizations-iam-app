@@ -442,14 +442,108 @@ print(nxt)
 fi
 
 # ---------------------------------------------------------------------------
-# Step 6: OIDC Sweden user profile groups and attributes
+# Step 5b: Primary identifier client scope
+# ---------------------------------------------------------------------------
+#
+# https://id.swedenconnect.se/scope/primary-identifier releases the identifiers a user
+# is registered with, whichever of them the user has. Each claim comes from Keycloak's
+# built-in User Attribute mapper and goes into the ID token, the access token and the
+# UserInfo response. A user without a value gets no claim. The user ID is carried in
+# `sub`, which is always released, so the scope has no mapper for it.
+#
+# Keycloak reads an unescaped dot in a claim name as a nested object, so the dots in
+# the claim names are escaped. The token carries the flat claim name.
+#
+# Mappers are matched on name. One that is missing is added, and one that exists is
+# left as it stands.
+
+PRIMARY_SCOPE_NAME="https://id.swedenconnect.se/scope/primary-identifier"
+
+echo "==> Creating the primary identifier client scope..."
+
+PRIMARY_SCOPE_ID=$(scope_id_of "${PRIMARY_SCOPE_NAME}")
+if [ -n "${PRIMARY_SCOPE_ID}" ]; then
+  echo "    Client scope '${PRIMARY_SCOPE_NAME}' already exists, skipping creation."
+else
+  SCOPE_BODY=$(python3 -c '
+import json, sys
+print(json.dumps({
+  "name": sys.argv[1],
+  "description": "Primary identifiers of the user: personal identity number, organizational affiliation, HSA-ID and EFOS-ID",
+  "protocol": "openid-connect",
+  "attributes": {
+    "include.in.token.scope": "true",
+    "display.on.consent.screen": "true",
+  }
+}))
+' "${PRIMARY_SCOPE_NAME}")
+  STATUS=$(api_post "${REALM_BASE}/client-scopes" "${SCOPE_BODY}")
+  if [ "${STATUS}" = "201" ]; then
+    echo "    Client scope '${PRIMARY_SCOPE_NAME}' created."
+    ALL_SCOPES=$(api_get "${REALM_BASE}/client-scopes")
+    PRIMARY_SCOPE_ID=$(scope_id_of "${PRIMARY_SCOPE_NAME}")
+  else
+    echo "    WARNING: Unexpected HTTP status creating '${PRIMARY_SCOPE_NAME}': ${STATUS}" >&2
+  fi
+fi
+
+if [ -n "${PRIMARY_SCOPE_ID}" ]; then
+  EXISTING_MAPPER_NAMES=$(api_get "${REALM_BASE}/client-scopes/${PRIMARY_SCOPE_ID}/protocol-mappers/models" \
+    | python3 -c "
+import sys, json
+print('\n'.join(m.get('name', '') for m in json.load(sys.stdin)))
+" 2>/dev/null || echo "")
+
+  # mapper name|user attribute|claim name, with the dots escaped
+  PRIMARY_MAPPERS="\
+personalIdentityNumber|personalIdentityNumber|https://id\\.oidc\\.se/claim/personalIdentityNumber
+orgAffiliation|orgAffiliation|https://id\\.oidc\\.se/claim/orgAffiliation
+hsaId|hsaId|http://sambi\\.se/attributes/1/employeeHsaId
+efosId|efosId|https://id\\.swedenconnect\\.se/claim/efos-id"
+
+  while IFS='|' read -r MAPPER_NAME USER_ATTRIBUTE CLAIM_NAME; do
+    [ -z "${MAPPER_NAME}" ] && continue
+    if echo "${EXISTING_MAPPER_NAMES}" | grep -qx "${MAPPER_NAME}"; then
+      echo "      Mapper '${MAPPER_NAME}' already present, skipping."
+      continue
+    fi
+    MAPPER_BODY=$(python3 -c '
+import json, sys
+print(json.dumps({
+  "name": sys.argv[1],
+  "protocol": "openid-connect",
+  "protocolMapper": "oidc-usermodel-attribute-mapper",
+  "consentRequired": False,
+  "config": {
+    "user.attribute": sys.argv[2],
+    "claim.name": sys.argv[3],
+    "jsonType.label": "String",
+    "multivalued": "false",
+    "aggregate.attrs": "false",
+    "id.token.claim": "true",
+    "access.token.claim": "true",
+    "userinfo.token.claim": "true",
+    "introspection.token.claim": "true",
+  }
+}))
+' "${MAPPER_NAME}" "${USER_ATTRIBUTE}" "${CLAIM_NAME}")
+    STATUS=$(api_post "${REALM_BASE}/client-scopes/${PRIMARY_SCOPE_ID}/protocol-mappers/models" "${MAPPER_BODY}")
+    [ "${STATUS}" = "201" ] \
+      && echo "      Mapper '${MAPPER_NAME}' added." \
+      || echo "      WARNING: Unexpected HTTP status adding mapper '${MAPPER_NAME}': ${STATUS}" >&2
+  done <<< "${PRIMARY_MAPPERS}"
+fi
+
+# ---------------------------------------------------------------------------
+# Step 6: User profile groups and attributes
 # ---------------------------------------------------------------------------
 #
 # The two attribute groups and ten attributes of the Swedish OIDC Claims
-# Specification, as the oidc-sweden-claims-plugin defines them. The plugin registers
-# nothing in a realm, so declaring them is this script's job. Without a declaration
-# Keycloak drops the attribute when a user is written, since the realm sets no
-# unmanaged attribute policy.
+# Specification, as the oidc-sweden-claims-plugin defines them, and the two
+# identifiers outside that specification, hsaId and efosId. Neither the plugin nor
+# Keycloak declares any of them in a realm, so that is this script's job. Without a
+# declaration Keycloak drops the attribute when a user is written, since the realm
+# sets no unmanaged attribute policy.
 #
 # Groups are written before the attributes that reference them, and only what is
 # missing is added: an attribute already present keeps its definition exactly as it
@@ -459,7 +553,7 @@ fi
 # under Realm settings -> User profile if the attribute should follow the definition
 # below.
 
-echo "==> Configuring the OIDC Sweden user profile groups and attributes..."
+echo "==> Configuring the user profile groups and attributes..."
 
 PROFILE_JSON=$(api_get "${REALM_BASE}/users/profile")
 
@@ -485,7 +579,8 @@ groups = [
     },
 ]
 
-# name, display name, group. middleName and birthdate deliberately have no group.
+# name, display name, group. middleName and birthdate deliberately have no group, and
+# hsaId and efosId are not part of the OIDC Sweden specification, so they have none either.
 attributes = [
     ('middleName', 'Middle Name', None),
     ('birthdate', 'Date of Birth', None),
@@ -497,6 +592,8 @@ attributes = [
     ('orgName', 'Organization Name', 'oidc-sweden-org-id'),
     ('orgNumber', 'Organization Number', 'oidc-sweden-org-id'),
     ('orgUnit', 'Organizational Unit', 'oidc-sweden-org-id'),
+    ('hsaId', 'HSA-ID', None),
+    ('efosId', 'EFOS-ID', None),
 ]
 
 existing_groups = profile.setdefault('groups', [])
@@ -537,7 +634,7 @@ print('\n'.join(json.load(sys.stdin)['added']))
 " 2>/dev/null || echo "")
 
 if [ -z "${ADDED}" ]; then
-  echo "    All OIDC Sweden groups and attributes already present, nothing written."
+  echo "    All user profile groups and attributes already present, nothing written."
 else
   echo "${ADDED}" | while read -r ITEM; do
     [ -n "${ITEM}" ] && echo "    Adding ${ITEM}."

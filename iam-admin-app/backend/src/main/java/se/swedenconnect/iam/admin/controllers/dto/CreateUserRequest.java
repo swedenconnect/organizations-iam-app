@@ -30,6 +30,8 @@ package se.swedenconnect.iam.admin.controllers.dto;
  *          {@code personal-number-enabled} is set
  * @param orgAffiliation the organizational affiliation ({@code userID@organization-number}),
  *          honoured only when {@code org-affiliation-enabled} is set
+ * @param hsaId the HSA-ID, honoured only when {@code hsa-id-enabled} is set
+ * @param efosId the EFOS-ID, honoured only when {@code efos-id-enabled} is set
  * @param phoneNumber the user's telephone number
  * @param temporaryPassword an initial password that Keycloak requires the user to change at first
  *          login, honoured only when {@code allow-temporary-password} is set
@@ -41,9 +43,8 @@ public record CreateUserRequest(
     String userId,
     String personalIdentityNumber,
     String orgAffiliation,
+    String hsaId,
+    String efosId,
     String phoneNumber,
     String temporaryPassword) {
-
-  // TODO: hsaId and efosId are added here when those eID attributes are implemented.
-
 }

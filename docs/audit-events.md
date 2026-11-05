@@ -81,8 +81,8 @@ members.
 | `display_name` | The user's name, first name and last name. Present whenever it is available, that is, whenever the user could be read and has a name. On the login events and `logout` it is taken from the ID token: the `name` claim, or the `given_name` and `family_name` claims. | String |
 | `personal_identity_number` | The Swedish personal identity number. Only on the events stating it. | String |
 | `org_affiliation` | The organizational affiliation, `userID@organization-number`. Only on the events stating it. | String |
-| `hsa_id` | The HSA-ID. Only on the events stating it. Not yet implemented by the application, and absent until it is. | String |
-| `efos_id` | The EFOS-ID. Only on the events stating it. Not yet implemented by the application, and absent until it is. | String |
+| `hsa_id` | The HSA-ID. Only on the events stating it. | String |
+| `efos_id` | The EFOS-ID. Only on the events stating it. | String |
 | `username` | The Keycloak username chosen when the user was created. Absent when Keycloak assigned a random one. Only on `user_created`. | String |
 | `temporary_password_set` | Whether a temporary password was set. The password itself is never written. Only on `user_created`. | Boolean |
 

@@ -122,12 +122,19 @@ The following properties are available:
 | `allow-temporary-password` | When `true`, the administrator may set an initial password, which Keycloak then requires the user to change at first login. Only meaningful together with `allow-select-user-id`. Username and password logins should normally not be used in production. | `Boolean` | `false` |
 | `eid-attribute-required` | When `true`, at least one of the enabled eID attributes must be given for a new user. When `false`, a new user must still be given a user ID or an eID attribute. If `allow-select-user-id` is also `false`, an eID attribute must be given. | `Boolean` | `true` |
 | `personal-number-enabled` | When `true`, a "Personal identity number" field is offered when a user is registered. This means that the user is expected to login using his or her Swedish eID. | `Boolean` | `true` |
-| `hsa-id-enabled` | When `true`, an "HSA-ID" field is offered when a user is registered. This means that the user is expected to login using his or her SITHS eID. | `Boolean` | `false` |
+| `hsa-id-enabled` | When `true`, an "HSA-ID" field is offered when a user is registered. This means that the user is expected to login using his or her SITHS eID. Any value that is not blank is accepted, and it is stored in the `hsaId` user attribute. | `Boolean` | `false` |
 | `org-affiliation-enabled` | When `true`, an "Organizational affiliation" field is offered when a user is registered. The value is on the format `userID@organization-number`, where the organization number is 10 digits. Enables user login with an Organizational eID according to Sweden Connect. | `Boolean` | `false` |
-| `efos-id-enabled` | When `true`, an "EFOS-ID" field is offered when a user is registered. This means that the user is expected to login using his or her EFOS eID. | `Boolean` | `false` |
+| `efos-id-enabled` | When `true`, an "EFOS-ID" field is offered when a user is registered. This means that the user is expected to login using his or her EFOS eID. Any value that is not blank is accepted, and it is stored in the `efosId` user attribute. | `Boolean` | `false` |
 
 > **Note:** At least one eID attribute must be enabled when `eid-attribute-required` is `true`.
 > The application refuses to start otherwise.
+
+The four eID attributes are unique. Registering a user with a value that another user already
+has is refused, and the administrator is offered the existing user instead. A value whose
+setting is `false` is ignored. The eID attributes cannot be changed after the user has been
+created. The HSA-ID and the EFOS-ID are stored in user attributes that `bootstrap-realm.sh`
+declares, so a realm set up by an earlier version must be bootstrapped again, see
+[Upgrading an Existing Installation](keycloak-setup.md#upgrading-an-existing-installation).
 
 <a name="management-endpoints"></a>
 ## Management Endpoints

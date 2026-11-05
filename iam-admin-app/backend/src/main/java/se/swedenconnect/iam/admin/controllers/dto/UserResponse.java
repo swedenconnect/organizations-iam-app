@@ -33,6 +33,8 @@ public record UserResponse(
     @Nullable String email,
     @Nullable String personalIdentityNumber,
     @Nullable String orgAffiliation,
+    @Nullable String hsaId,
+    @Nullable String efosId,
     @Nullable String phoneNumber,
     boolean superuser,
     @NonNull List<UserRightResponse> rights) {

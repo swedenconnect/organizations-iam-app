@@ -25,17 +25,14 @@ export const EMPTY_IDENTITY_VALUES: IdentityValues = {
 };
 
 /** Error keys used for the identity fields. `eid` is reported at form level. */
-export type IdentityErrors = Partial<Record<'userId' | 'personalIdentityNumber' | 'orgAffiliation' | 'eid', string>>;
+export type IdentityErrors = Partial<Record<'userId' | FillableIdentityField | 'eid', string>>;
 
 const ORG_AFFILIATION_PATTERN = /^[^@\s]+@\d{10}$/;
 
-/** An identity field the administrator can actually type into. */
-export type FillableIdentityField = 'personalIdentityNumber' | 'orgAffiliation';
+/** An eID attribute field the administrator can type into. */
+export type FillableIdentityField = 'personalIdentityNumber' | 'orgAffiliation' | 'hsaId' | 'efosId';
 
-/**
- * The identity fields that are both enabled and possible to fill. HSA-ID and EFOS-ID are
- * rendered disabled while they are unimplemented, so they are not counted.
- */
+/** The eID attribute fields that are enabled, in the order they are shown. */
 export function fillableIdentityFields(settings: UserRegistrationSettings): FillableIdentityField[] {
   const fields: FillableIdentityField[] = [];
   if (settings.personalNumberEnabled) {
@@ -43,6 +40,12 @@ export function fillableIdentityFields(settings: UserRegistrationSettings): Fill
   }
   if (settings.orgAffiliationEnabled) {
     fields.push('orgAffiliation');
+  }
+  if (settings.hsaIdEnabled) {
+    fields.push('hsaId');
+  }
+  if (settings.efosIdEnabled) {
+    fields.push('efosId');
   }
   return fields;
 }
@@ -120,9 +123,11 @@ export function validateIdentityValues(
     errors.orgAffiliation = t('validation.orgAffiliationFormat');
   }
 
-  // Only the personal identity number and the organizational affiliation are implemented, so
-  // only they can satisfy the requirement for now.
-  if (!pin && !orgAffiliation) {
+  // The HSA-ID and the EFOS-ID have no format beyond not being blank.
+  const hsaId = settings.hsaIdEnabled ? values.hsaId.trim() : '';
+  const efosId = settings.efosIdEnabled ? values.efosId.trim() : '';
+
+  if (!pin && !orgAffiliation && !hsaId && !efosId) {
     if (eidAttributeMandatory(settings)) {
       const required = requiredIdentityField(settings);
       if (required === null) {
@@ -148,7 +153,7 @@ export function validateIdentityValues(
 export function identityPayload(
   values: IdentityValues,
   settings: UserRegistrationSettings
-): Pick<CreateUserInput, 'userId' | 'personalIdentityNumber' | 'orgAffiliation' | 'temporaryPassword'> {
+): Pick<CreateUserInput, 'userId' | 'personalIdentityNumber' | 'orgAffiliation' | 'hsaId' | 'efosId' | 'temporaryPassword'> {
   const pin = values.personalIdentityNumber.replace(/-/g, '').trim();
   return {
     userId: settings.allowSelectUserId ? values.userId.trim() || undefined : undefined,
@@ -157,6 +162,8 @@ export function identityPayload(
       : undefined,
     personalIdentityNumber: settings.personalNumberEnabled ? pin || undefined : undefined,
     orgAffiliation: settings.orgAffiliationEnabled ? values.orgAffiliation.trim() || undefined : undefined,
+    hsaId: settings.hsaIdEnabled ? values.hsaId.trim() || undefined : undefined,
+    efosId: settings.efosIdEnabled ? values.efosId.trim() || undefined : undefined,
   };
 }
 
@@ -186,7 +193,6 @@ export function UserIdentityFields({ settings, values, errors, idPrefix, onChang
     onChange({ ...values, [field]: value });
   };
 
-  // HSA-ID and EFOS-ID are rendered when enabled, but cannot be edited yet.
   const otherIdentitiesEnabled =
     settings.orgAffiliationEnabled || settings.hsaIdEnabled || settings.efosIdEnabled;
   const otherIdentitiesVisible = !settings.personalNumberEnabled || showOtherIdentities;
@@ -264,17 +270,33 @@ export function UserIdentityFields({ settings, values, errors, idPrefix, onChang
 
           {settings.hsaIdEnabled && (
             <div className="space-y-1">
-              <Label htmlFor={`${idPrefix}-hsaId`}>{t('users.hsaId')}</Label>
-              <Input id={`${idPrefix}-hsaId`} value="" disabled placeholder="" />
-              <p className="text-xs text-gray-500">{t('users.identityNotSupported')}</p>
+              <Label htmlFor={`${idPrefix}-hsaId`}>
+                {t('users.hsaId')}{required === 'hsaId' ? ' *' : ''}
+              </Label>
+              <Input
+                id={`${idPrefix}-hsaId`}
+                value={values.hsaId}
+                onChange={(e) => set('hsaId', e.target.value)}
+                placeholder=""
+              />
+              <p className="text-xs text-gray-500">{t('users.hsaIdHelp')}</p>
+              {errors.hsaId && <p className="text-xs text-red-500">{errors.hsaId}</p>}
             </div>
           )}
 
           {settings.efosIdEnabled && (
             <div className="space-y-1">
-              <Label htmlFor={`${idPrefix}-efosId`}>{t('users.efosId')}</Label>
-              <Input id={`${idPrefix}-efosId`} value="" disabled placeholder="" />
-              <p className="text-xs text-gray-500">{t('users.identityNotSupported')}</p>
+              <Label htmlFor={`${idPrefix}-efosId`}>
+                {t('users.efosId')}{required === 'efosId' ? ' *' : ''}
+              </Label>
+              <Input
+                id={`${idPrefix}-efosId`}
+                value={values.efosId}
+                onChange={(e) => set('efosId', e.target.value)}
+                placeholder=""
+              />
+              <p className="text-xs text-gray-500">{t('users.efosIdHelp')}</p>
+              {errors.efosId && <p className="text-xs text-red-500">{errors.efosId}</p>}
             </div>
           )}
         </>
