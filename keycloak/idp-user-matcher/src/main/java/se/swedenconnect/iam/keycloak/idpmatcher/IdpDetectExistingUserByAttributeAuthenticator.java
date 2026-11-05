@@ -58,9 +58,13 @@ import java.util.List;
  * broker login handling.</p>
  *
  * <p><strong>Fail closed.</strong> Every outcome other than a unique, permitted match fails the
- * flow. The message shown to the user is the same in every failure case and never reveals whether
- * an account exists or echoes the matched value; the specific reason goes to the server log
- * only.</p>
+ * flow, and the specific reason always goes to the server log only, never to the user. By default
+ * every failure case shows the very same message, so the error page cannot reveal whether an
+ * account exists. The {@code discloseNotRegistered} configuration option is the one deliberate
+ * exception: when enabled, a brokered identity that matches no local user at all is told so
+ * outright, instead of getting the generic message. Every other rejection reason (ambiguous match,
+ * disabled user, role requirement) always shows the generic message regardless of that
+ * setting.</p>
  *
  * <p>All behaviour is driven by the authenticator configuration, so a single deployed instance
  * serves several identity providers with different configurations. No per provider state is
@@ -80,10 +84,17 @@ public class IdpDetectExistingUserByAttributeAuthenticator extends AbstractIdpAu
   private static final String FAILURE_EVENT_ERROR = Errors.INVALID_USER;
 
   /**
-   * The message key shown to the user in every failure case. Generic by design — it must not reveal
-   * whether an account exists.
+   * The message key shown to the user in every failure case, unless {@code discloseNotRegistered}
+   * says otherwise for a missing match. Generic by design — it must not reveal whether an account
+   * exists.
    */
   private static final String FAILURE_MESSAGE = Messages.IDENTITY_PROVIDER_UNEXPECTED_ERROR;
+
+  /**
+   * The message key shown instead of {@link #FAILURE_MESSAGE} for a missing match, when
+   * {@code discloseNotRegistered} is enabled for the execution.
+   */
+  private static final String FAILURE_MESSAGE_NOT_REGISTERED = "idpUserNotRegistered";
 
   @Override
   protected void authenticateImpl(
@@ -125,7 +136,10 @@ public class IdpDetectExistingUserByAttributeAuthenticator extends AbstractIdpAu
         .toList();
 
     if (matches.isEmpty()) {
-      this.fail(context, alias, "no local user has a matching '%s' attribute".formatted(matchAttribute));
+      final boolean discloseNotRegistered = Boolean.parseBoolean(
+          configValue(config, IdpDetectExistingUserByAttributeAuthenticatorFactory.DISCLOSE_NOT_REGISTERED));
+      this.fail(context, alias, "no local user has a matching '%s' attribute".formatted(matchAttribute),
+          discloseNotRegistered ? FAILURE_MESSAGE_NOT_REGISTERED : FAILURE_MESSAGE);
       return;
     }
     if (matches.size() > 1) {
@@ -213,9 +227,27 @@ public class IdpDetectExistingUserByAttributeAuthenticator extends AbstractIdpAu
       final @NonNull AuthenticationFlowContext context,
       final @NonNull String alias,
       final @NonNull String reason) {
+    this.fail(context, alias, reason, FAILURE_MESSAGE);
+  }
+
+  /**
+   * Fails the flow with the given user-facing message, logging the actual reason at the server.
+   *
+   * <p>The log message names the failing check but never contains the matched attribute value.</p>
+   *
+   * @param context the flow context
+   * @param alias the identity provider alias, for log correlation
+   * @param reason the reason the match was rejected; server side only
+   * @param messageKey the message key shown to the user
+   */
+  private void fail(
+      final @NonNull AuthenticationFlowContext context,
+      final @NonNull String alias,
+      final @NonNull String reason,
+      final @NonNull String messageKey) {
 
     LOG.infof("[idp-user-matcher] Login via identity provider '%s' rejected: %s", alias, reason);
-    this.sendFailureChallenge(context, Response.Status.FORBIDDEN, FAILURE_EVENT_ERROR, FAILURE_MESSAGE,
+    this.sendFailureChallenge(context, Response.Status.FORBIDDEN, FAILURE_EVENT_ERROR, messageKey,
         AuthenticationFlowError.INVALID_USER);
   }
 

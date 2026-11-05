@@ -67,6 +67,12 @@ public class IdpDetectExistingUserByAttributeAuthenticatorFactory implements Aut
   public static final String FORBIDDEN_ROLE = "forbiddenRole";
 
   /**
+   * Configuration key: whether a missing match is told outright that no account is linked, instead
+   * of the generic error every other rejection reason shows. Optional, off by default.
+   */
+  public static final String DISCLOSE_NOT_REGISTERED = "discloseNotRegistered";
+
+  /**
    * The only permitted requirement. The authenticator is the gate for unknown identities, so an
    * ALTERNATIVE or DISABLED execution would defeat its purpose.
    */
@@ -98,6 +104,19 @@ public class IdpDetectExistingUserByAttributeAuthenticatorFactory implements Aut
       .helpText("Optional. The name of a realm role the matched user must not hold. If the role does "
           + "not exist in the realm, the flow fails.")
       .type(ProviderConfigProperty.STRING_TYPE)
+      .required(false)
+      .add()
+      .property()
+      .name(DISCLOSE_NOT_REGISTERED)
+      .label("Disclose unregistered identity")
+      .helpText("Off by default. When off, a missing match fails with the same generic error as every "
+          + "other rejection reason, so a caller cannot tell whether an account exists. Turn this on "
+          + "only when that trade-off is acceptable for this identity provider — for example because "
+          + "the user already authenticated with a high-assurance eID, which limits who can even reach "
+          + "this check. When on, a missing match is told outright that no account is linked to their "
+          + "identity.")
+      .type(ProviderConfigProperty.BOOLEAN_TYPE)
+      .defaultValue(false)
       .required(false)
       .add()
       .build();

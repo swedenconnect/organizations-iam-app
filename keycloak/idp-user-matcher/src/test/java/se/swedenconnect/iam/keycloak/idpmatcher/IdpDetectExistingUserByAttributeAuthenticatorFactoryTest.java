@@ -58,18 +58,34 @@ class IdpDetectExistingUserByAttributeAuthenticatorFactoryTest {
   }
 
   @Test
-  void exposesTheThreeConfigProperties() {
+  void exposesTheFourConfigProperties() {
     final List<ProviderConfigProperty> properties = this.factory.getConfigProperties();
 
     assertEquals(
         List.of(IdpDetectExistingUserByAttributeAuthenticatorFactory.MATCH_ATTRIBUTE,
             IdpDetectExistingUserByAttributeAuthenticatorFactory.REQUIRED_ROLE,
-            IdpDetectExistingUserByAttributeAuthenticatorFactory.FORBIDDEN_ROLE),
+            IdpDetectExistingUserByAttributeAuthenticatorFactory.FORBIDDEN_ROLE,
+            IdpDetectExistingUserByAttributeAuthenticatorFactory.DISCLOSE_NOT_REGISTERED),
         properties.stream().map(ProviderConfigProperty::getName).toList());
 
     assertTrue(properties.getFirst().isRequired(), "the match attribute must be required");
     assertFalse(properties.get(1).isRequired());
     assertFalse(properties.get(2).isRequired());
+    assertFalse(properties.get(3).isRequired());
+  }
+
+  /** The disclosure trade-off must default to off, so existing deployments keep today's behaviour. */
+  @Test
+  void discloseNotRegisteredDefaultsToOff() {
+    final List<ProviderConfigProperty> properties = this.factory.getConfigProperties();
+
+    final ProviderConfigProperty discloseProperty = properties.stream()
+        .filter(p -> p.getName().equals(IdpDetectExistingUserByAttributeAuthenticatorFactory.DISCLOSE_NOT_REGISTERED))
+        .findFirst()
+        .orElseThrow();
+
+    assertEquals(ProviderConfigProperty.BOOLEAN_TYPE, discloseProperty.getType());
+    assertEquals(false, discloseProperty.getDefaultValue());
   }
 
   /** The authenticator is stateless, so the factory may hand out the same instance every time. */
