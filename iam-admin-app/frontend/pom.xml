@@ -73,7 +73,7 @@
               <goal>npm</goal>
             </goals>
             <configuration>
-              <arguments>install --legacy-peer-deps --cache /tmp/npm-cache-iam-admin</arguments>
+              <arguments>ci --legacy-peer-deps --cache /tmp/npm-cache-iam-admin</arguments>
             </configuration>
           </execution>
           <execution>
