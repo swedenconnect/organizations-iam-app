@@ -71,7 +71,7 @@
               <goal>npm</goal>
             </goals>
             <configuration>
-              <arguments>install --legacy-peer-deps --cache /tmp/npm-cache-demo-app</arguments>
+              <arguments>ci --legacy-peer-deps --cache /tmp/npm-cache-demo-app</arguments>
             </configuration>
           </execution>
           <execution>
