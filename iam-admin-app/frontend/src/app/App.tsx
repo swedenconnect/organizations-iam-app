@@ -811,10 +811,10 @@ function AppContent() {
 
       {/* Main Content */}
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
-        <div className="bg-white rounded-lg shadow-sm p-6">
+        <div className="bg-white rounded-lg shadow-sm p-4 sm:p-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <div className="flex items-center justify-between border-b">
-              <TabsList className="bg-transparent border-0 p-0">
+            <div className="flex flex-wrap items-center justify-between border-b">
+              <TabsList className="bg-transparent border-0 p-0 flex-wrap justify-start h-auto min-h-9 *:h-[calc(2.25rem-1px)]">
                 <TabsTrigger value="organizations" className="flex items-center gap-2">
                   <Building2 className="w-4 h-4" />
                   {t('organizations.title')}
@@ -825,7 +825,7 @@ function AppContent() {
                 </TabsTrigger>
               </TabsList>
               {showsDeploymentTabs(sessionData?.superuser ?? false, functionConstraint) && (
-                <TabsList className="bg-transparent border-0 p-0">
+                <TabsList className="bg-transparent border-0 p-0 flex-wrap justify-start h-auto min-h-9 *:h-[calc(2.25rem-1px)]">
                   <TabsTrigger value="functions" className="flex items-center gap-2">
                     <Boxes className="w-4 h-4" />
                     {t('functions.title')}
@@ -847,7 +847,7 @@ function AppContent() {
             </div>
 
             <TabsContent value="organizations" className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <h2 className="text-xl font-semibold">{t('organizations.title')}</h2>
                   {((sessionData?.superuser ?? false) || orgPage.totalElements !== 1) && (
@@ -898,7 +898,7 @@ function AppContent() {
             </TabsContent>
 
             <TabsContent value="users" className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <h2 className="text-xl font-semibold">{t('users.title')}</h2>
                   <p className="text-sm text-gray-500 mt-1">
@@ -927,14 +927,14 @@ function AppContent() {
 
             {showsDeploymentTabs(sessionData?.superuser ?? false, functionConstraint) && (
               <TabsContent value="functions" className="space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-4">
                   <div>
                     <h2 className="text-xl font-semibold">{t('functions.title')}</h2>
                     <p className="text-sm text-gray-500 mt-1">
                       {functions.length} {functions.length !== 1 ? t('functions.count_plural') : t('functions.count')}
                     </p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button
                       variant="outline"
                       onClick={() => setIsHelpDialogOpen(true)}
@@ -963,14 +963,14 @@ function AppContent() {
             )}
 
             <TabsContent value="clients" className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <h2 className="text-xl font-semibold">{t('services.title')}</h2>
                   <p className="text-sm text-gray-500 mt-1">
                     {clients.length} {clients.length !== 1 ? t('services.count_plural') : t('services.count')}
                   </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button variant="outline" onClick={handleReconcileAllClients}>
                     <RefreshCw className="w-4 h-4 mr-2" />
                     {t('clients.reconcileAll')}

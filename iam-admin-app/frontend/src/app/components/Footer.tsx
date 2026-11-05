@@ -34,7 +34,7 @@ export function Footer() {
       </div>
       <div className="text-white py-6" style={{ backgroundColor: 'var(--footer-bg)' }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <img
                 src={footerLogoUrl}
@@ -44,10 +44,10 @@ export function Footer() {
               />
             </div>
             {footerData && (
-              <nav className="flex items-center gap-6 mx-auto">
+              <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mx-auto">
                 {footerData.links.map((link, i) => (
                   <span key={link.url} className="flex items-center gap-6">
-                    {i > 0 && <span className="text-gray-400">|</span>}
+                    {i > 0 && <span className="hidden sm:inline text-gray-400">|</span>}
                     <a href={link.url} className="text-sm hover:underline">{link.label}</a>
                   </span>
                 ))}

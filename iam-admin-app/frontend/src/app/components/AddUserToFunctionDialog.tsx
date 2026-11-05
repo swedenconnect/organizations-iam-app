@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { Organization, User, UserOrganizationRole, FunctionType } from '@/types';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -59,6 +59,13 @@ export function AddUserToFunctionDialog({
   onUserCreated,
 }: AddUserToFunctionDialogProps) {
   const { t, language } = useLanguage();
+  const idPrefix = useId();
+
+  /** A label click would open the role select; move focus to it instead, as for any other field. */
+  const focusRoleSelect = (e: React.MouseEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    document.getElementById(e.currentTarget.htmlFor)?.focus();
+  };
   const settings = useUserRegistration();
 
   // Shared
@@ -265,9 +272,9 @@ export function AddUserToFunctionDialog({
 
             {selectedUserId && (
               <div className="space-y-1">
-                <Label>{t('org.selectRole')}</Label>
+                <Label id={`${idPrefix}-role-select-label`} htmlFor={`${idPrefix}-role-select`} onClick={focusRoleSelect}>{t('org.selectRole')}</Label>
                 <Select value={selectedRole} onValueChange={setSelectedRole}>
-                  <SelectTrigger>
+                  <SelectTrigger id={`${idPrefix}-role-select`} aria-labelledby={`${idPrefix}-role-select-label`}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -313,9 +320,9 @@ export function AddUserToFunctionDialog({
                   </p>
                 </div>
                 <div className="space-y-1">
-                  <Label>{t('org.selectRole')}</Label>
+                  <Label id={`${idPrefix}-role-duplicate-label`} htmlFor={`${idPrefix}-role-duplicate`} onClick={focusRoleSelect}>{t('org.selectRole')}</Label>
                   <Select value={selectedRole} onValueChange={setSelectedRole}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger id={`${idPrefix}-role-duplicate`} aria-labelledby={`${idPrefix}-role-duplicate-label`}><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="read">{t('role.read')}</SelectItem>
                       <SelectItem value="write">{t('role.write')}</SelectItem>
@@ -341,9 +348,9 @@ export function AddUserToFunctionDialog({
                   <p className="text-sm text-blue-800">{t('org.userExistsNotVisible')}</p>
                 </div>
                 <div className="space-y-1">
-                  <Label>{t('org.selectRole')}</Label>
+                  <Label id={`${idPrefix}-role-external-label`} htmlFor={`${idPrefix}-role-external`} onClick={focusRoleSelect}>{t('org.selectRole')}</Label>
                   <Select value={selectedRole} onValueChange={setSelectedRole}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger id={`${idPrefix}-role-external`} aria-labelledby={`${idPrefix}-role-external-label`}><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="read">{t('role.read')}</SelectItem>
                       <SelectItem value="write">{t('role.write')}</SelectItem>
@@ -370,14 +377,14 @@ export function AddUserToFunctionDialog({
               /* Normal create form */
               <>
                 <div className="space-y-1">
-                  <Label>{t('users.name')} *</Label>
-                  <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="" />
+                  <Label htmlFor={`${idPrefix}-name`}>{t('users.name')} *</Label>
+                  <Input id={`${idPrefix}-name`} value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="" />
                   {fieldErrors.name && <p className="text-xs text-red-500">{fieldErrors.name}</p>}
                 </div>
 
                 <div className="space-y-1">
-                  <Label>{t('users.email')} *</Label>
-                  <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="" />
+                  <Label htmlFor={`${idPrefix}-email`}>{t('users.email')} *</Label>
+                  <Input id={`${idPrefix}-email`} type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="" />
                   {fieldErrors.email && <p className="text-xs text-red-500">{fieldErrors.email}</p>}
                 </div>
 
@@ -385,19 +392,19 @@ export function AddUserToFunctionDialog({
                   settings={settings}
                   values={identity}
                   errors={identityErrors}
-                  idPrefix="addUserToFunction"
+                  idPrefix={idPrefix}
                   onChange={(values) => { setIdentity(values); setIdentityErrors({}); }}
                 />
 
                 <div className="space-y-1">
-                  <Label>{t('users.phoneNumber')}</Label>
-                  <Input type="tel" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="" />
+                  <Label htmlFor={`${idPrefix}-phone`}>{t('users.phoneNumber')}</Label>
+                  <Input id={`${idPrefix}-phone`} type="tel" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="" />
                 </div>
 
                 <div className="space-y-1">
-                  <Label>{t('org.selectRole')}</Label>
+                  <Label id={`${idPrefix}-role-create-label`} htmlFor={`${idPrefix}-role-create`} onClick={focusRoleSelect}>{t('org.selectRole')}</Label>
                   <Select value={selectedRole} onValueChange={setSelectedRole}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger id={`${idPrefix}-role-create`} aria-labelledby={`${idPrefix}-role-create-label`}><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="read">{t('role.read')}</SelectItem>
                       <SelectItem value="write">{t('role.write')}</SelectItem>
