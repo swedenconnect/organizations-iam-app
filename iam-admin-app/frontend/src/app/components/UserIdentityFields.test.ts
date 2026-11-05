@@ -4,7 +4,9 @@ import {
   EMPTY_IDENTITY_VALUES,
   IdentityValues,
   fillableIdentityFields,
+  eidAttributeMandatory,
   requiredIdentityField,
+  userIdRequired,
   validateIdentityValues,
 } from '@/app/components/UserIdentityFields';
 
@@ -65,12 +67,83 @@ describe('requiredIdentityField', () => {
       .toBe('personalIdentityNumber');
   });
 
-  it('is nothing when the requirement is off, whatever is enabled', () => {
-    expect(requiredIdentityField(settings({ eidAttributeRequired: false }))).toBeNull();
+  it('is nothing when the requirement is off and a user ID can be chosen instead', () => {
+    expect(requiredIdentityField(settings({ eidAttributeRequired: false, allowSelectUserId: true })))
+      .toBeNull();
+    expect(requiredIdentityField(settings({
+      eidAttributeRequired: false,
+      allowSelectUserId: true,
+      orgAffiliationEnabled: true,
+    }))).toBeNull();
+  });
+
+  it('is the single field when the requirement is off but no user ID can be chosen', () => {
+    expect(requiredIdentityField(settings({ eidAttributeRequired: false })))
+      .toBe('personalIdentityNumber');
     expect(requiredIdentityField(settings({
       eidAttributeRequired: false,
       orgAffiliationEnabled: true,
     }))).toBeNull();
+  });
+});
+
+describe('eidAttributeMandatory', () => {
+  it('holds when the requirement is on, whatever else is set', () => {
+    expect(eidAttributeMandatory(settings())).toBe(true);
+    expect(eidAttributeMandatory(settings({ allowSelectUserId: true }))).toBe(true);
+  });
+
+  it('holds when no user ID can be chosen and there is a field to fill', () => {
+    expect(eidAttributeMandatory(settings({ eidAttributeRequired: false }))).toBe(true);
+  });
+
+  it('does not hold when no user ID can be chosen and there is no field to fill', () => {
+    expect(eidAttributeMandatory(settings({
+      eidAttributeRequired: false,
+      personalNumberEnabled: false,
+      hsaIdEnabled: true,
+    }))).toBe(false);
+  });
+
+  it('does not hold when the requirement is off and a user ID can be chosen', () => {
+    expect(eidAttributeMandatory(settings({ eidAttributeRequired: false, allowSelectUserId: true })))
+      .toBe(false);
+  });
+});
+
+describe('userIdRequired', () => {
+  it('never holds when no user ID can be chosen', () => {
+    expect(userIdRequired(values({ temporaryPassword: 'secret' }), settings({
+      allowTemporaryPassword: true,
+      eidAttributeRequired: false,
+      personalNumberEnabled: false,
+    }))).toBe(false);
+  });
+
+  it('holds once an initial password is entered', () => {
+    const s = settings({ allowSelectUserId: true, allowTemporaryPassword: true });
+
+    expect(userIdRequired(values(), s)).toBe(false);
+    expect(userIdRequired(values({ temporaryPassword: 'secret' }), s)).toBe(true);
+  });
+
+  it('ignores a password when the password field is not shown', () => {
+    expect(userIdRequired(values({ temporaryPassword: 'secret' }), settings({ allowSelectUserId: true })))
+      .toBe(false);
+  });
+
+  it('holds when it is the only identity there is to give', () => {
+    expect(userIdRequired(values(), settings({
+      allowSelectUserId: true,
+      eidAttributeRequired: false,
+      personalNumberEnabled: false,
+      efosIdEnabled: true,
+    }))).toBe(true);
+  });
+
+  it('does not hold when an eID attribute could be given instead', () => {
+    expect(userIdRequired(values(), settings({ allowSelectUserId: true, eidAttributeRequired: false })))
+      .toBe(false);
   });
 });
 
@@ -156,24 +229,114 @@ describe('validateIdentityValues, several identity fields', () => {
   });
 });
 
-describe('validateIdentityValues, the requirement turned off', () => {
-  it('reports nothing for an empty set, with one field or with several', () => {
-    expect(validateIdentityValues(values(), settings({ eidAttributeRequired: false }), t))
-      .toEqual({});
+describe('validateIdentityValues, the requirement turned off and no user ID to choose', () => {
+  const off = { eidAttributeRequired: false };
+
+  it('still requires the single field, reported against it', () => {
+    const errors = validateIdentityValues(values(), settings(off), t);
+
+    expect(errors).toEqual({ personalIdentityNumber: 'validation.required' });
+  });
+
+  it('reports at form level when there are several fields', () => {
+    const errors = validateIdentityValues(values(), settings({ ...off, orgAffiliationEnabled: true }), t);
+
+    expect(errors).toEqual({ eid: 'validation.eidAttributeRequired' });
+  });
+
+  it('passes once an eID attribute is given', () => {
+    expect(validateIdentityValues(
+      values({ orgAffiliation: 'martin@2021006883' }),
+      settings({ ...off, orgAffiliationEnabled: true }),
+      t)).toEqual({});
+  });
+
+  it('reports nothing when there is no field that can be filled in', () => {
     expect(validateIdentityValues(
       values(),
-      settings({ eidAttributeRequired: false, orgAffiliationEnabled: true }),
+      settings({ ...off, personalNumberEnabled: false, hsaIdEnabled: true }),
       t)).toEqual({});
   });
 });
 
-describe('validateIdentityValues, the user ID', () => {
-  it('is required on its own account, independently of the identity fields', () => {
+describe('validateIdentityValues, the user ID with the requirement on', () => {
+  const s = settings({ allowSelectUserId: true, allowTemporaryPassword: true });
+
+  it('may be left empty when an eID attribute is given', () => {
+    expect(validateIdentityValues(values({ personalIdentityNumber: '196911292032' }), s, t))
+      .toEqual({});
+  });
+
+  it('is required once a password is entered', () => {
     const errors = validateIdentityValues(
-      values({ personalIdentityNumber: '196911292032' }),
-      settings({ allowSelectUserId: true }),
+      values({ personalIdentityNumber: '196911292032', temporaryPassword: 'secret' }),
+      s,
+      t);
+
+    expect(errors).toEqual({ userId: 'validation.userIdRequired' });
+  });
+
+  it('counts whitespace as empty', () => {
+    const errors = validateIdentityValues(
+      values({ userId: '   ', personalIdentityNumber: '196911292032', temporaryPassword: 'secret' }),
+      s,
       t);
 
     expect(errors.userId).toBe('validation.userIdRequired');
+  });
+
+  it('does not replace the eID attribute', () => {
+    const errors = validateIdentityValues(values({ userId: 'kalle' }), s, t);
+
+    expect(errors).toEqual({ personalIdentityNumber: 'validation.required' });
+  });
+});
+
+describe('validateIdentityValues, the user ID with the requirement off', () => {
+  const s = settings({ allowSelectUserId: true, allowTemporaryPassword: true, eidAttributeRequired: false });
+
+  it('reports at form level when neither a user ID nor an eID attribute is given', () => {
+    expect(validateIdentityValues(values(), s, t)).toEqual({ eid: 'validation.eidAttributeRequired' });
+    expect(validateIdentityValues(values(), { ...s, orgAffiliationEnabled: true }, t))
+      .toEqual({ eid: 'validation.eidAttributeRequired' });
+  });
+
+  it('counts a whitespace user ID as no user ID', () => {
+    expect(validateIdentityValues(values({ userId: '  ' }), s, t))
+      .toEqual({ eid: 'validation.eidAttributeRequired' });
+  });
+
+  it('is satisfied by a user ID alone', () => {
+    expect(validateIdentityValues(values({ userId: 'kalle' }), s, t)).toEqual({});
+  });
+
+  it('is satisfied by an eID attribute alone', () => {
+    expect(validateIdentityValues(values({ personalIdentityNumber: '196911292032' }), s, t)).toEqual({});
+  });
+
+  it('reports a missing user ID on the field when a password is entered', () => {
+    expect(validateIdentityValues(values({ temporaryPassword: 'secret' }), s, t))
+      .toEqual({ userId: 'validation.userIdRequired' });
+    expect(validateIdentityValues(
+      values({ temporaryPassword: 'secret', personalIdentityNumber: '196911292032' }),
+      s,
+      t)).toEqual({ userId: 'validation.userIdRequired' });
+  });
+
+  it('passes with a user ID and a password', () => {
+    expect(validateIdentityValues(values({ userId: 'kalle', temporaryPassword: 'secret' }), s, t))
+      .toEqual({});
+  });
+
+  it('requires the user ID on the field when there is no eID field to fill in', () => {
+    const noEid = { ...s, personalNumberEnabled: false, hsaIdEnabled: true };
+
+    expect(validateIdentityValues(values(), noEid, t)).toEqual({ userId: 'validation.userIdRequired' });
+    expect(validateIdentityValues(values({ userId: 'kalle' }), noEid, t)).toEqual({});
+  });
+
+  it('still validates the format of a given eID attribute', () => {
+    expect(validateIdentityValues(values({ userId: 'kalle', personalIdentityNumber: '1969' }), s, t))
+      .toEqual({ personalIdentityNumber: 'validation.pin12digits' });
   });
 });

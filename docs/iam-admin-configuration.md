@@ -118,9 +118,9 @@ The following properties are available:
 
 | Property | Description | Type | Default value |
 | :--- | :--- | :--- | :--- |
-| `allow-select-user-id` | When `true`, the administrator assigns the Keycloak user ID for the user being created. Any unused ID is permitted, including a personal identity number. When `false`, a random UUID is used and no field is shown. Maninly intended for testing environments. | `Boolean` | `false` |
+| `allow-select-user-id` | When `true`, a user ID field is shown when a user is created. The field may be left empty, and a random UUID is then used. It must be filled in when an initial password is entered, and when it is the only way to identify the user. The ID cannot be changed afterwards, so a personal identity number should not be used. When `false`, a random UUID is always used and no field is shown. Mainly intended for testing environments. | `Boolean` | `false` |
 | `allow-temporary-password` | When `true`, the administrator may set an initial password, which Keycloak then requires the user to change at first login. Only meaningful together with `allow-select-user-id`. Username and password logins should normally not be used in production. | `Boolean` | `false` |
-| `eid-attribute-required` | When `true`, at least one of the enabled eID attributes must be given for a new user. | `Boolean` | `true` |
+| `eid-attribute-required` | When `true`, at least one of the enabled eID attributes must be given for a new user. When `false`, a new user must still be given a user ID or an eID attribute. If `allow-select-user-id` is also `false`, an eID attribute must be given. | `Boolean` | `true` |
 | `personal-number-enabled` | When `true`, a "Personal identity number" field is offered when a user is registered. This means that the user is expected to login using his or her Swedish eID. | `Boolean` | `true` |
 | `hsa-id-enabled` | When `true`, an "HSA-ID" field is offered when a user is registered. This means that the user is expected to login using his or her SITHS eID. | `Boolean` | `false` |
 | `org-affiliation-enabled` | When `true`, an "Organizational affiliation" field is offered when a user is registered. The value is on the format `userID@organization-number`, where the organization number is 10 digits. Enables user login with an Organizational eID according to Sweden Connect. | `Boolean` | `false` |
