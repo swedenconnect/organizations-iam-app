@@ -23,13 +23,13 @@ export function Header({ onLogout, showLogout = false, currentUser }: HeaderProp
   return (
     <header className="border-b border-gray-200" style={{ backgroundColor: 'var(--header-bg)' }}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <img src={logoUrl} alt="Logotype" className={`${logoHeight} object-contain`} />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {currentUser?.name && (
-              <span className="text-sm" style={{ color: 'var(--header-fg)' }}>{currentUser.name}</span>
+              <span className="text-sm wrap-anywhere" style={{ color: 'var(--header-fg)' }}>{currentUser.name}</span>
             )}
             <LanguageSelector className="text-[color:var(--header-fg)] hover:text-[color:var(--header-fg)] hover:bg-white/10" />
             {showLogout && onLogout && (

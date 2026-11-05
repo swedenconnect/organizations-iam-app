@@ -200,17 +200,17 @@ export function UserList({ users, organizations, functions, currentUserId, isSup
                 className="cursor-pointer hover:bg-gray-50 transition-colors"
                 onClick={() => toggleExpanded(user.id)}
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 flex items-start gap-3">
+                <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
+                  <div className="flex-1 min-w-48 flex items-start gap-3">
                     {isExpanded ? (
                       <ChevronDown className="w-5 h-5 mt-0.5 text-gray-500 flex-shrink-0" />
                     ) : (
                       <ChevronRight className="w-5 h-5 mt-0.5 text-gray-500 flex-shrink-0" />
                     )}
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <Users className="w-5 h-5" />
-                        <CardTitle>{user.name}</CardTitle>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Users className="w-5 h-5 shrink-0" />
+                        <CardTitle className="wrap-anywhere">{user.name}</CardTitle>
                         {user.personalIdentityNumber && (
                           <span className="text-sm text-gray-500">
                             • {formatPersonalIdentityNumber(user.personalIdentityNumber)}
@@ -224,7 +224,7 @@ export function UserList({ users, organizations, functions, currentUserId, isSup
                         )}
                       </div>
                       {!isExpanded && user.rights && user.rights.length > 0 && (
-                        <div className="flex gap-3 mt-2">
+                        <div className="flex flex-wrap gap-x-3 mt-2">
                           {user.rights.filter((r) => r.functionId === null).length > 0 && (
                             <p className="text-xs text-gray-400">
                               {user.rights.filter((r) => r.functionId === null).length}{' '}
@@ -287,14 +287,14 @@ export function UserList({ users, organizations, functions, currentUserId, isSup
                           </p>
                         )}
                         {user.email && (
-                          <p className="text-sm text-gray-500 flex items-center gap-2">
-                            <Mail className="w-4 h-4" />
+                          <p className="text-sm text-gray-500 flex items-center gap-2 wrap-anywhere">
+                            <Mail className="w-4 h-4 shrink-0" />
                             {user.email}
                           </p>
                         )}
                         {user.phoneNumber && (
-                          <p className="text-sm text-gray-500 flex items-center gap-2">
-                            <Phone className="w-4 h-4" />
+                          <p className="text-sm text-gray-500 flex items-center gap-2 wrap-anywhere">
+                            <Phone className="w-4 h-4 shrink-0" />
                             {user.phoneNumber}
                           </p>
                         )}
@@ -314,7 +314,7 @@ export function UserList({ users, organizations, functions, currentUserId, isSup
                         const orgName = org ? getOrgName(org) : orgIdentifier;
                         return (
                           <div key={orgIdentifier} className="mb-4">
-                            <p className="text-xs font-semibold text-gray-700 mb-2">{orgName}</p>
+                            <p className="text-xs font-semibold text-gray-700 mb-2 wrap-anywhere">{orgName}</p>
                             {orgRights.length > 0 && (
                               <div className="mb-2">
                                 <div className="flex items-center gap-1.5 mb-1">
@@ -331,8 +331,8 @@ export function UserList({ users, organizations, functions, currentUserId, isSup
                                     editingRight.functionId === null &&
                                     editingRight.currentRight === r.right;
                                   return (
-                                    <div key={i} className="flex items-center justify-between bg-white p-2 rounded border mb-1">
-                                      <span className="text-sm">{orgName}</span>
+                                    <div key={i} className="flex items-center justify-between gap-2 bg-white p-2 rounded border mb-1">
+                                      <span className="text-sm min-w-0 wrap-anywhere">{orgName}</span>
                                       {isSelf || (!canAssignAdmin && r.right === 'admin') ? (
                                         <Badge variant={getRoleBadgeVariant(r.right)}>{t(`role.${r.right}`)}</Badge>
                                       ) : (
@@ -399,8 +399,8 @@ export function UserList({ users, organizations, functions, currentUserId, isSup
                                     editingRight.functionId === r.functionId &&
                                     editingRight.currentRight === r.right;
                                   return (
-                                    <div key={i} className="flex items-center justify-between bg-white p-2 rounded border mb-1">
-                                      <div>
+                                    <div key={i} className="flex items-center justify-between gap-2 bg-white p-2 rounded border mb-1">
+                                      <div className="min-w-0 wrap-anywhere">
                                         <p className="text-sm font-medium">{orgName}</p>
                                         <p className="text-xs text-gray-500">{func ? (language === 'sv' ? func.nameSv : func.nameEn) || (language === 'sv' ? func.nameEn : func.nameSv) || func.name : r.functionId}</p>
                                       </div>

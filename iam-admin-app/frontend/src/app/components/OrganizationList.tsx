@@ -269,21 +269,21 @@ export function OrganizationList({
                 className="cursor-pointer hover:bg-gray-50 transition-colors"
                 onClick={() => toggleExpanded(org.id)}
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 flex items-start gap-3">
+                <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
+                  <div className="flex-1 min-w-48 flex items-start gap-3">
                     {isExpanded ? (
                       <ChevronDown className="w-5 h-5 mt-0.5 text-gray-500 flex-shrink-0" />
                     ) : (
                       <ChevronRight className="w-5 h-5 mt-0.5 text-gray-500 flex-shrink-0" />
                     )}
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <Building2 className="w-5 h-5" />
-                        <CardTitle>{getOrgName(org)}</CardTitle>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Building2 className="w-5 h-5 shrink-0" />
+                        <CardTitle className="wrap-anywhere">{getOrgName(org)}</CardTitle>
                         <span className="text-sm text-gray-500">• {formatOrgNumber(org.organizationNumber)}</span>
                       </div>
                       {!isExpanded && (
-                        <div className="flex gap-3 mt-2">
+                        <div className="flex flex-wrap gap-x-3 mt-2">
                           {userCount > 0 && (
                             <p className="text-xs text-gray-400">
                               {userCount} {userCount === 1 ? t('users.count') : t('users.count_plural')}
@@ -334,7 +334,7 @@ export function OrganizationList({
                       ? canAdminOrg(isSuperuser, orgRights, org.id)
                       : orgUsers.length > 0) && (
                   <div>
-                    <div className="flex items-center justify-between mb-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                       <h4 className="text-sm font-medium flex items-center gap-2">
                         <UserIcon className="w-4 h-4" />
                         {t('org.usersWithAccess')}
@@ -371,8 +371,8 @@ export function OrganizationList({
                           return (
                             <div key={user!.id} className="flex items-center justify-between gap-3 p-2 bg-white rounded border">
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium truncate">{user!.name}</p>
-                                <p className="text-xs text-gray-500 truncate">{user!.email}</p>
+                                <p className="text-sm font-medium wrap-anywhere">{user!.name}</p>
+                                <p className="text-xs text-gray-500 wrap-anywhere">{user!.email}</p>
                               </div>
                               <div className="flex items-center gap-2 flex-shrink-0">
                                 {isEditing ? (
@@ -436,7 +436,7 @@ export function OrganizationList({
 
                   {/* Functions */}
                   <div>
-                    <div className="flex items-center justify-between mb-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                       <h4 className="text-sm font-medium flex items-center gap-2">
                         <Boxes className="w-4 h-4" />
                         {t('functions.orgFunctions')}
@@ -473,9 +473,9 @@ export function OrganizationList({
                       <div className="space-y-3">
                         {orgFunctions.map(({ func, users: functionUsers }) => (
                           <div key={func.id} className="p-3 bg-white rounded border">
-                            <div className="flex items-start justify-between mb-2">
-                              <div className="flex-1">
-                                <p className="text-sm font-medium">
+                            <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+                              <div className="flex-1 min-w-48">
+                                <p className="text-sm font-medium wrap-anywhere">
                                   {(language === 'sv' ? func.nameSv : func.nameEn) ||
                                     (language === 'sv' ? func.nameEn : func.nameSv) ||
                                     func.name}
@@ -486,7 +486,7 @@ export function OrganizationList({
                                     ''}
                                 </p>
                               </div>
-                              <div className="flex items-center gap-2">
+                              <div className="flex flex-wrap items-center gap-2">
                                 {isSuperuser && (
                                   <Button
                                     variant="outline"
@@ -544,7 +544,7 @@ export function OrganizationList({
                                     editingRight?.functionId === func.id;
                                   return (
                                     <div key={user.id} className="flex items-center justify-between gap-2 text-xs">
-                                      <span className="truncate">{user.name}</span>
+                                      <span className="min-w-0 wrap-anywhere">{user.name}</span>
                                       <div className="flex items-center gap-1.5 flex-shrink-0">
                                         {isEditing ? (
                                           <select

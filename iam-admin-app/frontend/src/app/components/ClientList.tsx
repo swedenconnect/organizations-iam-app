@@ -72,8 +72,8 @@ export function ClientList({
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="text-base truncate">
+                <div className="flex flex-wrap items-center gap-2">
+                  <CardTitle className="text-base wrap-anywhere">
                     {client.name || client.clientId}
                   </CardTitle>
                   {client.oidcClient && (

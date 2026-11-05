@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
 type Language = 'en' | 'sv';
 
@@ -164,6 +164,7 @@ const translations = {
     'importExport.exportDescription': 'Download every organization, function, and user (with their rights) as a JSON file.',
     'importExport.exportButton': 'Export to file',
     'importExport.importTitle': 'Import',
+    'importExport.fileLabel': 'Import file (JSON)',
     'importExport.importDescription': 'Upload a JSON file. Existing organizations, functions and users (matched on user\'s primary ID) are detected as duplicates and skipped, except that an existing organization gets the functions from the file that it lacks. Nothing is created until you confirm.',
     'importExport.dryRunButton': 'Validate file',
     'importExport.previewSummary': 'Review the entries below, then confirm to create the new ones. Duplicates and entries with errors are not created.',
@@ -494,6 +495,7 @@ const translations = {
     'importExport.exportDescription': 'Ladda ner alla organisationer, funktioner, och användare (med rättigheter) som en JSON-fil.',
     'importExport.exportButton': 'Exportera till fil',
     'importExport.importTitle': 'Import',
+    'importExport.fileLabel': 'Importfil (JSON)',
     'importExport.importDescription': 'Ladda upp en JSON-fil. Befintliga organisationer, funktioner och användare (matchade på användares primära ID) identifieras som dubbletter och hoppas över, men en befintlig organisation får de funktioner från filen som den saknar. Inget skapas förrän du bekräftar.',
     'importExport.dryRunButton': 'Validera fil',
     'importExport.previewSummary': 'Granska posterna nedan och bekräfta för att skapa de nya. Dubbletter och poster med fel skapas inte.',
@@ -678,6 +680,11 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     const stored = localStorage.getItem('language');
     return (stored === 'en' || stored === 'sv') ? stored : 'sv';
   });
+
+  // Keeps <html lang> in step with the interface language, so screen readers use the right pronunciation.
+  useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
 
   const setLanguageAndPersist = (lang: Language) => {
     localStorage.setItem('language', lang);

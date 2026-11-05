@@ -101,15 +101,15 @@ export function FunctionList({
           return (
             <Card key={func.id}>
               <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="flex items-center gap-2">
-                      <Boxes className="w-5 h-5" />
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <CardTitle className="flex items-center gap-2 wrap-anywhere">
+                      <Boxes className="w-5 h-5 shrink-0" />
                       {getDisplayName(func)}
                     </CardTitle>
                     <div className="mt-1 space-y-1">
                       <p className="text-sm text-gray-500">
-                        {t('functions.name')}: <code className="bg-gray-100 px-1 rounded">{func.name}</code>
+                        {t('functions.name')}: <code className="bg-gray-100 px-1 rounded wrap-anywhere">{func.name}</code>
                       </p>
                       {getDescription(func) && <p className="text-sm text-gray-600">{getDescription(func)}</p>}
                     </div>

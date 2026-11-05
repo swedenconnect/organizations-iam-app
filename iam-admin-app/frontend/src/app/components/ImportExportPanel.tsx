@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
+import { Label } from '@/app/components/ui/label';
 import { Progress } from '@/app/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/app/components/ui/table';
 import { Download, Upload, Loader2 } from 'lucide-react';
@@ -53,6 +54,7 @@ function statusVariant(status: string): 'default' | 'secondary' | 'outline' | 'd
 export function ImportExportPanel({ onImportCompleted }: ImportExportPanelProps) {
   const { t } = useLanguage();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputId = useId();
 
   const [step, setStep] = useState<Step>('idle');
   const [isExporting, setIsExporting] = useState(false);
@@ -229,22 +231,26 @@ export function ImportExportPanel({ onImportCompleted }: ImportExportPanelProps)
         <p className="text-sm text-gray-500">{t('importExport.importDescription')}</p>
 
         {step === 'idle' && (
-          <div className="flex flex-wrap items-center gap-3">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="application/json"
-              onChange={handleFileChange}
-              className="text-sm"
-            />
-            <Button onClick={handleDryRun} disabled={!selectedFile || isBusy}>
-              {isBusy ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Upload className="w-4 h-4 mr-2" />
-              )}
-              {t('importExport.dryRunButton')}
-            </Button>
+          <div className="space-y-2">
+            <Label htmlFor={fileInputId}>{t('importExport.fileLabel')}</Label>
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                ref={fileInputRef}
+                id={fileInputId}
+                type="file"
+                accept="application/json"
+                onChange={handleFileChange}
+                className="text-sm max-w-full"
+              />
+              <Button onClick={handleDryRun} disabled={!selectedFile || isBusy}>
+                {isBusy ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Upload className="w-4 h-4 mr-2" />
+                )}
+                {t('importExport.dryRunButton')}
+              </Button>
+            </div>
           </div>
         )}
 
