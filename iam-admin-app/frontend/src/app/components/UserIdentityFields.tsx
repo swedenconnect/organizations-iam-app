@@ -48,16 +48,28 @@ export function fillableIdentityFields(settings: UserRegistrationSettings): Fill
 }
 
 /**
+ * Whether an eID attribute must be given. It must when the requirement is on. It also must when
+ * the administrator cannot choose a user ID, since the user would otherwise get no identity at
+ * all, but only if there is a field that can be filled in.
+ */
+export function eidAttributeMandatory(settings: UserRegistrationSettings): boolean {
+  if (settings.eidAttributeRequired) {
+    return true;
+  }
+  return !settings.allowSelectUserId && fillableIdentityFields(settings).length > 0;
+}
+
+/**
  * The identity field that is required in its own right, or null when none is.
  *
- * With the requirement on and exactly one field to fill, that field is mandatory and is marked
- * and reported like any other required field. With more than one there is a choice to make, so
- * no single field is required and a missing value is reported at form level instead.
+ * With an eID attribute mandatory and exactly one field to fill, that field is mandatory and is
+ * marked and reported like any other required field. With more than one there is a choice to
+ * make, so no single field is required and a missing value is reported at form level instead.
  */
 export function requiredIdentityField(
   settings: UserRegistrationSettings
 ): FillableIdentityField | null {
-  if (!settings.eidAttributeRequired) {
+  if (!eidAttributeMandatory(settings)) {
     return null;
   }
   const fields = fillableIdentityFields(settings);
@@ -65,9 +77,26 @@ export function requiredIdentityField(
 }
 
 /**
+ * Whether the user ID must be given. It must when an initial password is entered, since password
+ * login needs a known username. It also must when it is the only way to identify the user, that
+ * is, when an eID attribute is not required and there is no eID field to fill in. Otherwise an
+ * empty user ID gives a random one.
+ */
+export function userIdRequired(values: IdentityValues, settings: UserRegistrationSettings): boolean {
+  if (!settings.allowSelectUserId) {
+    return false;
+  }
+  if (settings.allowTemporaryPassword && values.temporaryPassword) {
+    return true;
+  }
+  return !settings.eidAttributeRequired && fillableIdentityFields(settings).length === 0;
+}
+
+/**
  * Validates the identity values against the settings. Returns an empty object when everything
  * is in order. A missing identity is reported against the field when only one can be filled,
- * and at form level under the key `eid` when there are several to choose between.
+ * and at form level under the key `eid` when there are several to choose between, a user ID
+ * being one of them when an eID attribute is not required.
  */
 export function validateIdentityValues(
   values: IdentityValues,
@@ -76,7 +105,8 @@ export function validateIdentityValues(
 ): IdentityErrors {
   const errors: IdentityErrors = {};
 
-  if (settings.allowSelectUserId && !values.userId.trim()) {
+  const userId = settings.allowSelectUserId ? values.userId.trim() : '';
+  if (!userId && userIdRequired(values, settings)) {
     errors.userId = t('validation.userIdRequired');
   }
 
@@ -92,13 +122,19 @@ export function validateIdentityValues(
 
   // Only the personal identity number and the organizational affiliation are implemented, so
   // only they can satisfy the requirement for now.
-  if (settings.eidAttributeRequired && !pin && !orgAffiliation) {
-    const required = requiredIdentityField(settings);
-    if (required === null) {
-      errors.eid = t('validation.eidAttributeRequired');
+  if (!pin && !orgAffiliation) {
+    if (eidAttributeMandatory(settings)) {
+      const required = requiredIdentityField(settings);
+      if (required === null) {
+        errors.eid = t('validation.eidAttributeRequired');
+      }
+      else {
+        errors[required] = t('validation.required');
+      }
     }
-    else {
-      errors[required] = t('validation.required');
+    else if (settings.allowSelectUserId && !userId && !errors.userId) {
+      // Either a user ID or an eID attribute will do, so neither field is to blame.
+      errors.eid = t('validation.eidAttributeRequired');
     }
   }
 
@@ -144,6 +180,7 @@ export function UserIdentityFields({ settings, values, errors, idPrefix, onChang
   // Marked with an asterisk like every other required field on the form, but only when it is
   // the one identity field there is.
   const required = requiredIdentityField(settings);
+  const userIdMandatory = userIdRequired(values, settings);
 
   const set = (field: keyof IdentityValues, value: string) => {
     onChange({ ...values, [field]: value });
@@ -158,7 +195,7 @@ export function UserIdentityFields({ settings, values, errors, idPrefix, onChang
     <>
       {settings.allowSelectUserId && (
         <div className="space-y-1">
-          <Label htmlFor={`${idPrefix}-userId`}>{t('users.userId')} *</Label>
+          <Label htmlFor={`${idPrefix}-userId`}>{t('users.userId')}{userIdMandatory ? ' *' : ''}</Label>
           <Input
             id={`${idPrefix}-userId`}
             value={values.userId}
