@@ -177,6 +177,12 @@ configures no repository. The events are then only kept in memory, a bounded num
 are lost when the application stops. The local and compose profiles write the events to a file, one JSON event
 per line.
 
+The application's configuration also filters out the security events that Spring Boot creates by itself, by
+listing their types in `audit.repository.exclude-events`: `AUTHENTICATION_SUCCESS`, `AUTHENTICATION_FAILURE`,
+`AUTHENTICATION_SWITCH`, `AUTHORIZATION_FAILURE` and `LOGOUT_SUCCESS`. The application's own events cover what they
+report. A deployment that assigns its own `audit.repository.exclude-events` replaces this list, so it must repeat
+these types to keep them out of the log.
+
 **Production must configure a durable repository**, for example a database, a file collected by the log
 infrastructure, or syslog.
 

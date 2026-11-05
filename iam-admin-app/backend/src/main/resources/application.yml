@@ -60,8 +60,19 @@ management:
 
 # Audit logging. No repository is configured here, so the audit events are only kept in memory.
 # A production deployment must configure a durable repository, see docs/iam-admin-configuration.md.
+#
+# The security events that Spring Boot Actuator creates by itself are filtered out. The application's own
+# events cover what they report. A deployment that assigns its own exclude-events replaces this list, and
+# must repeat these types to keep them out of the log.
 audit:
   default-principal: system
+  repository:
+    exclude-events:
+      - AUTHENTICATION_SUCCESS
+      - AUTHENTICATION_FAILURE
+      - AUTHENTICATION_SWITCH
+      - AUTHORIZATION_FAILURE
+      - LOGOUT_SUCCESS
 
 iam:
   admin:

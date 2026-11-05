@@ -713,6 +713,10 @@ See the library's [Audit Events](https://docs.swedenconnect.se/spring-audit-supp
 - An import entry rejected because its username is taken or not allowed. It is reported in the import's report.
 - A save that changes nothing.
 - Changes made directly in Keycloak or through the scripts.
+- The security events that Spring Boot creates by itself: `AUTHENTICATION_SUCCESS`, `AUTHENTICATION_FAILURE`,
+  `AUTHENTICATION_SWITCH`, `AUTHORIZATION_FAILURE` and `LOGOUT_SUCCESS`. They are filtered out by default, since
+  the events above cover what they report. See
+  [Audit Logging](iam-admin-configuration.md#audit-logging) in the configuration documentation.
 
 ---
 
