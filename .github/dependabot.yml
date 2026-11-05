@@ -8,6 +8,9 @@
 # of their own each. Other minor and patch updates are grouped into one pull request per ecosystem,
 # to keep the number of pull requests down. Other major updates get a pull request each, since they
 # may need code changes. A dependency goes to the first group it matches.
+#
+# A few Maven dependencies whose versions are pinned by hand are ignored. See the comments on the
+# ignore rules.
 version: 2
 
 updates:
@@ -21,6 +24,9 @@ updates:
     ignore:
       # The xmlsec version is pinned in the parent POM.
       - dependency-name: "org.apache.santuario:xmlsec"
+      # Jackson 2 is used only by the Keycloak plugins, and its version must match the one
+      # Keycloak supplies. It is updated by hand when Keycloak is upgraded.
+      - dependency-name: "com.fasterxml.jackson.core:jackson-databind"
     groups:
       # Spring Boot and Spring Framework are updated together, since a Spring Boot release
       # depends on a given Spring Framework version.

@@ -15,8 +15,6 @@
  */
 package se.swedenconnect.iam.admin.keycloak;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,6 +33,8 @@ import org.springframework.test.web.client.ExpectedCount;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 import se.swedenconnect.iam.admin.config.IamAdminProperties;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import se.swedenconnect.iam.admin.keycloak.model.ManagedClientInfo;
 
 import java.net.URI;
@@ -76,7 +76,7 @@ class ClientDisplayNameWriteTest {
 
   private static final String LIST_URI = ADMIN_API_BASE + "/clients?first=0&max=500";
 
-  private static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
   @Mock
   private OAuth2AuthorizedClientManager authorizedClientManager;
@@ -106,11 +106,11 @@ class ClientDisplayNameWriteTest {
   void create_resourceServerOnly_writesTheName() {
     final JsonNode body = this.captureCreate("Registry");
 
-    assertThat(body.path("name").asText()).isEqualTo("Registry");
+    assertThat(body.path("name").asString()).isEqualTo("Registry");
     assertThat(body.path("publicClient").asBoolean()).isTrue();
     assertThat(body.path("standardFlowEnabled").asBoolean()).isFalse();
-    assertThat(body.path("attributes").path("iam_admin_resource_server").asText()).isEqualTo("true");
-    assertThat(body.path("attributes").path("iam_admin_oidc_client").asText()).isEqualTo("false");
+    assertThat(body.path("attributes").path("iam_admin_resource_server").asString()).isEqualTo("true");
+    assertThat(body.path("attributes").path("iam_admin_oidc_client").asString()).isEqualTo("false");
   }
 
   @Test
@@ -119,13 +119,13 @@ class ClientDisplayNameWriteTest {
     final JsonNode body = this.captureCreate(null);
 
     assertThat(body.has("name")).isFalse();
-    assertThat(body.path("attributes").path("iam_admin_resource_server").asText()).isEqualTo("true");
+    assertThat(body.path("attributes").path("iam_admin_resource_server").asString()).isEqualTo("true");
   }
 
   @Test
   @DisplayName("An empty display name is written as it is, rather than being dropped")
   void create_resourceServerOnly_withAnEmptyName() {
-    assertThat(this.captureCreate("").path("name").asText()).isEmpty();
+    assertThat(this.captureCreate("").path("name").asString()).isEmpty();
   }
 
   // ---------------------------------------------------------------------------
@@ -137,7 +137,7 @@ class ClientDisplayNameWriteTest {
   void update_resourceServerOnly_writesTheName() {
     final JsonNode body = this.captureUpdate("Registry", "Client Registry");
 
-    assertThat(body.path("name").asText()).isEqualTo("Client Registry");
+    assertThat(body.path("name").asString()).isEqualTo("Client Registry");
   }
 
   @Test
@@ -145,7 +145,7 @@ class ClientDisplayNameWriteTest {
   void update_resourceServerOnly_omittedNameKeepsTheExistingOne() {
     final JsonNode body = this.captureUpdate("Registry", null);
 
-    assertThat(body.path("name").asText()).isEqualTo("Registry");
+    assertThat(body.path("name").asString()).isEqualTo("Registry");
   }
 
   @Test
@@ -153,7 +153,7 @@ class ClientDisplayNameWriteTest {
   void update_resourceServerOnly_addsANameToAClientWithout() {
     final JsonNode body = this.captureUpdate(null, "Client Registry");
 
-    assertThat(body.path("name").asText()).isEqualTo("Client Registry");
+    assertThat(body.path("name").asString()).isEqualTo("Client Registry");
   }
 
   // ---------------------------------------------------------------------------
