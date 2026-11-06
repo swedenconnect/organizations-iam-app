@@ -31,6 +31,8 @@
 
 - Accessibility fixes in the admin application: the import file field has a visible label, the pages fit narrow screens and high zoom without sideways scrolling, the page language follows the selected interface language, and icon buttons and form fields have names that screen readers announce ([#125](https://github.com/swedenconnect/organizations-iam-app/issues/125), [#126](https://github.com/swedenconnect/organizations-iam-app/issues/126), [#129](https://github.com/swedenconnect/organizations-iam-app/issues/129), [#130](https://github.com/swedenconnect/organizations-iam-app/issues/130), [#131](https://github.com/swedenconnect/organizations-iam-app/issues/131)).
 
+- Switching a client between a JWKS URI and an inline JWK Set no longer fails, and turning off the resource server role on a client now takes effect ([#108](https://github.com/swedenconnect/organizations-iam-app/issues/108)).
+
 - The admin application now lists all users, not only the first 50, and organization member lists show user rights directly after an import ([#123](https://github.com/swedenconnect/organizations-iam-app/issues/123)).
 
 
