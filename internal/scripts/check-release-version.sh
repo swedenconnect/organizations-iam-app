@@ -4,10 +4,11 @@
 #
 # The tag must be "v" followed by the version in the POMs, and that version must not be a snapshot.
 # Every module that is actually published is checked, not only the root, so a module left behind at
-# an older parent version stops the release before anything is uploaded. A module that sets the
-# skipPublishing property to true is not published to Maven Central, and is not checked. That is
-# the property the Central publishing plugin reads, and demo/pom.xml sets it for the whole demo tree,
-# so the check and the publishing cannot disagree on which modules are published.
+# an older parent version stops the release before anything is uploaded. A module where the
+# skipPublishing property is true is not published to Maven Central, and is not checked. That is
+# the property the Central publishing plugin reads. demo/pom.xml and iam-admin-app/pom.xml set it
+# for their trees, and the root pom.xml sets it to false for every other module, so the check and
+# the publishing cannot disagree on which modules are published.
 #
 # Usage:
 #     internal/scripts/check-release-version.sh <tag>
@@ -28,8 +29,7 @@ fail() {
 
 # Prints one "<pom path> <version> <skip publishing>" line per pom.xml under version control. Only
 # those are read, so a POM that is not part of the build is never checked. The skip publishing
-# column is "true" for modules that set skipPublishing, and the Maven help plugin's placeholder text
-# for the rest.
+# column is the value of the skipPublishing property of the module.
 list_modules() {
   local pom version skip
   while IFS= read -r pom; do

@@ -54,6 +54,15 @@
     <bc.version>1.86</bc.version>
     <credentials-support.version>2.3.0</credentials-support.version>
     <audit-support.version>1.0.2</audit-support.version>
+
+    <!--
+      Whether a module is left out of publishing. A module tree that must not be published sets skipPublishing to
+      true in its own POM, as demo/pom.xml and iam-admin-app/pom.xml do. The Central publishing plugin of the release
+      profile reads skipPublishing, and maven.deploy.skip makes the Maven deploy plugin skip the same modules when
+      deploy runs without the release profile. internal/scripts/check-release-version.sh reads skipPublishing too.
+    -->
+    <skipPublishing>false</skipPublishing>
+    <maven.deploy.skip>${skipPublishing}</maven.deploy.skip>
   </properties>
 
   <repositories>
@@ -471,9 +480,10 @@
           </plugin>
 
           <!--
-            Every module of the build is published, except those that set the skipPublishing property to true, which
-            the plugin reads. The demo tree sets it in demo/pom.xml. Nothing lists the modules, so a module added
-            elsewhere later is published too. internal/scripts/check-release-version.sh reads the same property.
+            Every module of the build is published, except those where the skipPublishing property is true. The
+            plugin reads that property for each module. demo/pom.xml and iam-admin-app/pom.xml set it for their
+            trees. Nothing lists the published modules, so a module added elsewhere later is published too.
+            internal/scripts/check-release-version.sh reads the same property.
             -->
           <plugin>
             <groupId>org.sonatype.central</groupId>

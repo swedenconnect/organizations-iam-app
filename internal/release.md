@@ -171,7 +171,7 @@ Three workflows react to a pushed `v*` tag. They run next to each other and do n
 other. There is no approval step, publishing starts as soon as the tag is pushed.
 
 - [`maven-central-deploy.yml`](../.github/workflows/maven-central-deploy.yml) publishes every
-  module except the demo modules to Maven Central. See
+  module except the demo and admin application modules to Maven Central. See
   [Publishing to Maven Central](#publishing-to-maven-central).
 - [`docker-release.yml`](../.github/workflows/docker-release.yml) checks that the tag matches the
   Maven version and that the version is not a snapshot, installs the modules, and builds and pushes
@@ -218,13 +218,13 @@ You can run it yourself before tagging:
 ./internal/scripts/check-release-version.sh v1.0.0
 ```
 
-It reads the version of every `pom.xml` under version control, skips a module that sets the
-`skipPublishing` property to `true`, and lists every module that does not match instead of
+It reads the version of every `pom.xml` under version control, skips a module where the
+`skipPublishing` property is `true`, and lists every module that does not match instead of
 stopping at the first one. Skipped modules are listed as not checked.
 
 ### What is published
 
-Every module of the build, except the demo modules:
+Every module of the build, except the demo and admin application modules:
 
 - `iam-parent`, the parent POM
 - `iam-commons`
@@ -234,21 +234,42 @@ Every module of the build, except the demo modules:
   `scope-org-identifier-mapper`, `resource-aud-plugin`, `idp-user-matcher` and `login-theme`
 - `keycloak-plugin-distribution`, the ZIP of the Keycloak providers of a release
 - `keycloak-scripts-distribution`, the ZIP of the realm administration scripts
-- `iam-admin-app`, the parent POM of the admin application, with `admin-app-frontend` and
+
+**Not published** to Maven Central:
+
+- the `demo` tree, that is `demo`, `demo-app`, `demo-app-fe`, `demo-app-be` and `demo-service`
+- the admin application tree, that is `iam-admin-app`, `admin-app-frontend` and
   `admin-app-backend`
 
-The admin application is published to Maven Central in addition to its Docker image.
+They are still built by every build, the `release` profile included, and their Docker images are
+published as described above. They hold large application JARs that nobody fetches from Maven
+Central. No published module depends on them. Releases 0.9.0 to 0.9.8 did publish them, and those
+versions stay on Maven Central.
 
-**Not published** to Maven Central: the `demo` tree, that is `demo`, `demo-app`, `demo-app-fe`,
-`demo-app-be` and `demo-service`. They are still built by every build, the `release` profile
-included, and their Docker images are published as described above. No published module depends
-on a demo module.
+No list of published modules is kept anywhere, so a module added to the build later is published,
+and checked, without anyone having to remember it. The root `pom.xml` sets the `skipPublishing`
+property to `false`, and [`demo/pom.xml`](../demo/pom.xml) and
+[`iam-admin-app/pom.xml`](../iam-admin-app/pom.xml) set it to `true` for their trees. A module tree
+that must not be published does the same in its own POM.
 
-No list of modules is kept anywhere, so a module added to the build later is published, and
-checked, without anyone having to remember it. A module that must not be published sets the
-`skipPublishing` property to `true`. That property is read by the Central publishing plugin, and
-[`demo/pom.xml`](../demo/pom.xml) sets it for the whole demo tree. The version check reads the same
-property, so the check and the publishing cannot disagree on which modules are published.
+- The Central publishing plugin reads `skipPublishing` for each module and leaves the files of a
+  skipped module out of the bundle it uploads. This holds for the workflow and for a deploy by
+  hand, since both use the `release` profile.
+- The root `pom.xml` sets `maven.deploy.skip` to the value of `skipPublishing`, so a `mvn deploy`
+  without the `release` profile, which uses the Maven deploy plugin, skips the same modules.
+- The version check reads `skipPublishing` too, so the check and the publishing cannot disagree
+  on which modules are published.
+
+To see what a release would upload without uploading anything, build the bundle with the
+`skipUpload` option of the plugin. This needs a release version in the POMs, so do it on a copy of
+the repository with its own local Maven repository, so that no release version reaches
+`~/.m2`:
+
+```bash
+mvn versions:set -DnewVersion=X.Y.Z -DprocessAllModules=true -DgenerateBackupPoms=false
+mvn -Dmaven.repo.local=/path/to/scratch-repo -Prelease -Dgpg.skip=true -DskipTests -DskipUpload=true clean deploy
+unzip -l target/central-publishing/central-bundle.zip
+```
 
 ### What the `release` profile does
 
@@ -258,7 +279,8 @@ signs everything with GPG, and uploads it through the Sonatype Central publishin
 button in the Central portal.
 
 The admin application frontend holds no Java code, so its `release` profile adds an empty source
-file and an empty javadoc file instead. The login theme holds no Java code either. Its source file
+file and an empty javadoc file instead. The module is not published, so these are built but not
+uploaded. The login theme holds no Java code either. Its source file
 holds the theme resources, and its `release` profile adds an empty javadoc file.
 
 ### Signing

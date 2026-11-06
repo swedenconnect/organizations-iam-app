@@ -10,7 +10,7 @@
 
 **Date:** _not yet released_
 
--
+- The demo and admin application modules are no longer published to Maven Central. The admin application and the demo applications are still published as Docker images.
 
 ---
 

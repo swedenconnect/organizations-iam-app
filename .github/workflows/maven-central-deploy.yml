@@ -3,7 +3,8 @@
 # It runs alongside the Docker release and GitHub release workflows, which react to the same tags,
 # and does not depend on them. The deploy uses the "release" profile of the parent POM, the same one
 # used for a deploy from a developer machine. Every module of the build is published, except the
-# demo modules, which set the skipPublishing property in demo/pom.xml.
+# demo and admin application modules, which set the skipPublishing property in demo/pom.xml and
+# iam-admin-app/pom.xml.
 #
 # Maven Central does not allow a published version to be removed or replaced, so the tag and the
 # version in the POMs are checked before anything is built. If that check fails nothing is published.

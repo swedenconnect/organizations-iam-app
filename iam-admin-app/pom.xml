@@ -25,6 +25,15 @@
     </license>
   </licenses>
 
+  <!--
+    The admin application modules are built, and their Docker image published, with the rest of the project, but
+    they are not published to Maven Central or deployed anywhere by mvn deploy. Every module below inherits this
+    property. See the skipPublishing property in the root pom.xml for how it is used.
+  -->
+  <properties>
+    <skipPublishing>true</skipPublishing>
+  </properties>
+
   <modules>
     <module>frontend</module>
     <module>backend</module>
