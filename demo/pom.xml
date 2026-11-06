@@ -28,9 +28,8 @@
 
   <!--
     The demo modules are built, and their Docker images published, with the rest of the project, but they are
-    not published to Maven Central. The Central publishing plugin of the release profile reads this property,
-    and every module below inherits it. internal/scripts/check-release-version.sh reads it too, so the
-    modules skipped here are the ones the version check leaves out.
+    not published to Maven Central or deployed anywhere by mvn deploy. Every module below inherits this property.
+    See the skipPublishing property in the root pom.xml for how it is used.
   -->
   <properties>
     <skipPublishing>true</skipPublishing>
