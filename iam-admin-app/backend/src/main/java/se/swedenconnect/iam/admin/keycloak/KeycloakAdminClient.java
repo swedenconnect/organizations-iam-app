@@ -1873,6 +1873,9 @@ public class KeycloakAdminClient {
    * <p>Turning the OIDC client role off disables Authorization Services, which makes Keycloak
    * discard the client's policies and permissions.</p>
    *
+   * <p>No attribute is removed from the update. Keycloak keeps an attribute an update leaves out,
+   * so a flag that no longer applies is written as {@code "false"} instead.</p>
+   *
    * <p>On a client carrying {@link #ALL_FUNCTIONS_ATTRIBUTE} the declared functions are ignored and
    * {@code client_functions} is left as it is. That client handles every function, and its
    * attribute is maintained by {@link #materializeAllFunctions(String)} as functions are created,
@@ -1927,25 +1930,18 @@ public class KeycloakAdminClient {
       body.put("redirectUris", redirectUris);
       body.put("clientAuthenticatorType", "client-jwt");
       if (jwksUri != null) {
-        attributes.put("use.jwks.url", "true");
-        attributes.put("jwks.url", jwksUri);
-        attributes.remove("use.jwks.string");
-        attributes.remove("jwks.string");
+        writeJwksAttributes(attributes, jwksUri, null);
       }
       else {
-        attributes.put("use.jwks.string", "true");
-        attributes.put("jwks.string", jwksString);
-        attributes.remove("use.jwks.url");
-        attributes.remove("jwks.url");
+        writeJwksAttributes(attributes, null, jwksString);
       }
     }
     else {
       body.put("redirectUris", List.of());
-      attributes.remove(SERVICE_ACCOUNT_ATTRIBUTE);
-      attributes.remove("use.jwks.url");
-      attributes.remove("jwks.url");
-      attributes.remove("use.jwks.string");
-      attributes.remove("jwks.string");
+      // "false" is a definite answer, unlike an absent value, which serviceAccountWanted reads as
+      // a client provisioned outside this application
+      attributes.put(SERVICE_ACCOUNT_ATTRIBUTE, "false");
+      writeJwksAttributes(attributes, null, null);
     }
 
     // The application administers this client whichever role it plays, so the marker goes on
@@ -1957,18 +1953,35 @@ public class KeycloakAdminClient {
     // meaning of iam_admin_managed for exactly those.
     attributes.put(OIDC_CLIENT_ATTRIBUTE, String.valueOf(oidcClient));
 
-    if (resourceServer) {
-      attributes.put(RESOURCE_SERVER_ATTRIBUTE, "true");
-    }
-    else {
-      attributes.remove(RESOURCE_SERVER_ATTRIBUTE);
-    }
+    attributes.put(RESOURCE_SERVER_ATTRIBUTE, String.valueOf(resourceServer));
 
     body.put("attributes", attributes);
 
     this.adminPutWithBody("/clients/" + clientUuid, body);
     log.debug("Client settings written for {} — oidcClient={}, resourceServer={}",
         clientUuid, oidcClient, resourceServer);
+  }
+
+  /**
+   * Writes the JWKS attributes of a client, with at most one of the two modes in use.
+   *
+   * <p>Nothing is removed from the attribute map. Keycloak keeps an attribute that an update leaves
+   * out, so a flag that is not in use is written as {@code "false"}, and a value that is not in use
+   * is written empty, which makes Keycloak delete it.</p>
+   *
+   * @param attributes the client attributes to update
+   * @param jwksUri the JWKS URI, or {@code null} if that mode is not in use
+   * @param jwksString the inline JWK Set, or {@code null} if that mode is not in use
+   */
+  private static void writeJwksAttributes(
+      final @NonNull Map<String, Object> attributes,
+      final @Nullable String jwksUri,
+      final @Nullable String jwksString) {
+
+    attributes.put("use.jwks.url", String.valueOf(jwksUri != null));
+    attributes.put("jwks.url", jwksUri != null ? jwksUri : "");
+    attributes.put("use.jwks.string", String.valueOf(jwksString != null));
+    attributes.put("jwks.string", jwksString != null ? jwksString : "");
   }
 
   /**
