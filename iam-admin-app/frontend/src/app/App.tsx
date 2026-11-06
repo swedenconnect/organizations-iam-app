@@ -33,12 +33,12 @@ import {
   createOrganization,
   updateOrganization,
   deleteOrganization,
-  getUsers,
+  fetchAllUsers,
+  deriveUserRoles,
   createUser,
   updateUser,
   deleteUser,
   getUserById,
-  getUserRoles,
   addUserToOrganization,
   removeUserFromOrganization,
   addUserToFunction,
@@ -135,10 +135,9 @@ function AppContent() {
 
 
   const loadData = useCallback(async (skipFunctions = false, skipOrganizations = false, skipUsers = false) => {
-    const [orgs, userPage, roles, funcs] = await Promise.all([
+    const [orgs, userPage, funcs] = await Promise.all([
       skipOrganizations ? Promise.resolve(null) : fetchAllOrganizations(),
-      skipUsers ? Promise.resolve(null) : getUsers(),
-      getUserRoles(),
+      skipUsers ? Promise.resolve(null) : fetchAllUsers(),
       skipFunctions ? Promise.resolve(null) : getFunctions(),
     ]);
 
@@ -161,7 +160,7 @@ function AppContent() {
       ));
     }
     if (userPage !== null) {
-      setUsers(userPage.content.map((u) => ({
+      const mappedUsers: User[] = userPage.content.map((u) => ({
         id: u.userId,
         personalIdentityNumber: u.personalIdentityNumber ?? '',
         orgAffiliation: u.orgAffiliation ?? undefined,
@@ -170,9 +169,10 @@ function AppContent() {
         phoneNumber: u.phoneNumber ?? undefined,
         superuser: u.superuser,
         rights: u.rights,
-      })));
+      }));
+      setUsers(mappedUsers);
+      setUserRoles(deriveUserRoles(mappedUsers));
     }
-    setUserRoles(roles);
     if (funcs !== null) setFunctions(funcs);
   }, []);
 
@@ -233,7 +233,7 @@ function AppContent() {
             // Fetch orgs and users from the API (not cached in session)
             const [orgPage, userPage] = await Promise.all([
               fetchAllOrganizations(),
-              getUsers(),
+              fetchAllUsers(),
             ]);
 
             const mappedOrgs: Organization[] = orgPage.content.map(mapOrgData);
@@ -265,16 +265,7 @@ function AppContent() {
             }));
             setUsers(mappedUsers);
 
-            const derivedUserRoles: UserOrganizationRole[] = mappedUsers.flatMap((u) =>
-              (u.rights ?? []).map((r) => ({
-                id: `${u.id}:${r.orgIdentifier}:${r.functionId ?? '*'}`,
-                userId: u.id,
-                organizationId: r.orgIdentifier,
-                functionId: r.functionId ?? undefined,
-                role: r.right as 'read' | 'write' | 'admin',
-              }))
-            );
-            setUserRoles(derivedUserRoles);
+            setUserRoles(deriveUserRoles(mappedUsers));
           } else {
             await loadData();
           }

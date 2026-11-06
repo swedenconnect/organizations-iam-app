@@ -9,6 +9,9 @@ import { apiUrl, apiFetch } from '@/lib/api';
 
 export const DEFAULT_USER_PAGE_SIZE = 50;
 
+/** Batch size used internally by fetchAllUsers — large enough to fetch everything in one round-trip for typical deployments. */
+const FETCH_ALL_BATCH_SIZE = 500;
+
 /**
  * Get a page of users from the backend.
  */
@@ -18,6 +21,39 @@ export async function getUsers(page = 0, size = DEFAULT_USER_PAGE_SIZE): Promise
     throw new Error(`Failed to fetch users: ${response.status}`);
   }
   return response.json();
+}
+
+/**
+ * Fetch all users by paging through the backend until all pages are loaded.
+ * Uses a large batch size to minimise the number of HTTP round-trips.
+ */
+export async function fetchAllUsers(): Promise<UserPage> {
+  const first = await getUsers(0, FETCH_ALL_BATCH_SIZE);
+  if (first.totalPages <= 1) {
+    return first;
+  }
+  const rest = await Promise.all(
+    Array.from({ length: first.totalPages - 1 }, (_, i) => getUsers(i + 1, FETCH_ALL_BATCH_SIZE))
+  );
+  return {
+    ...first,
+    content: [first, ...rest].flatMap((p) => p.content),
+  };
+}
+
+/**
+ * Derive the user rights state (one entry per right) from the rights carried on the users.
+ */
+export function deriveUserRoles(users: User[]): UserOrganizationRole[] {
+  return users.flatMap((u) =>
+    (u.rights ?? []).map((r) => ({
+      id: `${u.id}:${r.orgIdentifier}:${r.functionId ?? '*'}`,
+      userId: u.id,
+      organizationId: r.orgIdentifier,
+      functionId: r.functionId ?? undefined,
+      role: r.right,
+    }))
+  );
 }
 
 /**
