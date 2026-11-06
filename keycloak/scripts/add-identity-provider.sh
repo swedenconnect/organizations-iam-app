@@ -20,8 +20,8 @@
 # needed to resolve the incoming identity to a pre-provisioned local user:
 #
 #   1. the identity provider itself
-#   2. a stock Attribute Importer mapper carrying the identifying attribute
-#      into the brokered context
+#   2. one stock Attribute Importer mapper per identifying attribute, carrying
+#      it into the brokered context
 #   3. a first broker login flow of exactly two executions, the attribute
 #      matcher followed by Keycloak's "automatically set existing user"
 #   4. that flow bound to the provider
@@ -67,11 +67,8 @@ TEMPLATE_REALM=""
 TEMPLATE_ALIAS=""
 
 FLOW_NAME="eID Broker"
-MATCH_ATTRIBUTE="personalIdentityNumber"
-SAML_ATTRIBUTE="urn:oid:1.2.752.29.4.13"
-SAML_ATTRIBUTE_FORMAT="ATTRIBUTE_FORMAT_URI"
-REQUIRED_ROLE=""
-FORBIDDEN_ROLE=""
+MATCHES=()
+DEFAULT_MATCH="personalIdentityNumber;samlAttribute=urn:oid:1.2.752.29.4.13;samlFormat=URI"
 
 CACERT=""
 INSECURE="false"
@@ -132,15 +129,25 @@ Copy the upstream parameters from an existing provider instead of giving them:
 
 Matching:
   --flow-name <name>            First broker login flow name (default: ${FLOW_NAME})
-  --match-attribute <name>      Local user attribute to match on
-                                (default: ${MATCH_ATTRIBUTE})
-  --saml-attribute <name>       SAML attribute carrying it
-                                (default: ${SAML_ATTRIBUTE})
-  --saml-attribute-format <fmt> ATTRIBUTE_FORMAT_URI, _BASIC or _UNSPECIFIED
-                                (default: ${SAML_ATTRIBUTE_FORMAT})
-  --required-role <role>        Matched user must hold this realm role
-  --forbidden-role <role>       Matched user must not hold this realm role
+  --match <entry>               A local user attribute to match on, the SAML
+                                attribute carrying it, and optional roles
+                                (repeatable). The attributes are tried in the
+                                order the options are given. An entry is
+                                  <attribute>;samlAttribute=<name>
+                                    [;samlFormat=URI|BASIC|UNSPECIFIED]
+                                    [;requiredRole=<role>][;forbiddenRole=<role>]
+                                with no spaces around ; and =. samlFormat
+                                defaults to URI. Without --match:
+                                  ${DEFAULT_MATCH}
   --help, -h                    Show this help message
+
+  Example, regular users by personal identity number and superusers by EFOS-ID:
+
+    --match "personalIdentityNumber;samlAttribute=urn:oid:1.2.752.29.4.13;forbiddenRole=superuser"
+    --match "efosId;samlAttribute=urn:oid:1.2.3.4;requiredRole=superuser"
+
+  --match-attribute, --saml-attribute, --saml-attribute-format, --required-role
+  and --forbidden-role were removed. Use --match.
 
 Notes:
 
@@ -158,6 +165,10 @@ Notes:
   The attribute format matters. Keycloak defaults to ATTRIBUTE_FORMAT_BASIC
   while Sweden Connect uses URI format, and a mismatch means the attribute is
   never found and every login is refused with a generic error.
+
+  An Attribute Importer mapper for an attribute that is no longer given with
+  --match is left in place and reported. It keeps copying its value into the
+  brokered context; delete it in the Admin Console if that is not wanted.
 EOF
 }
 
@@ -191,11 +202,11 @@ while [ $# -gt 0 ]; do
     --template-realm)          TEMPLATE_REALM="$2";        shift 2 ;;
     --template-alias)          TEMPLATE_ALIAS="$2";        shift 2 ;;
     --flow-name)               FLOW_NAME="$2";             shift 2 ;;
-    --match-attribute)         MATCH_ATTRIBUTE="$2";       shift 2 ;;
-    --saml-attribute)          SAML_ATTRIBUTE="$2";        shift 2 ;;
-    --saml-attribute-format)   SAML_ATTRIBUTE_FORMAT="$2"; shift 2 ;;
-    --required-role)           REQUIRED_ROLE="$2";         shift 2 ;;
-    --forbidden-role)          FORBIDDEN_ROLE="$2";        shift 2 ;;
+    --match)                   MATCHES+=("$2");            shift 2 ;;
+    --match-attribute|--saml-attribute|--saml-attribute-format|--required-role|--forbidden-role)
+      echo "ERROR: $1 was removed. Give the attribute, the SAML attribute, its format and" >&2
+      echo "       any roles together with --match, see --help." >&2
+      exit 1 ;;
     --cacert)                  CACERT="$2";                shift 2 ;;
     --insecure)                INSECURE="true";            shift ;;
     *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
@@ -248,6 +259,60 @@ fi
 if [ -n "${TEMPLATE_ALIAS}" ] && [ -z "${TEMPLATE_REALM}" ]; then
   TEMPLATE_REALM="${REALM}"
 fi
+
+# ---------------------------------------------------------------------------
+# Validate the --match entries before anything is changed
+# ---------------------------------------------------------------------------
+
+if [ ${#MATCHES[@]} -eq 0 ]; then
+  MATCHES=("${DEFAULT_MATCH}")
+fi
+
+# One JSON object per entry, in order: attribute, samlAttribute, samlFormat, requiredRole, forbiddenRole
+MATCH_JSON=$(python3 -c "
+import json, sys
+
+FORMATS = {'URI': 'ATTRIBUTE_FORMAT_URI', 'BASIC': 'ATTRIBUTE_FORMAT_BASIC',
+           'UNSPECIFIED': 'ATTRIBUTE_FORMAT_UNSPECIFIED'}
+KEYS = ('samlAttribute', 'samlFormat', 'requiredRole', 'forbiddenRole')
+
+def fail(entry, why):
+    sys.exit('ERROR: --match \\'%s\\': %s' % (entry, why))
+
+entries, seen = [], set()
+for entry in sys.argv[1:]:
+    parts = entry.split(';')
+    attribute = parts[0]
+    if not attribute:
+        fail(entry, 'no attribute name')
+    if any(c.isspace() for c in attribute):
+        fail(entry, 'spaces in or around the attribute name')
+    if attribute in seen:
+        fail(entry, 'attribute %s is given more than once' % attribute)
+    seen.add(attribute)
+    e = {'attribute': attribute}
+    for part in parts[1:]:
+        key, eq, value = part.partition('=')
+        if not eq:
+            fail(entry, '%s is not on the form key=value' % part)
+        if any(c.isspace() for c in key) or (value and value != value.strip()):
+            fail(entry, 'spaces around a separator')
+        if key not in KEYS:
+            fail(entry, 'unknown key %s' % key)
+        if key in e:
+            fail(entry, '%s given twice' % key)
+        if not value:
+            fail(entry, 'empty value for %s' % key)
+        e[key] = value
+    if 'samlAttribute' not in e:
+        fail(entry, 'samlAttribute is missing')
+    fmt = e.get('samlFormat', 'URI')
+    if fmt not in FORMATS:
+        fail(entry, 'samlFormat must be URI, BASIC or UNSPECIFIED')
+    e['samlFormat'] = FORMATS[fmt]
+    entries.append(e)
+print(json.dumps(entries))
+" "${MATCHES[@]}") || exit 1
 
 if [ "${TRANSIENT}" = "true" ]; then
   echo ""
@@ -420,6 +485,15 @@ print(''.join(body.split()))
 " "${SIGNING_CERT_FILE}")
 fi
 
+FLOW_EXISTS_AT_START=$(api_get "/${REALM}/authentication/flows" | _FLOW="${FLOW_NAME}" python3 -c "
+import os, sys, json
+try:
+    flows = json.load(sys.stdin)
+except Exception:
+    flows = []
+print('yes' if any(f.get('alias') == os.environ['_FLOW'] for f in flows) else 'no')
+" 2>/dev/null || echo "no")
+
 ACRS_JSON=$(python3 -c "import json,sys; print(json.dumps(sys.argv[1:]))" "${ACRS[@]+"${ACRS[@]}"}")
 
 IDP_BODY=$(
@@ -438,6 +512,7 @@ IDP_BODY=$(
   _ENCRYPT="${ENCRYPT_ASSERTIONS}" \
   _SIGNED_ASSERTIONS="${SIGNED_ASSERTIONS}" \
   _FLOW_NAME="${FLOW_NAME}" \
+  _FLOW_EXISTS="${FLOW_EXISTS_AT_START}" \
   python3 -c "
 import os, json
 
@@ -471,8 +546,12 @@ if display_name:
 transient = os.environ['_TRANSIENT'] == 'true'
 if transient:
     idp.pop('firstBrokerLoginFlowAlias', None)
-else:
+elif os.environ['_FLOW_EXISTS'] == 'yes':
     idp['firstBrokerLoginFlowAlias'] = os.environ['_FLOW_NAME']
+else:
+    # Keycloak refuses a provider naming a flow that does not exist. The flow is created in step 3
+    # and bound to the provider in step 5.
+    idp.pop('firstBrokerLoginFlowAlias', None)
 
 cfg['idpEntityId'] = pick(os.environ['_IDP_ENTITY_ID'], 'idpEntityId')
 cfg['singleSignOnServiceUrl'] = pick(os.environ['_SSO_URL'], 'singleSignOnServiceUrl')
@@ -544,39 +623,44 @@ if [ "${TRANSIENT}" = "true" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Step 2: The attribute importer, which is what the matcher reads
+# Step 2: The attribute importers, which are what the matcher reads
 # ---------------------------------------------------------------------------
 
-echo "==> Ensuring the attribute importer for '${MATCH_ATTRIBUTE}'..."
-MAPPER_ID=$(api_get "/${REALM}/identity-provider/instances/${ALIAS_ENC}/mappers" | python3 -c "
-import sys, json
+MATCH_COUNT=$(printf '%s' "${MATCH_JSON}" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
+
+for (( IDX=0; IDX<MATCH_COUNT; IDX++ )); do
+  ENTRY=$(printf '%s' "${MATCH_JSON}" | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin)[${IDX}]))")
+  MATCH_ATTRIBUTE=$(printf '%s' "${ENTRY}" | python3 -c "import sys,json; print(json.load(sys.stdin)['attribute'])")
+
+  echo "==> Ensuring the attribute importer for '${MATCH_ATTRIBUTE}'..."
+  MAPPER_ID=$(api_get "/${REALM}/identity-provider/instances/${ALIAS_ENC}/mappers" | _NAME="${MATCH_ATTRIBUTE}" python3 -c "
+import os, sys, json
 try:
     mappers = json.load(sys.stdin)
 except Exception:
     mappers = []
 for m in mappers:
-    if m.get('name') == '${MATCH_ATTRIBUTE}':
+    if m.get('name') == os.environ['_NAME']:
         print(m.get('id', ''))
         break
 " 2>/dev/null || echo "")
 
-MAPPER_BODY=$(
-  _ALIAS="${ALIAS}" \
-  _NAME="${MATCH_ATTRIBUTE}" \
-  _SAML_ATTR="${SAML_ATTRIBUTE}" \
-  _FORMAT="${SAML_ATTRIBUTE_FORMAT}" \
-  _ID="${MAPPER_ID}" \
-  python3 -c "
+  MAPPER_BODY=$(
+    _ALIAS="${ALIAS}" \
+    _ENTRY="${ENTRY}" \
+    _ID="${MAPPER_ID}" \
+    python3 -c "
 import os, json
+entry = json.loads(os.environ['_ENTRY'])
 body = {
-  'name': os.environ['_NAME'],
+  'name': entry['attribute'],
   'identityProviderAlias': os.environ['_ALIAS'],
   'identityProviderMapper': 'saml-user-attribute-idp-mapper',
   'config': {
     'syncMode': 'IMPORT',
-    'attribute.name': os.environ['_SAML_ATTR'],
-    'attribute.name.format': os.environ['_FORMAT'],
-    'user.attribute': os.environ['_NAME'],
+    'attribute.name': entry['samlAttribute'],
+    'attribute.name.format': entry['samlFormat'],
+    'user.attribute': entry['attribute'],
   },
 }
 if os.environ['_ID']:
@@ -584,12 +668,36 @@ if os.environ['_ID']:
 print(json.dumps(body))
 ")
 
-if [ -n "${MAPPER_ID}" ]; then
-  STATUS=$(api_put "/${REALM}/identity-provider/instances/${ALIAS_ENC}/mappers/${MAPPER_ID}" "${MAPPER_BODY}")
-  [ "${STATUS}" = "204" ] && echo "    Updated." || echo "    WARNING: unexpected HTTP status ${STATUS}" >&2
-else
-  STATUS=$(api_post "/${REALM}/identity-provider/instances/${ALIAS_ENC}/mappers" "${MAPPER_BODY}")
-  [ "${STATUS}" = "201" ] && echo "    Created." || echo "    WARNING: unexpected HTTP status ${STATUS}" >&2
+  if [ -n "${MAPPER_ID}" ]; then
+    STATUS=$(api_put "/${REALM}/identity-provider/instances/${ALIAS_ENC}/mappers/${MAPPER_ID}" "${MAPPER_BODY}")
+    [ "${STATUS}" = "204" ] && echo "    Updated." || echo "    WARNING: unexpected HTTP status ${STATUS}" >&2
+  else
+    STATUS=$(api_post "/${REALM}/identity-provider/instances/${ALIAS_ENC}/mappers" "${MAPPER_BODY}")
+    [ "${STATUS}" = "201" ] && echo "    Created." || echo "    WARNING: unexpected HTTP status ${STATUS}" >&2
+  fi
+done
+
+# Attribute importers for attributes that are no longer listed are left alone, but reported,
+# since they keep copying values into the brokered context.
+LEFTOVER_MAPPERS=$(api_get "/${REALM}/identity-provider/instances/${ALIAS_ENC}/mappers" | _MATCH="${MATCH_JSON}" python3 -c "
+import os, sys, json
+try:
+    mappers = json.load(sys.stdin)
+except Exception:
+    mappers = []
+listed = {e['attribute'] for e in json.loads(os.environ['_MATCH'])}
+for m in mappers:
+    if m.get('identityProviderMapper') != 'saml-user-attribute-idp-mapper':
+        continue
+    attribute = (m.get('config') or {}).get('user.attribute', '')
+    if attribute not in listed:
+        print('%s (user attribute %s)' % (m.get('name', ''), attribute or 'none'))
+" 2>/dev/null || echo "")
+if [ -n "${LEFTOVER_MAPPERS}" ]; then
+  echo "==> Attribute importers for attributes not given with --match, left in place:"
+  printf '%s\n' "${LEFTOVER_MAPPERS}" | while read -r M; do echo "    ${M}"; done
+  echo "    They keep copying values into the brokered context. Delete them in the"
+  echo "    Admin Console if that is not wanted."
 fi
 
 # ---------------------------------------------------------------------------
@@ -706,19 +814,42 @@ for e in execs:
         break
 " 2>/dev/null || echo "")
 
+EXISTING_CFG="{}"
+if [ -n "${MATCHER_CFG_ID}" ]; then
+  EXISTING_CFG=$(api_get "/${REALM}/authentication/config/${MATCHER_CFG_ID}")
+fi
+
+# The list is written as one value with the entries joined by ##, which is how Keycloak stores a
+# multivalued setting. Writing the whole configuration replaces it, so the removed requiredRole and
+# forbiddenRole settings are dropped. An existing configuration keeps its alias, so the alias does
+# not change with the list; a new one is named after the flow.
 CFG_BODY=$(
-  _MATCH="${MATCH_ATTRIBUTE}" \
-  _REQUIRED="${REQUIRED_ROLE}" \
-  _FORBIDDEN="${FORBIDDEN_ROLE}" \
+  _MATCH="${MATCH_JSON}" \
+  _EXISTING="${EXISTING_CFG}" \
+  _FLOW="${FLOW_NAME}" \
   python3 -c "
-import os, json
-config = {'matchAttribute': os.environ['_MATCH']}
-if os.environ['_REQUIRED']:
-    config['requiredRole'] = os.environ['_REQUIRED']
-if os.environ['_FORBIDDEN']:
-    config['forbiddenRole'] = os.environ['_FORBIDDEN']
-print(json.dumps({'alias': 'eid-' + os.environ['_MATCH'].lower() + '-match', 'config': config}))
+import os, re, json
+entries = json.loads(os.environ['_MATCH'])
+existing = json.loads(os.environ['_EXISTING'] or '{}')
+values = []
+for e in entries:
+    value = e['attribute']
+    for key in ('requiredRole', 'forbiddenRole'):
+        if key in e:
+            value += ';%s=%s' % (key, e[key])
+    values.append(value)
+alias = existing.get('alias') or re.sub('[^a-z0-9]+', '-', os.environ['_FLOW'].lower()).strip('-') + '-match'
+print(json.dumps({'alias': alias, 'config': {'matchAttribute': '##'.join(values)}}))
 ")
+
+REMOVED_SETTINGS=$(printf '%s' "${EXISTING_CFG}" | python3 -c "
+import sys, json
+try:
+    config = json.load(sys.stdin).get('config') or {}
+except Exception:
+    config = {}
+print(' '.join(k for k in ('requiredRole', 'forbiddenRole') if k in config))
+" 2>/dev/null || echo "")
 
 if [ -n "${MATCHER_CFG_ID}" ]; then
   STATUS=$(api_put "/${REALM}/authentication/config/${MATCHER_CFG_ID}" "${CFG_BODY}")
@@ -726,6 +857,34 @@ if [ -n "${MATCHER_CFG_ID}" ]; then
 else
   STATUS=$(api_post "/${REALM}/authentication/executions/${MATCHER_EXEC_ID}/config" "${CFG_BODY}")
   [ "${STATUS}" = "201" ] && echo "    Created." || echo "    WARNING: unexpected HTTP status ${STATUS}" >&2
+fi
+if [ -n "${REMOVED_SETTINGS}" ]; then
+  echo "    Removed the matcher-level setting(s) no longer supported: ${REMOVED_SETTINGS}."
+  echo "    Roles are now given per attribute with --match."
+fi
+
+# ---------------------------------------------------------------------------
+# Step 5: Bind the flow to the provider
+# ---------------------------------------------------------------------------
+
+echo "==> Binding flow '${FLOW_NAME}' to provider '${ALIAS}'..."
+BOUND_IDP=$(api_get "/${REALM}/identity-provider/instances/${ALIAS_ENC}" | _FLOW="${FLOW_NAME}" python3 -c "
+import os, sys, json
+idp = json.load(sys.stdin)
+if idp.get('firstBrokerLoginFlowAlias') != os.environ['_FLOW']:
+    idp['firstBrokerLoginFlowAlias'] = os.environ['_FLOW']
+    print(json.dumps(idp))
+")
+if [ -n "${BOUND_IDP}" ]; then
+  STATUS=$(api_put "/${REALM}/identity-provider/instances/${ALIAS_ENC}" "${BOUND_IDP}")
+  if [ "${STATUS}" = "204" ]; then
+    echo "    Bound."
+  else
+    echo "ERROR: could not bind the flow to the provider (HTTP ${STATUS})." >&2
+    exit 1
+  fi
+else
+  echo "    Already bound."
 fi
 
 # ---------------------------------------------------------------------------
@@ -737,14 +896,19 @@ echo "==> Identity provider '${ALIAS}' is registered in realm '${REALM}'."
 echo ""
 echo "    Upstream        : ${IDP_ENTITY_ID:-(from template)}"
 echo "    Our SP entityID : ${SP_ENTITY_ID}"
-echo "    Matching        : ${SAML_ATTRIBUTE} -> ${MATCH_ATTRIBUTE}"
 echo "    Flow            : ${FLOW_NAME} (${MATCHER_PROVIDER} then ${AUTOLINK_PROVIDER})"
-if [ -n "${FORBIDDEN_ROLE}" ]; then
-  echo "    Forbidden role  : ${FORBIDDEN_ROLE}"
-fi
-if [ -n "${REQUIRED_ROLE}" ]; then
-  echo "    Required role   : ${REQUIRED_ROLE}"
-fi
+echo "    Matching, tried in this order:"
+printf '%s' "${MATCH_JSON}" | python3 -c "
+import sys, json
+for n, e in enumerate(json.load(sys.stdin), 1):
+    roles = []
+    if 'requiredRole' in e:
+        roles.append('required role ' + e['requiredRole'])
+    if 'forbiddenRole' in e:
+        roles.append('forbidden role ' + e['forbiddenRole'])
+    print('      %d. %s -> %s (%s)%s' % (n, e['samlAttribute'], e['attribute'],
+          e['samlFormat'].replace('ATTRIBUTE_FORMAT_', ''), ', ' + ', '.join(roles) if roles else ', no roles'))
+"
 echo ""
 echo "    Two things are not done by this script:"
 echo ""

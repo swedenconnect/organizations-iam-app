@@ -25,9 +25,10 @@ import java.util.List;
 /**
  * A single person inside an {@link ImportExportBundle}, with their organizational rights.
  *
- * <p>{@code personal_identity_number} and {@code org_affiliation} are the identifiers a duplicate
- * is detected on, the same eID attributes the application already enforces uniqueness on when a
- * user is created through the regular form. At least one of them must be given. Superuser status
+ * <p>{@code personal_identity_number}, {@code org_affiliation}, {@code hsa_id} and
+ * {@code efos_id} are the identifiers a duplicate is detected on, the same eID attributes the
+ * application enforces uniqueness on when a user is created through the regular form. At least one
+ * of them must be given. Superuser status
  * is deliberately not represented here: it cannot be granted through user creation and export
  * excludes superuser accounts entirely.</p>
  *
@@ -44,6 +45,8 @@ public record BundleUserEntry(
     @JsonProperty("email") @Nullable String email,
     @JsonProperty("personal_identity_number") @Nullable String personalIdentityNumber,
     @JsonProperty("org_affiliation") @Nullable String orgAffiliation,
+    @JsonProperty("hsa_id") @Nullable String hsaId,
+    @JsonProperty("efos_id") @Nullable String efosId,
     @JsonProperty("phone_number") @Nullable String phoneNumber,
     @JsonProperty("rights") @NonNull List<BundleUserRightEntry> rights) {
 }

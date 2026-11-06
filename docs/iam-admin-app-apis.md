@@ -155,13 +155,19 @@ distinguish a non-existent org/function from an existing-but-forbidden one.
     {
       "user_id": "a3b4c5d6-1234-5678-9abc-def012345678",
       "personal_identity_number": "197001011234",
+      "org_affiliation": null,
+      "hsa_id": null,
+      "efos_id": null,
       "name": "Anna Andersson",
       "right": "admin",
       "scope": "function"
     },
     {
       "user_id": "b4c5d6e7-2345-6789-abcd-ef0123456789",
-      "personal_identity_number": "198505050505",
+      "personal_identity_number": null,
+      "org_affiliation": "bertil@5561234567",
+      "hsa_id": "SE2321000016-A1B2",
+      "efos_id": null,
       "name": "Bertil Bengtsson",
       "right": "write",
       "scope": "organization"
@@ -174,9 +180,16 @@ distinguish a non-existent org/function from an existing-but-forbidden one.
 |----------------------------|----------------|-----------------------------------------------------------------------------------------------------|
 | `user_id`                  | string         | Keycloak user UUID                                                                                  |
 | `personal_identity_number` | string \| null | The user's `personalIdentityNumber` attribute from Keycloak                                         |
+| `org_affiliation`          | string \| null | The user's `orgAffiliation` attribute from Keycloak, `userID@organization-number`                    |
+| `hsa_id`                   | string \| null | The user's `hsaId` attribute from Keycloak, the HSA-ID                                              |
+| `efos_id`                  | string \| null | The user's `efosId` attribute from Keycloak, the EFOS-ID                                            |
 | `name`                     | string \| null | `firstName + " " + lastName`, trimmed. Falls back to `username`, then `null`.                       |
 | `right`                    | string         | Effective right: `admin`, `write`, or `read`                                                        |
 | `scope`                    | string         | `"function"` if from the function sub-group; `"organization"` if from the org-wide right sub-group  |
+
+A user has at least one of the four eID attributes when registered through the admin
+application, and may have several. Each member is always present, and is `null` when the user
+lacks the attribute.
 
 **Ordering:** Sorted by `right` descending (`admin` → `write` → `read`), then by `name`
 ascending within each right (nulls last).

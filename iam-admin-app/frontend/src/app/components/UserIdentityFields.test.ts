@@ -4,6 +4,7 @@ import {
   EMPTY_IDENTITY_VALUES,
   IdentityValues,
   fillableIdentityFields,
+  identityPayload,
   eidAttributeMandatory,
   requiredIdentityField,
   userIdRequired,
@@ -36,9 +37,17 @@ describe('fillableIdentityFields', () => {
       .toEqual(['personalIdentityNumber', 'orgAffiliation']);
   });
 
-  it('leaves out HSA-ID and EFOS-ID, which are rendered disabled', () => {
-    expect(fillableIdentityFields(settings({ hsaIdEnabled: true, efosIdEnabled: true })))
-      .toEqual(['personalIdentityNumber']);
+  it('counts all four eID attributes, in the order they are shown', () => {
+    expect(fillableIdentityFields(settings({
+      orgAffiliationEnabled: true,
+      hsaIdEnabled: true,
+      efosIdEnabled: true,
+    }))).toEqual(['personalIdentityNumber', 'orgAffiliation', 'hsaId', 'efosId']);
+  });
+
+  it('counts the HSA-ID and the EFOS-ID only when enabled', () => {
+    expect(fillableIdentityFields(settings({ personalNumberEnabled: false, efosIdEnabled: true })))
+      .toEqual(['efosId']);
   });
 
   it('is empty when no identity field is enabled', () => {
@@ -62,9 +71,17 @@ describe('requiredIdentityField', () => {
     expect(requiredIdentityField(settings({ orgAffiliationEnabled: true }))).toBeNull();
   });
 
-  it('ignores the unimplemented fields when counting', () => {
-    expect(requiredIdentityField(settings({ hsaIdEnabled: true, efosIdEnabled: true })))
-      .toBe('personalIdentityNumber');
+  it('is the HSA-ID or the EFOS-ID when that is the only field to fill', () => {
+    expect(requiredIdentityField(settings({ personalNumberEnabled: false, hsaIdEnabled: true })))
+      .toBe('hsaId');
+    expect(requiredIdentityField(settings({ personalNumberEnabled: false, efosIdEnabled: true })))
+      .toBe('efosId');
+  });
+
+  it('counts the HSA-ID and the EFOS-ID among the fields, so none is marked with several', () => {
+    expect(requiredIdentityField(settings({ hsaIdEnabled: true }))).toBeNull();
+    expect(requiredIdentityField(settings({ personalNumberEnabled: false, hsaIdEnabled: true, efosIdEnabled: true })))
+      .toBeNull();
   });
 
   it('is nothing when the requirement is off and a user ID can be chosen instead', () => {
@@ -101,8 +118,15 @@ describe('eidAttributeMandatory', () => {
     expect(eidAttributeMandatory(settings({
       eidAttributeRequired: false,
       personalNumberEnabled: false,
-      hsaIdEnabled: true,
     }))).toBe(false);
+  });
+
+  it('holds when no user ID can be chosen and the only field is the HSA-ID', () => {
+    expect(eidAttributeMandatory(settings({
+      eidAttributeRequired: false,
+      personalNumberEnabled: false,
+      hsaIdEnabled: true,
+    }))).toBe(true);
   });
 
   it('does not hold when the requirement is off and a user ID can be chosen', () => {
@@ -137,8 +161,16 @@ describe('userIdRequired', () => {
       allowSelectUserId: true,
       eidAttributeRequired: false,
       personalNumberEnabled: false,
-      efosIdEnabled: true,
     }))).toBe(true);
+  });
+
+  it('does not hold when an EFOS-ID could be given instead', () => {
+    expect(userIdRequired(values(), settings({
+      allowSelectUserId: true,
+      eidAttributeRequired: false,
+      personalNumberEnabled: false,
+      efosIdEnabled: true,
+    }))).toBe(false);
   });
 
   it('does not hold when an eID attribute could be given instead', () => {
@@ -165,14 +197,48 @@ describe('validateIdentityValues, a single identity field', () => {
     expect(errors.eid).toBeUndefined();
   });
 
-  it('keeps reporting against the field when only unimplemented fields are added', () => {
+  it('reports it against the HSA-ID when that is the single field', () => {
     const errors = validateIdentityValues(
       values(),
-      settings({ hsaIdEnabled: true, efosIdEnabled: true }),
+      settings({ personalNumberEnabled: false, hsaIdEnabled: true }),
       t);
 
-    expect(errors.personalIdentityNumber).toBe('validation.required');
-    expect(errors.eid).toBeUndefined();
+    expect(errors).toEqual({ hsaId: 'validation.required' });
+  });
+
+  it('reports it against the EFOS-ID when that is the single field', () => {
+    const errors = validateIdentityValues(
+      values({ efosId: '   ' }),
+      settings({ personalNumberEnabled: false, efosIdEnabled: true }),
+      t);
+
+    expect(errors).toEqual({ efosId: 'validation.required' });
+  });
+
+  it('reports a quotation mark in an HSA-ID or an EFOS-ID on the field', () => {
+    const s = settings({ hsaIdEnabled: true, efosIdEnabled: true });
+
+    expect(validateIdentityValues(values({ hsaId: 'SE"1' }), s, t))
+      .toEqual({ hsaId: 'validation.noQuotationMark' });
+    expect(validateIdentityValues(values({ personalIdentityNumber: '196911292032', efosId: ' " ' }), s, t))
+      .toEqual({ efosId: 'validation.noQuotationMark' });
+  });
+
+  it('ignores a quotation mark in a field that is turned off', () => {
+    expect(validateIdentityValues(
+      values({ personalIdentityNumber: '196911292032', hsaId: 'SE"1', efosId: '"' }),
+      settings(),
+      t)).toEqual({});
+  });
+
+  it('accepts any HSA-ID or EFOS-ID that is not blank', () => {
+    const s = settings({ personalNumberEnabled: false, hsaIdEnabled: true });
+
+    expect(validateIdentityValues(values({ hsaId: 'a b/c@å' }), s, t)).toEqual({});
+    expect(validateIdentityValues(
+      values({ efosId: '1' }),
+      settings({ personalNumberEnabled: false, efosIdEnabled: true }),
+      t)).toEqual({});
   });
 
   it('passes once the field is filled', () => {
@@ -218,6 +284,28 @@ describe('validateIdentityValues, several identity fields', () => {
     expect(withAffiliation).toEqual({});
   });
 
+  it('reports at form level when the HSA-ID and the EFOS-ID are among them', () => {
+    const errors = validateIdentityValues(values(), settings({ hsaIdEnabled: true, efosIdEnabled: true }), t);
+
+    expect(errors).toEqual({ eid: 'validation.eidAttributeRequired' });
+  });
+
+  it('is satisfied by an HSA-ID or an EFOS-ID alone', () => {
+    const s = settings({ orgAffiliationEnabled: true, hsaIdEnabled: true, efosIdEnabled: true });
+
+    expect(validateIdentityValues(values({ hsaId: 'SE2321000016-1234' }), s, t)).toEqual({});
+    expect(validateIdentityValues(values({ efosId: 'efos-4711' }), s, t)).toEqual({});
+  });
+
+  it('does not count an HSA-ID or an EFOS-ID whose setting is off', () => {
+    const errors = validateIdentityValues(
+      values({ hsaId: 'SE2321000016-1234', efosId: 'efos-4711' }),
+      settings({ orgAffiliationEnabled: true }),
+      t);
+
+    expect(errors).toEqual({ eid: 'validation.eidAttributeRequired' });
+  });
+
   it('still validates the format of each value that is given', () => {
     const errors = validateIdentityValues(
       values({ orgAffiliation: 'martin@202100688' }),
@@ -254,8 +342,15 @@ describe('validateIdentityValues, the requirement turned off and no user ID to c
   it('reports nothing when there is no field that can be filled in', () => {
     expect(validateIdentityValues(
       values(),
-      settings({ ...off, personalNumberEnabled: false, hsaIdEnabled: true }),
+      settings({ ...off, personalNumberEnabled: false }),
       t)).toEqual({});
+  });
+
+  it('requires the HSA-ID when that is the single field', () => {
+    expect(validateIdentityValues(
+      values(),
+      settings({ ...off, personalNumberEnabled: false, hsaIdEnabled: true }),
+      t)).toEqual({ hsaId: 'validation.required' });
   });
 });
 
@@ -329,7 +424,7 @@ describe('validateIdentityValues, the user ID with the requirement off', () => {
   });
 
   it('requires the user ID on the field when there is no eID field to fill in', () => {
-    const noEid = { ...s, personalNumberEnabled: false, hsaIdEnabled: true };
+    const noEid = { ...s, personalNumberEnabled: false };
 
     expect(validateIdentityValues(values(), noEid, t)).toEqual({ userId: 'validation.userIdRequired' });
     expect(validateIdentityValues(values({ userId: 'kalle' }), noEid, t)).toEqual({});
@@ -338,5 +433,40 @@ describe('validateIdentityValues, the user ID with the requirement off', () => {
   it('still validates the format of a given eID attribute', () => {
     expect(validateIdentityValues(values({ userId: 'kalle', personalIdentityNumber: '1969' }), s, t))
       .toEqual({ personalIdentityNumber: 'validation.pin12digits' });
+  });
+});
+
+describe('validateIdentityValues, the user ID with the requirement off and an HSA-ID field', () => {
+  const s = settings({
+    allowSelectUserId: true,
+    eidAttributeRequired: false,
+    personalNumberEnabled: false,
+    hsaIdEnabled: true,
+  });
+
+  it('reports at form level when neither is given', () => {
+    expect(validateIdentityValues(values(), s, t)).toEqual({ eid: 'validation.eidAttributeRequired' });
+  });
+
+  it('is satisfied by the HSA-ID alone', () => {
+    expect(validateIdentityValues(values({ hsaId: 'SE2321000016-1234' }), s, t)).toEqual({});
+  });
+});
+
+describe('identityPayload', () => {
+  it('carries a trimmed HSA-ID and EFOS-ID when their settings are on', () => {
+    const payload = identityPayload(
+      values({ hsaId: ' SE2321000016-1234 ', efosId: ' efos-4711 ' }),
+      settings({ hsaIdEnabled: true, efosIdEnabled: true }));
+
+    expect(payload.hsaId).toBe('SE2321000016-1234');
+    expect(payload.efosId).toBe('efos-4711');
+  });
+
+  it('leaves out an HSA-ID and an EFOS-ID whose settings are off, or that are blank', () => {
+    expect(identityPayload(values({ hsaId: 'x', efosId: 'y' }), settings()))
+      .toMatchObject({ hsaId: undefined, efosId: undefined });
+    expect(identityPayload(values({ hsaId: '  ', efosId: '' }), settings({ hsaIdEnabled: true, efosIdEnabled: true })))
+      .toMatchObject({ hsaId: undefined, efosId: undefined });
   });
 });

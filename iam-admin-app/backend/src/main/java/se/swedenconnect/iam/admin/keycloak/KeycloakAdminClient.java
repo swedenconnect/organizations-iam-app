@@ -55,6 +55,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Low-level client for the KeyCloak Admin REST API.
@@ -115,6 +117,12 @@ public class KeycloakAdminClient {
    * Keycloak and cannot see this marker.
    */
   private static final String ALL_FUNCTIONS_ATTRIBUTE = "iam_admin_all_functions";
+
+  /** User attribute holding the HSA-ID. */
+  private static final String HSA_ID_ATTRIBUTE = "hsaId";
+
+  /** User attribute holding the EFOS-ID. */
+  private static final String EFOS_ID_ATTRIBUTE = "efosId";
 
   /**
    * Organization group attribute holding the legal name, as registered at Bolagsverket. Untagged,
@@ -1210,7 +1218,8 @@ public class KeycloakAdminClient {
             new HashSet<>(fetched.authzScopeNames()),
             new HashSet<>(fetched.policyNames()),
             new HashSet<>(fetched.permissionNames()),
-            new HashSet<>(fetched.optionalScopeIds()));
+            new HashSet<>(fetched.optionalScopeIds()),
+            fetched.defaultScopeIds());
         context.putClientState(client.uuid(), state);
       }
       final int created = this.ensureFunctionArtifacts(
@@ -2121,14 +2130,16 @@ public class KeycloakAdminClient {
   }
 
   /**
-   * The optional client scopes every managed client is given: the personal identity number and the
-   * organizational identity claims of the Swedish OIDC Claims Specification, and the phone number.
-   * Optional rather than default, so a client receives the identity claims it asks for and nothing
-   * else. The realm-level scopes themselves are created by {@code bootstrap-realm.sh}.
+   * The optional client scopes every client holding the OIDC client role is given: the personal
+   * identity number and the organizational identity claims of the Swedish OIDC Claims
+   * Specification, the user's primary identifiers, and the phone number. Optional rather than
+   * default, so a client receives the identity claims it asks for and nothing else. The realm-level
+   * scopes themselves are created by {@code bootstrap-realm.sh}.
    */
   static final List<String> BASE_OPTIONAL_SCOPES = List.of(
       "https://id.oidc.se/scope/naturalPersonNumber",
       "https://id.oidc.se/scope/naturalPersonOrgId",
+      "https://id.swedenconnect.se/scope/primary-identifier",
       "phone");
 
   /**
@@ -2139,15 +2150,93 @@ public class KeycloakAdminClient {
    */
   private void addBaseOptionalScopes(final @NonNull String clientUuid) {
     final Map<String, String> realmScopeIds = this.fetchRealmClientScopeIds();
+    warnMissingBaseOptionalScopes(realmScopeIds);
+    this.ensureBaseOptionalScopes(clientUuid, realmScopeIds, Set.of());
+  }
+
+  /**
+   * Logs a warning for each base optional scope the realm does not have. Such a scope cannot be
+   * given to any client until {@code bootstrap-realm.sh} has created it.
+   *
+   * @param realmScopeIds realm client scope name to Keycloak UUID
+   * @return the names of the base optional scopes the realm does not have; never {@code null}
+   */
+  public static @NonNull List<String> warnMissingBaseOptionalScopes(final @NonNull Map<String, String> realmScopeIds) {
+    final List<String> missing = BASE_OPTIONAL_SCOPES.stream()
+        .filter(scope -> !realmScopeIds.containsKey(scope))
+        .toList();
+    for (final String scope : missing) {
+      log.warn("Client scope '{}' not found in realm — skipping. Has the realm been bootstrapped?", scope);
+    }
+    return missing;
+  }
+
+  /**
+   * Counts the base optional scopes a client lacks, without changing anything. Only scopes the realm
+   * has are counted, matching {@link #ensureBaseOptionalScopes}, which can add nothing else. A scope
+   * the client holds as a default scope counts as held.
+   *
+   * @param realmScopeIds realm client scope name to Keycloak UUID
+   * @param state the artifacts the client currently holds
+   * @return the number of base optional scopes missing on the client
+   */
+  public static int countMissingBaseOptionalScopes(
+      final @NonNull Map<String, String> realmScopeIds, final @NonNull ClientArtifactState state) {
+    int missing = 0;
     for (final String scope : BASE_OPTIONAL_SCOPES) {
       final String scopeId = realmScopeIds.get(scope);
-      if (scopeId == null) {
-        log.warn("Client scope '{}' not found in realm — skipping. Has the realm been bootstrapped?", scope);
+      if (scopeId != null && !state.optionalScopeIds().contains(scopeId)
+          && !state.defaultScopeIds().contains(scopeId)) {
+        missing++;
+      }
+    }
+    return missing;
+  }
+
+  /**
+   * Gives a client each base optional scope it does not already hold. A scope the realm does not
+   * have is skipped, and a scope the client holds, as optional or default, is left alone.
+   *
+   * @param clientUuid the Keycloak UUID of the client
+   * @param realmScopeIds realm client scope name to Keycloak UUID
+   * @param state the artifacts the client currently holds
+   * @return the number of scopes added
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  public int ensureBaseOptionalScopes(
+      final @NonNull String clientUuid,
+      final @NonNull Map<String, String> realmScopeIds,
+      final @NonNull ClientArtifactState state) {
+    return this.ensureBaseOptionalScopes(clientUuid, realmScopeIds,
+        Stream.concat(state.optionalScopeIds().stream(), state.defaultScopeIds().stream())
+            .collect(Collectors.toSet()));
+  }
+
+  /**
+   * Gives a client each base optional scope that the realm has and that is not among
+   * {@code heldScopeIds}.
+   *
+   * @param clientUuid the Keycloak UUID of the client
+   * @param realmScopeIds realm client scope name to Keycloak UUID
+   * @param heldScopeIds Keycloak UUIDs of the scopes the client already holds
+   * @return the number of scopes added
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  private int ensureBaseOptionalScopes(
+      final @NonNull String clientUuid,
+      final @NonNull Map<String, String> realmScopeIds,
+      final @NonNull Set<String> heldScopeIds) {
+    int added = 0;
+    for (final String scope : BASE_OPTIONAL_SCOPES) {
+      final String scopeId = realmScopeIds.get(scope);
+      if (scopeId == null || heldScopeIds.contains(scopeId)) {
         continue;
       }
       this.adminPut("/clients/" + clientUuid + "/optional-client-scopes/" + scopeId);
       log.debug("Added optional client scope '{}' to client {}", scope, clientUuid);
+      added++;
     }
+    return added;
   }
 
   /**
@@ -2317,18 +2406,32 @@ public class KeycloakAdminClient {
     final Set<String> policies = namesOf(this.fetchPaged(authzBase + "policy"));
     final Set<String> permissions = namesOf(this.fetchPaged(authzBase + "permission"));
 
-    final List<Map<String, Object>> optional = this.adminGet(
-        "/clients/" + clientUuid + "/optional-client-scopes", new ParameterizedTypeReference<>() {});
-    final Set<String> optionalScopeIds = new LinkedHashSet<>();
-    if (optional != null) {
-      for (final Map<String, Object> scope : optional) {
+    final Set<String> optionalScopeIds = this.fetchClientScopeIds(clientUuid, "optional-client-scopes");
+    final Set<String> defaultScopeIds = this.fetchClientScopeIds(clientUuid, "default-client-scopes");
+    return new ClientArtifactState(authzScopes, policies, permissions, optionalScopeIds, defaultScopeIds);
+  }
+
+  /**
+   * Fetches the Keycloak UUIDs of the client scopes assigned to a client in one of the two ways.
+   *
+   * @param clientUuid the Keycloak UUID of the client
+   * @param assignment {@code optional-client-scopes} or {@code default-client-scopes}
+   * @return the client scope UUIDs; never {@code null}
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  private @NonNull Set<String> fetchClientScopeIds(final @NonNull String clientUuid, final @NonNull String assignment) {
+    final List<Map<String, Object>> scopes = this.adminGet(
+        "/clients/" + clientUuid + "/" + assignment, new ParameterizedTypeReference<>() {});
+    final Set<String> ids = new LinkedHashSet<>();
+    if (scopes != null) {
+      for (final Map<String, Object> scope : scopes) {
         final String id = getString(scope, "id");
         if (id != null) {
-          optionalScopeIds.add(id);
+          ids.add(id);
         }
       }
     }
-    return new ClientArtifactState(authzScopes, policies, permissions, optionalScopeIds);
+    return ids;
   }
 
   /**
@@ -2764,8 +2867,8 @@ public class KeycloakAdminClient {
 
     // Build result sorted by right desc, then name asc (nulls last)
     return accum.values().stream()
-        .map(a -> new RightsHolderEntry(
-            a.userId, a.personalIdentityNumber, a.name, levelToString(a.level), a.scope))
+        .map(a -> new RightsHolderEntry(a.userId, a.personalIdentityNumber, a.orgAffiliation, a.hsaId,
+            a.efosId, a.name, levelToString(a.level), a.scope))
         .sorted((a, b) -> {
           final int rightCmp = Integer.compare(levelFromString(b.right()), levelFromString(a.right()));
           if (rightCmp != 0) {
@@ -2798,8 +2901,7 @@ public class KeycloakAdminClient {
     for (final UserInfo user : members) {
       final RightsHolderAccumulator existing = accum.get(user.userId());
       if (existing == null) {
-        accum.put(user.userId(), new RightsHolderAccumulator(
-            user.userId(), user.personalIdentityNumber(), buildDisplayName(user), level, scope));
+        accum.put(user.userId(), new RightsHolderAccumulator(user, buildDisplayName(user), level, scope));
       }
       else if (level > existing.level
           || (level == existing.level && "function".equals(scope) && "organization".equals(existing.scope))) {
@@ -2854,14 +2956,19 @@ public class KeycloakAdminClient {
   private static final class RightsHolderAccumulator {
     final String userId;
     final String personalIdentityNumber;
+    final String orgAffiliation;
+    final String hsaId;
+    final String efosId;
     final String name;
     int level;
     String scope;
 
-    RightsHolderAccumulator(final String userId, final String personalIdentityNumber,
-        final String name, final int level, final String scope) {
-      this.userId = userId;
-      this.personalIdentityNumber = personalIdentityNumber;
+    RightsHolderAccumulator(final UserInfo user, final String name, final int level, final String scope) {
+      this.userId = user.userId();
+      this.personalIdentityNumber = user.personalIdentityNumber();
+      this.orgAffiliation = user.orgAffiliation();
+      this.hsaId = user.hsaId();
+      this.efosId = user.efosId();
       this.name = name;
       this.level = level;
       this.scope = scope;
@@ -2882,13 +2989,7 @@ public class KeycloakAdminClient {
    * @return the Keycloak user UUID, or {@link Optional#empty()} if no such user exists
    */
   public Optional<String> findUserIdByPersonalIdentityNumber(final @NonNull String pin) {
-    final List<Map<String, Object>> users = this.adminGet(
-        "/users?q=personalIdentityNumber:" + pin + "&exact=true",
-        new ParameterizedTypeReference<>() {});
-    if (users == null || users.isEmpty()) {
-      return Optional.empty();
-    }
-    return Optional.ofNullable(getString(users.getFirst(), "id"));
+    return this.findUserIdByAttribute("personalIdentityNumber", pin);
   }
 
   /**
@@ -2898,9 +2999,44 @@ public class KeycloakAdminClient {
    * @return the Keycloak user UUID, or {@link Optional#empty()} if no such user exists
    */
   public Optional<String> findUserIdByOrgAffiliation(final @NonNull String orgAffiliation) {
-    final List<Map<String, Object>> users = this.adminGet(
-        "/users?q=orgAffiliation:" + orgAffiliation + "&exact=true",
-        new ParameterizedTypeReference<>() {});
+    return this.findUserIdByAttribute("orgAffiliation", orgAffiliation);
+  }
+
+  /**
+   * Looks up a user by HSA-ID and returns their Keycloak UUID if found.
+   *
+   * @param hsaId the HSA-ID
+   * @return the Keycloak user UUID, or {@link Optional#empty()} if no such user exists
+   */
+  public Optional<String> findUserIdByHsaId(final @NonNull String hsaId) {
+    return this.findUserIdByAttribute(HSA_ID_ATTRIBUTE, hsaId);
+  }
+
+  /**
+   * Looks up a user by EFOS-ID and returns their Keycloak UUID if found.
+   *
+   * @param efosId the EFOS-ID
+   * @return the Keycloak user UUID, or {@link Optional#empty()} if no such user exists
+   */
+  public Optional<String> findUserIdByEfosId(final @NonNull String efosId) {
+    return this.findUserIdByAttribute(EFOS_ID_ATTRIBUTE, efosId);
+  }
+
+  /**
+   * Looks up a user by the exact value of a user attribute and returns their Keycloak UUID if found.
+   * Keycloak splits the search query on spaces, so the value is quoted, and it is encoded, so that
+   * it may hold characters with a meaning in a URI.
+   *
+   * @param attribute the user attribute name
+   * @param value the attribute value
+   * @return the Keycloak user UUID, or {@link Optional#empty()} if no such user exists
+   */
+  private Optional<String> findUserIdByAttribute(final @NonNull String attribute, final @NonNull String value) {
+    final URI uri = UriComponentsBuilder.fromUriString(this.adminApiBase + "/users")
+        .queryParam("q", "{q}")
+        .queryParam("exact", "true")
+        .build(Map.of("q", attribute + ":\"" + value + "\""));
+    final List<Map<String, Object>> users = this.adminGet(uri, new ParameterizedTypeReference<>() {});
     if (users == null || users.isEmpty()) {
       return Optional.empty();
     }
@@ -2943,6 +3079,8 @@ public class KeycloakAdminClient {
    * @param email optional email address
    * @param personalIdentityNumber optional 12-digit personal identity number
    * @param orgAffiliation optional organizational affiliation ({@code userID@organization-number})
+   * @param hsaId optional HSA-ID
+   * @param efosId optional EFOS-ID
    * @param phoneNumber optional phone number
    * @param temporaryPassword optional initial password that the user must change at first login
    * @return the Keycloak UUID of the newly created user
@@ -2954,6 +3092,8 @@ public class KeycloakAdminClient {
       final @Nullable String email,
       final @Nullable String personalIdentityNumber,
       final @Nullable String orgAffiliation,
+      final @Nullable String hsaId,
+      final @Nullable String efosId,
       final @Nullable String phoneNumber,
       final @Nullable String temporaryPassword) {
 
@@ -2976,7 +3116,12 @@ public class KeycloakAdminClient {
         }
       }
     }
-    // TODO: hsaId and efosId are written here when those eID attributes are implemented.
+    if (hsaId != null && !hsaId.isBlank()) {
+      attributes.put(HSA_ID_ATTRIBUTE, List.of(hsaId));
+    }
+    if (efosId != null && !efosId.isBlank()) {
+      attributes.put(EFOS_ID_ATTRIBUTE, List.of(efosId));
+    }
     if (phoneNumber != null && !phoneNumber.isBlank()) {
       attributes.put("phoneNumber", List.of(phoneNumber));
     }
@@ -3962,6 +4107,8 @@ public class KeycloakAdminClient {
         getString(raw, "email"),
         getFirstAttr(raw, "personalIdentityNumber"),
         getFirstAttr(raw, "orgAffiliation"),
+        getFirstAttr(raw, HSA_ID_ATTRIBUTE),
+        getFirstAttr(raw, EFOS_ID_ATTRIBUTE),
         getFirstAttr(raw, "phoneNumber"),
         id != null && superuserIds.contains(id),
         List.of());

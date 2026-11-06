@@ -57,19 +57,18 @@ class IdpDetectExistingUserByAttributeAuthenticatorFactoryTest {
     assertFalse(this.factory.isUserSetupAllowed());
   }
 
+  /**
+   * The match attribute is the only setting. It is a list the Admin Console can edit, and the removed
+   * role settings are no longer offered.
+   */
   @Test
-  void exposesTheThreeConfigProperties() {
+  void exposesTheMatchAttributeListOnly() {
     final List<ProviderConfigProperty> properties = this.factory.getConfigProperties();
 
-    assertEquals(
-        List.of(IdpDetectExistingUserByAttributeAuthenticatorFactory.MATCH_ATTRIBUTE,
-            IdpDetectExistingUserByAttributeAuthenticatorFactory.REQUIRED_ROLE,
-            IdpDetectExistingUserByAttributeAuthenticatorFactory.FORBIDDEN_ROLE),
+    assertEquals(List.of(IdpDetectExistingUserByAttributeAuthenticatorFactory.MATCH_ATTRIBUTE),
         properties.stream().map(ProviderConfigProperty::getName).toList());
-
+    assertEquals(ProviderConfigProperty.MULTIVALUED_STRING_TYPE, properties.getFirst().getType());
     assertTrue(properties.getFirst().isRequired(), "the match attribute must be required");
-    assertFalse(properties.get(1).isRequired());
-    assertFalse(properties.get(2).isRequired());
   }
 
   /** The authenticator is stateless, so the factory may hand out the same instance every time. */

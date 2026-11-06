@@ -21,8 +21,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * The outcome of processing a single entry from an {@link ImportExportBundle}.
  *
- * <p>{@code key} identifies the entry for display (a function id, an org identifier, or a
- * user's {@code personal_identity_number}/{@code org_affiliation}). {@code status} is one of
+ * <p>{@code key} identifies the entry for display (a function id, an org identifier, or the
+ * first of a user's {@code personal_identity_number}, {@code org_affiliation}, {@code hsa_id}
+ * and {@code efos_id} that is present). {@code status} is one of
  * {@code new}, {@code skipped_duplicate} or {@code error} in a dry-run report, and one of
  * {@code created}, {@code skipped_duplicate} or {@code error} in a final import report.
  * {@code reason} is set for {@code skipped_duplicate} and {@code error}.</p>

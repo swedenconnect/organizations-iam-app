@@ -17,6 +17,7 @@ package se.swedenconnect.iam.admin.controllers.dto;
 
 import org.jspecify.annotations.NonNull;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -26,11 +27,18 @@ import java.util.Map;
  * happens the client is missing scopes, policies, permissions or optional client scope bindings for
  * the organizations concerned, and no user can obtain an org-scoped token from it.</p>
  *
+ * <p>A client whose artifacts could not be read is listed in {@code uncheckedClientIds} instead.
+ * It is not known whether such a client holds what it should, so it must not be shown as correctly
+ * configured.</p>
+ *
  * @param missingByClientId the OAuth2 client_id of each affected client, mapped to the number of
  *     artifacts a reconciliation would create for it; empty when nothing has drifted
+ * @param uncheckedClientIds the OAuth2 client_id of each client that could not be checked, each
+ *     listed once; empty when every client was checked
  *
  * @author Felix Hellman
  */
 public record ClientDriftResponse(
-    @NonNull Map<String, Integer> missingByClientId) {
+    @NonNull Map<String, Integer> missingByClientId,
+    @NonNull List<String> uncheckedClientIds) {
 }

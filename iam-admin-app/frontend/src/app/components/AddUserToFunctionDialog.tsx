@@ -257,7 +257,7 @@ export function AddUserToFunctionDialog({
                           <p className="text-sm font-medium truncate">{user.name}</p>
                           <p className="text-xs text-gray-500 truncate">{user.email}</p>
                           <p className="text-xs text-gray-400">
-                            {user.personalIdentityNumber || user.orgAffiliation}
+                            {user.personalIdentityNumber || user.orgAffiliation || user.hsaId || user.efosId}
                           </p>
                         </div>
                         {selectedUserId === user.id && (
@@ -316,7 +316,7 @@ export function AddUserToFunctionDialog({
                   <p className="text-sm font-medium">{duplicateUser.name}</p>
                   <p className="text-xs text-gray-500">{duplicateUser.email}</p>
                   <p className="text-xs text-gray-400">
-                    {duplicateUser.personalIdentityNumber || duplicateUser.orgAffiliation}
+                    {duplicateUser.personalIdentityNumber || duplicateUser.orgAffiliation || duplicateUser.hsaId || duplicateUser.efosId}
                   </p>
                 </div>
                 <div className="space-y-1">

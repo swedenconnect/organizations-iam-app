@@ -63,7 +63,7 @@ class MissingArtifactCountTest {
     // The state the IAM Admin application was actually found in: the authz scopes existed, the
     // policies, permissions and optional client scope bindings did not.
     final ClientArtifactState state = new ClientArtifactState(
-        scopeNames(), Set.of(), Set.of(), Set.of());
+        scopeNames(), Set.of(), Set.of(), Set.of(), Set.of());
 
     assertThat(KeycloakAdminClient.countMissingFunctionArtifacts(
         ORG, FUNCTION, realmScopeIds(), state))
@@ -81,7 +81,7 @@ class MissingArtifactCountTest {
             KeycloakAdminClient.scopeName("5594020496", FUNCTION, "read"),
             KeycloakAdminClient.scopeName("5594020496", FUNCTION, "write"),
             KeycloakAdminClient.scopeName("5594020496", FUNCTION, "admin")),
-        Set.of(), Set.of(), Set.of());
+        Set.of(), Set.of(), Set.of(), Set.of());
 
     final int total =
         KeycloakAdminClient.countMissingFunctionArtifacts("5590026042", FUNCTION, Map.of(), state)
@@ -96,7 +96,7 @@ class MissingArtifactCountTest {
     // Everything on the client is present, but the realm client scope the binding points at is
     // not, so the binding is missing: one per right level.
     final ClientArtifactState state = new ClientArtifactState(
-        scopeNames(), policyNames(), permissionNames(), Set.of());
+        scopeNames(), policyNames(), permissionNames(), Set.of(), Set.of());
 
     assertThat(KeycloakAdminClient.countMissingFunctionArtifacts(
         ORG, FUNCTION, Map.of(), state))
@@ -111,12 +111,12 @@ class MissingArtifactCountTest {
   }
 
   private static ClientArtifactState empty() {
-    return new ClientArtifactState(Set.of(), Set.of(), Set.of(), Set.of());
+    return new ClientArtifactState(Set.of(), Set.of(), Set.of(), Set.of(), Set.of());
   }
 
   private static ClientArtifactState complete() {
     return new ClientArtifactState(
-        scopeNames(), policyNames(), permissionNames(), Set.of("id-read", "id-write", "id-admin"));
+        scopeNames(), policyNames(), permissionNames(), Set.of("id-read", "id-write", "id-admin"), Set.of());
   }
 
   private static Set<String> scopeNames() {

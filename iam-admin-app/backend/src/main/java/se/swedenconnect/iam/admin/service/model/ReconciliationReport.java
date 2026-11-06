@@ -25,8 +25,9 @@ import java.util.List;
  * @param clients the number of clients the run covered
  * @param created the number of KeyCloak artifacts created
  * @param removed the number of KeyCloak artifacts removed
- * @param errors one message per (client, organization, function) combination that failed; the run
- *     continues past a failure so that one broken client does not block the others
+ * @param errors one message per (client, organization, function) combination that failed, and one
+ *     per client that could not be read or given its base optional client scopes; the run continues
+ *     past a failure so that one broken client does not block the others
  *
  * @author Felix Hellman
  */

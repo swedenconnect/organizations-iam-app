@@ -114,7 +114,9 @@ for interactively.
 Bootstraps a new Keycloak realm with the full base configuration required by the IAM
 system, as described in
 [Keycloak Setup](https://docs.swedenconnect.se/organizations-iam-app/keycloak-setup.html)
-sections 2.1–2.5 and 2.8b.
+sections 2.1–2.5 and 2.8b. Running it again against an existing realm is how an installation
+gets the realm configuration a new version adds, see
+[Upgrading an Existing Installation](https://docs.swedenconnect.se/organizations-iam-app/keycloak-setup.html#upgrading-an-existing-installation).
 
 **What it sets up:**
 
@@ -127,10 +129,17 @@ sections 2.1–2.5 and 2.8b.
     - `https://id.oidc.se/scope/naturalPersonNumber` (`oidc-sweden-claims-mapper`)
     - `https://id.oidc.se/scope/naturalPersonOrgId` (`oidc-sweden-claims-mapper`)
 - User profile attribute groups: `oidc-sweden-natural-person` and `oidc-sweden-org-id`
-- User profile attributes: `middleName`, `birthdate`, `personalIdentityNumber`,
-  `coordinationNumber`, `coordinationNumberLevel`, `previousCoordinationNumber`,
-  `orgAffiliation`, `orgName`, `orgNumber` and `orgUnit`
+- User profile attributes of the Swedish OIDC Claims Specification: `middleName`,
+  `birthdate`, `personalIdentityNumber`, `coordinationNumber`, `coordinationNumberLevel`,
+  `previousCoordinationNumber`, `orgAffiliation`, `orgName`, `orgNumber` and `orgUnit`
+- User profile attributes outside that specification, in no attribute group: `hsaId` and
+  `efosId`
 - Client scope: `phone` (built-in; created if missing, with `phone_number` mapper)
+- Client scope: `https://id.swedenconnect.se/scope/primary-identifier`, with four built-in
+  User Attribute mappers releasing `personalIdentityNumber`, `orgAffiliation`, `hsaId` and
+  `efosId` into the ID token, the access token and the UserInfo response. The claim names have
+  their dots escaped, so that Keycloak does not nest them. See
+  [The Primary Identifier Scope](https://docs.swedenconnect.se/organizations-iam-app/keycloak-setup.html#the-primary-identifier-scope).
 - Client Policy profile: `resource-function-profile` (contains the `resource-function-executor`)
 - Client Policy: `resource-function-policy` (applies the profile to all confidential clients)
 
@@ -138,7 +147,8 @@ The `oidc-sweden-claims-plugin` JAR registers the two protocol mapper types and 
 else, so the scopes, attribute groups and attributes above are all created by this script.
 Only what is missing is added: an attribute already present keeps its definition, so a realm
 bootstrapped by an earlier version of the script keeps the scope selector that version put
-on `personalIdentityNumber`.
+on `personalIdentityNumber`. The mappers of the primary identifier scope are matched on name:
+a missing one is added, and an existing one is left as it stands.
 
 Does **not** create clients or users. All steps are idempotent and safe to re-run.
 
@@ -304,7 +314,8 @@ downstream APIs on behalf of users.
 - The `scope-org-identifier-mapper` on the access token
 - The `resource-audience-mapper` on the access token
 - Optional client scopes: `https://id.oidc.se/scope/naturalPersonNumber`,
-  `https://id.oidc.se/scope/naturalPersonOrgId` and `phone`
+  `https://id.oidc.se/scope/naturalPersonOrgId`,
+  `https://id.swedenconnect.se/scope/primary-identifier` and `phone`
 - Service account with `realm-management` roles (if `--service-account` is passed)
 
 A re-run against an existing client overwrites `redirectUris`, the iam-admin marker
@@ -680,7 +691,7 @@ incoming identity to a user the admin application has already provisioned. Four 
 in one idempotent run:
 
 1. the identity provider itself, with strict SAML defaults
-2. a stock **Attribute Importer** mapper, which carries the identifying attribute into
+2. one stock **Attribute Importer** mapper per identifying attribute, which carries it into
    the brokered context
 3. a first broker login flow of exactly two executions, `idp-detect-existing-user-by-attr`
    followed by Keycloak's `idp-auto-link`
@@ -711,22 +722,54 @@ the authenticator is registered before it changes anything, and stops if it is n
 | `--sp-entity-id <entityId>` | Yes | Our SP entityID, exactly as registered upstream |
 | `--signing-certificate <file>` | No | Upstream signing certificate, PEM or bare base64 |
 | `--template-realm`, `--template-alias` | No | Copy the upstream entityID, SSO URL, certificate and ACRs from an existing provider instead of giving them |
-| `--match-attribute <name>` | No | Local user attribute to match on. Default `personalIdentityNumber` |
-| `--saml-attribute <name>` | No | SAML attribute carrying it. Default `urn:oid:1.2.752.29.4.13` |
-| `--forbidden-role <role>` | No | Matched user must **not** hold this realm role |
-| `--required-role <role>` | No | Matched user must hold this realm role |
+| `--match <entry>` | No | An attribute to match on, the SAML attribute carrying it, and optional roles. Repeatable, see below. Default `personalIdentityNumber;samlAttribute=urn:oid:1.2.752.29.4.13;samlFormat=URI` |
 | `--transient` | No | Lightweight users. Creates no mapper and no flow, see below |
+
+**The `--match` option.** Each occurrence is one entry:
+
+```
+<attribute>;samlAttribute=<name>[;samlFormat=URI|BASIC|UNSPECIFIED][;requiredRole=<role>][;forbiddenRole=<role>]
+```
+
+with no spaces around `;` and `=`. `samlFormat` defaults to `URI`. The order of the options is the
+order the matcher tries the attributes in. For each entry the script creates or updates an Attribute
+Importer mapper named after the attribute, and it writes the whole list, with the roles, to the
+matcher. See the
+[matcher's README](../idp-user-matcher/README.md#the-match-list) for how the list is evaluated.
+
+```bash
+./keycloak/scripts/add-identity-provider.sh ... \
+    --match "personalIdentityNumber;samlAttribute=urn:oid:1.2.752.29.4.13;forbiddenRole=superuser" \
+    --match "efosId;samlAttribute=<the SAML attribute carrying the EFOS-ID>;requiredRole=superuser"
+```
+
+The same attribute given twice, or a malformed entry, stops the script before anything is
+changed.
+
+**Removed options.** `--match-attribute`, `--saml-attribute`, `--saml-attribute-format`,
+`--required-role` and `--forbidden-role` were replaced by `--match`. Giving one of them is an
+error that names the replacement.
+
+**Re-running** updates everything in place and creates no duplicates. The matcher configuration
+is written in full, so the removed `requiredRole` and `forbiddenRole` settings are dropped from it,
+and the script says so. Its alias is kept; a new configuration is named after the flow, for example
+`eid-broker-match`. A mapper for an attribute that is no longer given with `--match` is left in
+place and reported, since it keeps copying values into the brokered context. Delete it in the
+Admin Console if that is not wanted.
 
 **The attribute format is the thing that silently breaks.** Keycloak's Attribute Importer
 defaults to `ATTRIBUTE_FORMAT_BASIC`, while Sweden Connect emits attributes in URI
 format. A mismatch means the attribute is never found, so the matcher refuses every login
 with the same generic error it gives for an unknown user. The script therefore defaults to
-`ATTRIBUTE_FORMAT_URI`; override with `--saml-attribute-format` only if you know the
-upstream differs.
+`ATTRIBUTE_FORMAT_URI`; override it with `samlFormat` in the `--match` entry only if you know
+the upstream differs.
 
-**Why the role guards matter.** They are what keeps two user populations apart on one
-realm. Give the eID provider `--forbidden-role superuser`, and an eID login can never
-land on a superuser account even if one somehow carried a matching attribute.
+**Why the roles matter.** They are what keeps two user populations apart on one realm. With
+one proxy identity provider there is one matcher, so the roles are set per attribute: forbid
+`superuser` on the attribute regular users log in with, and require it on the one superusers
+log in with. An attribute without roles lets superusers in too. The roles are checked at the
+first login only; after that the link decides, see
+[Links and the role check](../idp-user-matcher/README.md#links-and-the-role-check).
 
 **`--transient` is incompatible with matching.** The Sweden Connect provider only copies
 SAML attributes onto the brokered context when `doNotStoreUsers` is set, while matching

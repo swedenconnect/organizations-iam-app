@@ -91,7 +91,7 @@ class CreateUserRequestBodyTest {
   @Test
   void noUserId_writesRandomUuidUsername() {
     final JsonNode body = this.create(
-        () -> this.newClient().createUser(null, "Martin Lindström", null, "196911292032", null, null, null));
+        () -> this.newClient().createUser(null, "Martin Lindström", null, "196911292032", null, null, null, null, null));
 
     final String username = body.path("username").asString();
     assertThatCode(() -> UUID.fromString(username)).doesNotThrowAnyException();
@@ -106,7 +106,7 @@ class CreateUserRequestBodyTest {
   @Test
   void userId_becomesUsername() {
     final JsonNode body = this.create(
-        () -> this.newClient().createUser("martin", "Martin Lindström", null, "196911292032", null, null, null));
+        () -> this.newClient().createUser("martin", "Martin Lindström", null, "196911292032", null, null, null, null, null));
 
     assertThat(body.path("username").asString()).isEqualTo("martin");
   }
@@ -115,7 +115,7 @@ class CreateUserRequestBodyTest {
   @Test
   void blankUserId_writesRandomUuidUsername() {
     final JsonNode body = this.create(
-        () -> this.newClient().createUser("  ", "Martin Lindström", null, "196911292032", null, null, null));
+        () -> this.newClient().createUser("  ", "Martin Lindström", null, "196911292032", null, null, null, null, null));
 
     assertThatCode(() -> UUID.fromString(body.path("username").asString())).doesNotThrowAnyException();
   }
@@ -130,7 +130,7 @@ class CreateUserRequestBodyTest {
     this.expectOrganizationLookup("2021006883", "Myndigheten för Digital förvaltning");
 
     final JsonNode body = this.create(() -> this.newClient().createUser(
-        null, "Martin Lindström", "martin@example.com", null, "martin@2021006883", "+46701234567", null));
+        null, "Martin Lindström", "martin@example.com", null, "martin@2021006883", null, null, "+46701234567", null));
 
     final JsonNode attributes = body.path("attributes");
     assertThat(attributes.path("orgAffiliation").get(0).asString()).isEqualTo("martin@2021006883");
@@ -152,7 +152,7 @@ class CreateUserRequestBodyTest {
     this.expectNoOrganization("5561234567");
 
     final JsonNode body = this.create(() -> this.newClient().createUser(
-        null, "Martin Lindström", null, null, "martin@5561234567", null, null));
+        null, "Martin Lindström", null, null, "martin@5561234567", null, null, null, null));
 
     final JsonNode attributes = body.path("attributes");
     assertThat(attributes.path("orgAffiliation").get(0).asString()).isEqualTo("martin@5561234567");
@@ -167,7 +167,7 @@ class CreateUserRequestBodyTest {
         .andRespond(withServerError());
 
     final JsonNode body = this.create(() -> this.newClient().createUser(
-        null, "Martin Lindström", null, null, "martin@2021006883", null, null));
+        null, "Martin Lindström", null, null, "martin@2021006883", null, null, null, null));
 
     final JsonNode attributes = body.path("attributes");
     assertThat(attributes.path("orgNumber").get(0).asString()).isEqualTo("2021006883");
@@ -186,21 +186,56 @@ class CreateUserRequestBodyTest {
     this.expectOrgGroupChildren();
 
     final JsonNode body = this.create(() -> this.newClient().createUser(
-        null, "Martin Lindström", null, null, "martin@2021006883", null, null));
+        null, "Martin Lindström", null, null, "martin@2021006883", null, null, null, null));
 
     assertThat(body.path("attributes").has("orgName")).isFalse();
   }
 
   /**
-   * Every managed client is given the organizational identity scope alongside the personal identity
-   * number and phone scopes, so a client can ask for the claims the affiliation produces.
+   * Every managed client is given the organizational identity scope and the primary identifier
+   * scope alongside the personal identity number and phone scopes, so a client can ask for the
+   * claims these produce.
    */
   @Test
-  void baseOptionalScopes_carryTheOrganizationalIdentityScope() {
+  void baseOptionalScopes_carryTheOrganizationalIdentityAndPrimaryIdentifierScopes() {
     assertThat(KeycloakAdminClient.BASE_OPTIONAL_SCOPES).containsExactly(
         "https://id.oidc.se/scope/naturalPersonNumber",
         "https://id.oidc.se/scope/naturalPersonOrgId",
+        "https://id.swedenconnect.se/scope/primary-identifier",
         "phone");
+  }
+
+  /** The HSA-ID and the EFOS-ID are written to the user attributes {@code hsaId} and {@code efosId}. */
+  @Test
+  void hsaIdAndEfosId_areWrittenAsAttributes() {
+    final JsonNode body = this.create(() -> this.newClient().createUser(
+        null, "Martin Lindström", null, null, null, "SE2321000016-1234", "efos-4711", null, null));
+
+    final JsonNode attributes = body.path("attributes");
+    assertThat(attributes.path("hsaId").get(0).asString()).isEqualTo("SE2321000016-1234");
+    assertThat(attributes.path("efosId").get(0).asString()).isEqualTo("efos-4711");
+    assertThat(attributes.size()).isEqualTo(2);
+  }
+
+  /** The lookup on an HSA-ID searches the {@code hsaId} attribute exactly, with the value quoted and encoded. */
+  @Test
+  void findUserIdByHsaId_searchesTheAttributeExactly() {
+    this.server.expect(requestTo(USERS_URI + "?q=hsaId%3A%22SE2321000016-1234%20x%22&exact=true"))
+        .andExpect(method(HttpMethod.GET))
+        .andRespond(withSuccess("[ { \"id\": \"existing\" } ]", MediaType.APPLICATION_JSON));
+
+    assertThat(this.newClient().findUserIdByHsaId("SE2321000016-1234 x")).contains("existing");
+    this.server.verify();
+  }
+
+  /** The lookup on an EFOS-ID searches the {@code efosId} attribute, and finds nothing when Keycloak does. */
+  @Test
+  void findUserIdByEfosId_searchesTheAttributeExactly() {
+    this.server.expect(requestTo(USERS_URI + "?q=efosId%3A%22efos-4711%22&exact=true"))
+        .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
+
+    assertThat(this.newClient().findUserIdByEfosId("efos-4711")).isEmpty();
+    this.server.verify();
   }
 
   /** The organization number is what follows the '@', whatever the local part looks like. */
@@ -216,7 +251,7 @@ class CreateUserRequestBodyTest {
   @Test
   void temporaryPassword_isWrittenAsTemporaryCredential() {
     final JsonNode body = this.create(() -> this.newClient().createUser(
-        "martin", "Martin Lindström", null, "196911292032", null, null, "initial-secret"));
+        "martin", "Martin Lindström", null, "196911292032", null, null, null, null, "initial-secret"));
 
     final JsonNode credential = body.path("credentials").get(0);
     assertThat(credential.path("type").asString()).isEqualTo("password");
@@ -228,7 +263,7 @@ class CreateUserRequestBodyTest {
   @Test
   void noEidAttributes_writesEmptyAttributes() {
     final JsonNode body = this.create(
-        () -> this.newClient().createUser("martin", "Martin", null, null, null, null, null));
+        () -> this.newClient().createUser("martin", "Martin", null, null, null, null, null, null, null));
 
     assertThat(body.path("attributes")).isEmpty();
     assertThat(body.has("lastName")).isFalse();

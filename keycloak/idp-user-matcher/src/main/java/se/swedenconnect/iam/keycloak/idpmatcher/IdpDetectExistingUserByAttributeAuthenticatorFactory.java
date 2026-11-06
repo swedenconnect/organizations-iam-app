@@ -51,20 +51,32 @@ public class IdpDetectExistingUserByAttributeAuthenticatorFactory implements Aut
 
   /** The help text shown for this execution in the admin console. */
   public static final String HELP_TEXT =
-      "Resolves the incoming brokered identity to an existing local user by matching on a configured "
-          + "user attribute, and hands the match to 'Automatically Set Existing User'. Never creates "
-          + "users. Fails the flow unless exactly one enabled, permitted user matches.";
+      "Resolves the incoming brokered identity to an existing local user by trying a list of user "
+          + "attributes in order, and hands the match to 'Automatically Set Existing User'. Never "
+          + "creates users. Fails the flow unless the first attribute that finds a user finds exactly "
+          + "one enabled, permitted user.";
 
   // ---- Configuration keys ----
 
-  /** Configuration key: the user attribute to match the brokered identity on. Required. */
+  /**
+   * Configuration key: the ordered list of user attributes to match the brokered identity on, each
+   * optionally with roles, see {@link MatchRule}. Required. Stored as one string with the entries
+   * joined by {@code ##}, so a value written before the key became a list is a list of one.
+   */
   public static final String MATCH_ATTRIBUTE = "matchAttribute";
 
-  /** Configuration key: a realm role the matched user must hold. Optional. */
-  public static final String REQUIRED_ROLE = "requiredRole";
+  /**
+   * A removed configuration key, which used to hold a realm role every matched user had to hold.
+   * Roles are now set per entry in {@link #MATCH_ATTRIBUTE}. A configuration still carrying the key
+   * refuses every login, so that a role restriction is never silently dropped.
+   */
+  public static final String REMOVED_REQUIRED_ROLE = "requiredRole";
 
-  /** Configuration key: a realm role the matched user must not hold. Optional. */
-  public static final String FORBIDDEN_ROLE = "forbiddenRole";
+  /**
+   * A removed configuration key, which used to hold a realm role no matched user could hold. See
+   * {@link #REMOVED_REQUIRED_ROLE}.
+   */
+  public static final String REMOVED_FORBIDDEN_ROLE = "forbiddenRole";
 
   /**
    * The only permitted requirement. The authenticator is the gate for unknown identities, so an
@@ -77,28 +89,19 @@ public class IdpDetectExistingUserByAttributeAuthenticatorFactory implements Aut
   private static final List<ProviderConfigProperty> CONFIG_PROPERTIES = ProviderConfigurationBuilder.create()
       .property()
       .name(MATCH_ATTRIBUTE)
-      .label("Match attribute")
-      .helpText("The user attribute to match the incoming brokered identity on, for example "
-          + "personalIdentityNumber. The value is read from the brokered identity context, where the "
-          + "identity provider's attribute or claim mappers must have placed it.")
-      .type(ProviderConfigProperty.STRING_TYPE)
+      .label("Match attributes")
+      .helpText("The user attributes to match the incoming brokered identity on, tried in order. "
+          + "Each entry is an attribute name, optionally followed by roles, with no spaces: "
+          + "'personalIdentityNumber;forbiddenRole=superuser' or 'efosId;requiredRole=superuser'. "
+          + "An attribute that is absent from the brokered identity, or that no user has, moves on "
+          + "to the next entry. The first entry that finds a user decides: the login is refused "
+          + "unless exactly one enabled user is found, it passes that entry's role checks, and it "
+          + "has no other stored value for an earlier attribute present in the brokered identity. "
+          + "Every attribute must be placed in the brokered identity by an attribute or claim "
+          + "mapper on the identity provider. A role that does not exist in the realm, a malformed "
+          + "entry, or the removed settings 'requiredRole' and 'forbiddenRole' refuse every login.")
+      .type(ProviderConfigProperty.MULTIVALUED_STRING_TYPE)
       .required(true)
-      .add()
-      .property()
-      .name(REQUIRED_ROLE)
-      .label("Required role")
-      .helpText("Optional. The name of a realm role the matched user must hold. If the role does not "
-          + "exist in the realm, the flow fails.")
-      .type(ProviderConfigProperty.STRING_TYPE)
-      .required(false)
-      .add()
-      .property()
-      .name(FORBIDDEN_ROLE)
-      .label("Forbidden role")
-      .helpText("Optional. The name of a realm role the matched user must not hold. If the role does "
-          + "not exist in the realm, the flow fails.")
-      .type(ProviderConfigProperty.STRING_TYPE)
-      .required(false)
       .add()
       .build();
 

@@ -111,33 +111,48 @@ A new Keycloak provider JAR, deployed like the existing `org-rights-mapper`.
 
 Rather than one monolithic component, mirror the built in pair:
 
-1. **Detect Existing Broker User By Attribute** (custom, REQUIRED). Reads the configured attribute
-   from `BrokeredIdentityContext`, looks up the local user, and on a unique hit sets the
-   `EXISTING_USER_INFO` auth note.
+1. **Detect Existing Broker User By Attribute** (custom, REQUIRED). Tries the configured attributes
+   in order, reading each from `BrokeredIdentityContext` and looking up the local user, and on a
+   unique, permitted hit sets the `EXISTING_USER_INFO` auth note.
 2. **Automatically Set Existing User** (`idp-auto-link`, stock, REQUIRED). Reads the note and sets
    the user in the authentication context.
 
 Keycloak writes the federated identity link itself as part of normal post first broker login
 handling. The custom surface is one lookup.
 
-Configuration properties:
+Configuration: one property, **Match attributes** (`matchAttribute`), an ordered list. Each entry is
+a user attribute name, optionally followed by a required and a forbidden realm role:
 
-| Property | Purpose |
-|---|---|
-| Match attribute | Which user attribute to match on. `personalIdentityNumber` for the eID provider, something else for the corporate one. |
-| Required role | Optional. The matched user must hold this realm role. |
-| Forbidden role | Optional. The matched user must not hold this realm role. |
+```
+personalIdentityNumber;forbiddenRole=superuser
+efosId;requiredRole=superuser
+```
 
-The role properties make the population separation explicit rather than emergent. Configure the
-corporate provider to require `superuser` and the eID provider to forbid it. Without them the only
-thing distinguishing the two providers is which attribute they match on, and the failure mode if
-that ever collides is a regular user landing in a superadmin session.
+A single proxy identity provider serves people logging in with different eIDs, identified by
+different attributes, so one matcher must try several attributes. An attribute that is absent from
+the context, or that no user has, moves on to the next one. The first attribute that finds a user
+decides, and no later attribute is tried.
+
+The roles are per attribute because there is one provider and one matcher for everybody. A role pair
+for the whole matcher could only forbid or require `superuser` for every login. Per attribute, the
+attribute regular users log in with forbids `superuser` and the one superusers log in with requires
+it. This makes the population separation explicit rather than emergent; the failure mode it guards
+against is a regular user landing in a superadmin session. The separation holds at first login. Once
+a link exists, later logins through the same provider and external user ID go straight to the linked
+user without running the matcher.
+
+The earlier matcher-level `requiredRole` and `forbiddenRole` settings were removed. A configuration
+still carrying them refuses every login, so that a role restriction is never silently dropped.
+
+The entry format, the evaluation order and every refusal are described in the
+[matcher's README](../../keycloak/idp-user-matcher/README.md#the-match-list).
 
 Role assignment stays where it is today: granted by the admin app in Keycloak, never asserted by the
 IdP.
 
-Fail closed on all of: attribute absent from the assertion or token, more than one local user
-matching, matched user disabled, attribute present but malformed.
+Fail closed on all of: no attribute finding a user, more than one local user matching, matched user
+disabled, matched user failing the attribute's role check, matched user contradicting an earlier
+attribute in the same login, and any configuration error.
 
 ### 4.2 Protocol independence
 

@@ -537,6 +537,14 @@ name = os.environ['ORG_ID_SCOPE']
 print(next((s['id'] for s in scopes if s.get('name') == name), ''))
 " 2>/dev/null || echo "")
 
+PRIMARY_SCOPE="https://id.swedenconnect.se/scope/primary-identifier"
+PRIMARY_SCOPE_ID=$(echo "${ALL_SCOPES}" | PRIMARY_SCOPE="${PRIMARY_SCOPE}" python3 -c "
+import os, sys, json
+scopes = json.load(sys.stdin)
+name = os.environ['PRIMARY_SCOPE']
+print(next((s['id'] for s in scopes if s.get('name') == name), ''))
+" 2>/dev/null || echo "")
+
 PHONE_SCOPE_ID=$(echo "${ALL_SCOPES}" | python3 -c "
 import sys, json
 scopes = json.load(sys.stdin)
@@ -557,6 +565,14 @@ if [ -z "${ORG_ID_SCOPE_ID}" ]; then
   echo "    WARNING: Scope not found in realm '${REALM}'. Run bootstrap-realm.sh first."
 else
   STATUS=$(api_put_empty "/${REALM}/clients/${CLIENT_UUID}/optional-client-scopes/${ORG_ID_SCOPE_ID}")
+  [ "${STATUS}" = "204" ] && echo "    Added." || echo "    Already present or status: ${STATUS}, skipping."
+fi
+
+echo "==> Adding '${PRIMARY_SCOPE}' as optional client scope..."
+if [ -z "${PRIMARY_SCOPE_ID}" ]; then
+  echo "    WARNING: Scope not found in realm '${REALM}'. Run bootstrap-realm.sh first."
+else
+  STATUS=$(api_put_empty "/${REALM}/clients/${CLIENT_UUID}/optional-client-scopes/${PRIMARY_SCOPE_ID}")
   [ "${STATUS}" = "204" ] && echo "    Added." || echo "    Already present or status: ${STATUS}, skipping."
 fi
 

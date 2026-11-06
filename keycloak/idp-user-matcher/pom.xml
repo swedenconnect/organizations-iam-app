@@ -13,7 +13,7 @@
   <packaging>jar</packaging>
 
   <name>Sweden Connect :: IAM :: Keycloak :: IdP User Matcher</name>
-  <description>Keycloak first broker login authenticator that resolves an incoming brokered identity to a pre-provisioned local user by matching on a configured user attribute.</description>
+  <description>Keycloak first broker login authenticator that resolves an incoming brokered identity to a pre-provisioned local user by trying a configured list of user attributes in order.</description>
 
   <licenses>
     <license>

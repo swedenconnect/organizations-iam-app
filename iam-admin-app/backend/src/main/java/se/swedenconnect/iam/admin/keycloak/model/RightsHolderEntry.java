@@ -26,6 +26,9 @@ import org.jspecify.annotations.Nullable;
  *
  * @param userId                  Keycloak user UUID
  * @param personalIdentityNumber  the user's personalIdentityNumber attribute, or {@code null}
+ * @param orgAffiliation          the user's orgAffiliation attribute, or {@code null}
+ * @param hsaId                   the user's hsaId attribute, or {@code null}
+ * @param efosId                  the user's efosId attribute, or {@code null}
  * @param name                    display name (firstName + lastName, or username fallback)
  * @param right                   effective right: {@code admin}, {@code write}, or {@code read}
  * @param scope                   {@code "function"} or {@code "organization"}
@@ -34,6 +37,9 @@ import org.jspecify.annotations.Nullable;
 public record RightsHolderEntry(
     @NonNull String userId,
     @Nullable String personalIdentityNumber,
+    @Nullable String orgAffiliation,
+    @Nullable String hsaId,
+    @Nullable String efosId,
     @Nullable String name,
     @NonNull String right,
     @NonNull String scope) {

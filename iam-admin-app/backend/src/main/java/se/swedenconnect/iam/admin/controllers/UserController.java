@@ -175,8 +175,8 @@ public class UserController {
    * @param req     the request body
    * @param request the HTTP servlet request
    * @return 201 Created with the created user, 400 on invalid input, 403 if not authenticated,
-   *         409 if the user ID is taken, or if a user with the same personal identity number or
-   *         organizational affiliation already exists
+   *         409 if the user ID is taken, or if a user with the same personal identity number,
+   *         organizational affiliation, HSA-ID or EFOS-ID already exists
    */
   @PostMapping(value = "/users",
       consumes = MediaType.APPLICATION_JSON_VALUE,
@@ -202,7 +202,8 @@ public class UserController {
     final String pin = settings.isPersonalNumberEnabled() ? trimToNull(req.personalIdentityNumber()) : null;
     final String orgAffiliation =
         settings.isOrgAffiliationEnabled() ? trimToNull(req.orgAffiliation()) : null;
-    // TODO: hsaId and efosId are picked up here when those eID attributes are implemented.
+    final String hsaId = settings.isHsaIdEnabled() ? trimToNull(req.hsaId()) : null;
+    final String efosId = settings.isEfosIdEnabled() ? trimToNull(req.efosId()) : null;
 
     if (name == null || name.isBlank()) {
       return ResponseEntity.badRequest().body("name must not be blank");
@@ -214,11 +215,19 @@ public class UserController {
       return ResponseEntity.badRequest()
           .body("orgAffiliation must be on the format userID@organization-number");
     }
+    // The HSA-ID and EFOS-ID are placed within quotes in the Keycloak user lookup, so a quote of
+    // their own would change the query.
+    if (hsaId != null && hsaId.indexOf('"') >= 0) {
+      return ResponseEntity.badRequest().body("hsaId must not contain a quotation mark (\")");
+    }
+    if (efosId != null && efosId.indexOf('"') >= 0) {
+      return ResponseEntity.badRequest().body("efosId must not contain a quotation mark (\")");
+    }
     if (email != null && !email.isBlank() && !email.contains("@")) {
       return ResponseEntity.badRequest().body("email is not valid");
     }
-    if (settings.isEidAttributeRequired() && pin == null && orgAffiliation == null) {
-      // TODO: hsaId and efosId also satisfy this requirement when they are implemented.
+    if (settings.isEidAttributeRequired() && pin == null && orgAffiliation == null && hsaId == null
+        && efosId == null) {
       log.info("POST /api/users — rejected: no eID attribute given for user '{}'", name);
       return ResponseEntity.badRequest().body("at least one eID attribute must be given");
     }
@@ -246,11 +255,28 @@ public class UserController {
         return ResponseEntity.status(409).body(Map.of("existingUserId", existingUserId.get()));
       }
     }
+    // The HSA-ID and EFOS-ID belong in the audit log only, so the values are not logged here.
+    if (hsaId != null) {
+      final Optional<String> existingUserId = this.keycloakAdminClient.findUserIdByHsaId(hsaId);
+      if (existingUserId.isPresent()) {
+        log.info("POST /api/users — rejected: user with the given HSA-ID already exists (id={})",
+            existingUserId.get());
+        return ResponseEntity.status(409).body(Map.of("existingUserId", existingUserId.get()));
+      }
+    }
+    if (efosId != null) {
+      final Optional<String> existingUserId = this.keycloakAdminClient.findUserIdByEfosId(efosId);
+      if (existingUserId.isPresent()) {
+        log.info("POST /api/users — rejected: user with the given EFOS-ID already exists (id={})",
+            existingUserId.get());
+        return ResponseEntity.status(409).body(Map.of("existingUserId", existingUserId.get()));
+      }
+    }
 
     final String userId;
     try {
       userId = this.keycloakAdminClient.createUser(
-          selectedUserId, name, email, pin, orgAffiliation, phoneNumber, temporaryPassword);
+          selectedUserId, name, email, pin, orgAffiliation, hsaId, efosId, phoneNumber, temporaryPassword);
     }
     catch (final KeycloakAdminException e) {
       this.eventPublisher.publishEvent(IamErrorAuditEvent.operationFailed(
@@ -258,9 +284,8 @@ public class UserController {
       throw e;
     }
     log.info("POST /api/users — user '{}' created with id '{}'", name, userId);
-    // TODO: hsaId and efosId are passed here when those eID attributes are implemented.
     this.eventPublisher.publishEvent(IamAuditEvent.userCreated(new AuditData.User(
-        userId, name, pin, orgAffiliation, null, null, selectedUserId, temporaryPassword != null), null));
+        userId, name, pin, orgAffiliation, hsaId, efosId, selectedUserId, temporaryPassword != null), null));
 
     final Map<String, String> body = new LinkedHashMap<>();
     body.put("id", userId);
@@ -269,6 +294,8 @@ public class UserController {
     body.put("userId", selectedUserId != null ? selectedUserId : "");
     body.put("personalIdentityNumber", pin != null ? pin : "");
     body.put("orgAffiliation", orgAffiliation != null ? orgAffiliation : "");
+    body.put("hsaId", hsaId != null ? hsaId : "");
+    body.put("efosId", efosId != null ? efosId : "");
     body.put("phoneNumber", phoneNumber != null ? phoneNumber : "");
     return ResponseEntity.status(201).body(body);
   }
@@ -312,6 +339,8 @@ public class UserController {
               "email", u.email() != null ? u.email() : "",
               "personalIdentityNumber", u.personalIdentityNumber() != null ? u.personalIdentityNumber() : "",
               "orgAffiliation", u.orgAffiliation() != null ? u.orgAffiliation() : "",
+              "hsaId", u.hsaId() != null ? u.hsaId() : "",
+              "efosId", u.efosId() != null ? u.efosId() : "",
               "phoneNumber", u.phoneNumber() != null ? u.phoneNumber() : ""));
         })
         .orElseGet(() -> {
@@ -323,7 +352,7 @@ public class UserController {
   /**
    * Updates an existing user's profile fields (name, email, phone number) in Keycloak.
    *
-   * <p>Personal identity number and rights are not updated here.</p>
+   * <p>The eID attributes and rights are not updated here.</p>
    *
    * <p>A regular admin may only address a user that is visible to them, see
    * {@code resolveVisibleUser}. A user outside the caller's scope is
@@ -404,6 +433,8 @@ public class UserController {
                 "email", u.email() != null ? u.email() : "",
                 "personalIdentityNumber", u.personalIdentityNumber() != null ? u.personalIdentityNumber() : "",
                 "orgAffiliation", u.orgAffiliation() != null ? u.orgAffiliation() : "",
+                "hsaId", u.hsaId() != null ? u.hsaId() : "",
+                "efosId", u.efosId() != null ? u.efosId() : "",
                 "phoneNumber", u.phoneNumber() != null ? u.phoneNumber() : ""));
           })
           .orElse(ResponseEntity.notFound().build());
@@ -623,6 +654,8 @@ public class UserController {
         u.email(),
         u.personalIdentityNumber(),
         u.orgAffiliation(),
+        u.hsaId(),
+        u.efosId(),
         u.phoneNumber(),
         u.superuser(),
         rightResponses);
