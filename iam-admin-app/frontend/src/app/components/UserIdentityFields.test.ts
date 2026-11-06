@@ -215,6 +215,22 @@ describe('validateIdentityValues, a single identity field', () => {
     expect(errors).toEqual({ efosId: 'validation.required' });
   });
 
+  it('reports a quotation mark in an HSA-ID or an EFOS-ID on the field', () => {
+    const s = settings({ hsaIdEnabled: true, efosIdEnabled: true });
+
+    expect(validateIdentityValues(values({ hsaId: 'SE"1' }), s, t))
+      .toEqual({ hsaId: 'validation.noQuotationMark' });
+    expect(validateIdentityValues(values({ personalIdentityNumber: '196911292032', efosId: ' " ' }), s, t))
+      .toEqual({ efosId: 'validation.noQuotationMark' });
+  });
+
+  it('ignores a quotation mark in a field that is turned off', () => {
+    expect(validateIdentityValues(
+      values({ personalIdentityNumber: '196911292032', hsaId: 'SE"1', efosId: '"' }),
+      settings(),
+      t)).toEqual({});
+  });
+
   it('accepts any HSA-ID or EFOS-ID that is not blank', () => {
     const s = settings({ personalNumberEnabled: false, hsaIdEnabled: true });
 

@@ -215,6 +215,14 @@ public class UserController {
       return ResponseEntity.badRequest()
           .body("orgAffiliation must be on the format userID@organization-number");
     }
+    // The HSA-ID and EFOS-ID are placed within quotes in the Keycloak user lookup, so a quote of
+    // their own would change the query.
+    if (hsaId != null && hsaId.indexOf('"') >= 0) {
+      return ResponseEntity.badRequest().body("hsaId must not contain a quotation mark (\")");
+    }
+    if (efosId != null && efosId.indexOf('"') >= 0) {
+      return ResponseEntity.badRequest().body("efosId must not contain a quotation mark (\")");
+    }
     if (email != null && !email.isBlank() && !email.contains("@")) {
       return ResponseEntity.badRequest().body("email is not valid");
     }

@@ -55,6 +55,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -479,6 +480,47 @@ class ImportExportServiceTest {
 
     assertThat(report.users().getFirst().status()).isEqualTo("skipped_duplicate");
     assertThat(report.users().getFirst().key()).isEqualTo("hsa-1");
+  }
+
+  @Test
+  void aQuoteInAnHsaIdOrEfosIdIsAnErrorWhateverTheSettings() {
+    for (final boolean enabled : new boolean[] { false, true }) {
+      this.properties.getUserRegistration().setHsaIdEnabled(enabled);
+      this.properties.getUserRegistration().setEfosIdEnabled(enabled);
+
+      final ImportPreviewReport hsa = this.dryRun(identityFile("\"hsa_id\": \"SE\\\"1\""));
+      final ImportPreviewReport efos = this.dryRun(identityFile(
+          "\"personal_identity_number\": \"" + PIN + "\", \"efos_id\": \"\\\"\""));
+
+      assertThat(hsa.users().getFirst().status()).isEqualTo("error");
+      assertThat(hsa.users().getFirst().reason()).contains("hsa_id");
+      assertThat(efos.users().getFirst().status()).isEqualTo("error");
+      assertThat(efos.users().getFirst().reason()).contains("efos_id");
+    }
+    verify(this.keycloakAdminClient, never()).findUserIdByHsaId(anyString());
+    verify(this.keycloakAdminClient, never()).findUserIdByEfosId(anyString());
+  }
+
+  @Test
+  void aUserRejectedForAQuoteIsNotLookedUpOnConfirm() {
+    final ImportPreviewReport report = this.dryRun("""
+        {
+          "schema_version": "1.0",
+          "functions": [],
+          "organizations": [],
+          "users": [
+            { "name": "Anna Andersson", "hsa_id": "SE\\"1", "rights": [] },
+            { "name": "Bo Berg", "hsa_id": "hsa-2", "rights": [] }
+          ]
+        }
+        """);
+    assertThat(statuses(report.users())).containsExactly("error", "new");
+
+    final ImportReport result = this.confirm(report.batchId());
+
+    assertThat(statuses(result.users())).containsExactly("created");
+    verify(this.keycloakAdminClient, never()).findUserIdByHsaId("SE\"1");
+    verify(this.keycloakAdminClient, times(2)).findUserIdByHsaId("hsa-2");
   }
 
   @Test

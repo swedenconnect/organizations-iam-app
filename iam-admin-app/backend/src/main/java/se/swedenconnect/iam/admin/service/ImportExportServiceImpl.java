@@ -296,6 +296,11 @@ public class ImportExportServiceImpl implements ImportExportService {
             "org_affiliation must be on the format userID@organization-number"));
         continue;
       }
+      final String quoteReason = quoteRejectionReason(hsaId, efosId);
+      if (quoteReason != null) {
+        userOutcomes.add(new ImportItemOutcome(key, "error", quoteReason));
+        continue;
+      }
       final String email = trimToNull(u.email());
       if (email != null && !email.contains("@")) {
         userOutcomes.add(new ImportItemOutcome(key, "error", "email is not valid"));
@@ -627,6 +632,24 @@ public class ImportExportServiceImpl implements ImportExportService {
     }
   }
 
+  /**
+   * Checks that neither the HSA-ID nor the EFOS-ID holds a quotation mark. The values are placed
+   * within quotes in the Keycloak user lookup, so a quote of their own would change the query.
+   *
+   * @param hsaId the HSA-ID, or {@code null}
+   * @param efosId the EFOS-ID, or {@code null}
+   * @return the reason the entry is rejected, or {@code null} if neither value holds a quote
+   */
+  private static @Nullable String quoteRejectionReason(final @Nullable String hsaId, final @Nullable String efosId) {
+    if (hsaId != null && hsaId.indexOf('"') >= 0) {
+      return "hsa_id must not contain a quotation mark (\")";
+    }
+    if (efosId != null && efosId.indexOf('"') >= 0) {
+      return "efos_id must not contain a quotation mark (\")";
+    }
+    return null;
+  }
+
   private @NonNull ImportItemOutcome importUser(
       final @NonNull BundleUserEntry u, final boolean allowSelectUserId, final @NonNull ImportJob job) {
     final String pin = trimToNull(u.personalIdentityNumber());
@@ -634,6 +657,12 @@ public class ImportExportServiceImpl implements ImportExportService {
     final String hsaId = trimToNull(u.hsaId());
     final String efosId = trimToNull(u.efosId());
     final String key = Objects.requireNonNull(userKey(pin, orgAffiliation, hsaId, efosId));
+
+    // Rejected in the dry run already. Checked again so that no path sends such a value to a lookup.
+    final String quoteReason = quoteRejectionReason(hsaId, efosId);
+    if (quoteReason != null) {
+      return new ImportItemOutcome(key, "error", quoteReason);
+    }
 
     boolean created = false;
     try {

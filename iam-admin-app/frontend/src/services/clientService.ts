@@ -3,7 +3,7 @@
  * Handles managed client administration. All endpoints are superuser-only.
  */
 
-import type { ManagedClient, ManagedClientInput, ReconciliationReport } from '@/types';
+import type { ClientDrift, ManagedClient, ManagedClientInput, ReconciliationReport } from '@/types';
 import { apiUrl, apiFetch } from '@/lib/api';
 
 function toBody(client: ManagedClientInput) {
@@ -40,19 +40,33 @@ export async function getClients(): Promise<ManagedClient[]> {
   return response.json();
 }
 
+/** Drift with nothing missing and every client checked. */
+export const EMPTY_CLIENT_DRIFT: ClientDrift = { missingByClientId: {}, uncheckedClientIds: [] };
+
 /**
- * Report which clients are missing Keycloak artifacts, and how many.
+ * Reads the body of `GET /api/clients/drift`. A field the body lacks is taken as empty.
+ */
+export function parseClientDrift(body: unknown): ClientDrift {
+  const b = (body ?? {}) as Partial<ClientDrift>;
+  return {
+    missingByClientId: b.missingByClientId ?? {},
+    uncheckedClientIds: b.uncheckedClientIds ?? [],
+  };
+}
+
+/**
+ * Report which clients are missing Keycloak artifacts, and how many, and which clients could not
+ * be checked.
  *
  * Read-only. Setting a client's functions or markers outside the application decides what it
  * should hold without creating anything, so a client can look correctly configured while holding
- * no scopes at all. A non-empty result means a reconciliation has not been run yet.
+ * no scopes at all. A non-empty `missingByClientId` means a reconciliation has not been run yet.
  */
-export async function getClientDrift(): Promise<Record<string, number>> {
+export async function getClientDrift(): Promise<ClientDrift> {
   const response = await apiFetch(apiUrl('api/clients/drift'));
   if (response.status === 403) throw new Error('FORBIDDEN');
   if (!response.ok) throw new Error('FETCH_DRIFT_FAILED');
-  const body = await response.json();
-  return body.missingByClientId ?? {};
+  return parseClientDrift(await response.json());
 }
 
 /**

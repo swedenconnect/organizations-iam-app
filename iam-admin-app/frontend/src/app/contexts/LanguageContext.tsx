@@ -135,6 +135,10 @@ const translations = {
     'clients.driftHint': 'This client is missing Keycloak scopes, policies, permissions or client scope bindings. Until a reconciliation is run, no user can obtain an org-scoped token from it.',
     'clients.driftBannerTitle': 'Reconciliation needed',
     'clients.driftBannerBody': 'Some clients are missing the Keycloak artifacts their functions call for. Setting a client\u2019s functions decides what it should hold; it does not create anything. Press Reconcile All to create them.',
+    'clients.driftUncheckedBadge': 'Could not be checked',
+    'clients.driftUncheckedHint': 'The application could not read this client\u2019s scopes, policies and permissions in Keycloak, so it is not known whether the client holds what its functions call for. A common cause is that Authorization Services are turned off for the client. The application log gives the reason.',
+    'clients.driftUncheckedBannerTitle': 'Some clients could not be checked',
+    'clients.driftUncheckedBannerBody': 'The application could not read these clients in Keycloak, so it is not known whether they hold what their functions call for. They are not repaired by a reconciliation until they can be read. The application log gives the reason.',
     'clients.badgeAllFunctions': 'All functions',
     'clients.badgeAllFunctionsHint': 'This client handles every function in the realm, including the ones not created yet. The marker is set by script and cannot be changed here.',
     'clients.allFunctionsNote': 'Handles every function, including the ones not created yet.',
@@ -334,6 +338,7 @@ const translations = {
     'validation.userIdRequired': 'A user ID must be given',
     'validation.userIdTaken': 'This user ID is already taken. Choose another one.',
     'validation.orgAffiliationFormat': 'Must be on the format userID@organization-number, where the organization number is 10 digits',
+    'validation.noQuotationMark': 'Must not contain a quotation mark (")',
     'validation.eidAttributeRequired': 'At least one user identity must be given',
 
     // Footer
@@ -468,6 +473,10 @@ const translations = {
     'clients.driftHint': 'Klienten saknar scopes, policyer, beh\u00f6righeter eller scope-kopplingar i Keycloak. Innan en avst\u00e4mning har k\u00f6rts kan ingen anv\u00e4ndare f\u00e5 ett organisationsscopat token fr\u00e5n den.',
     'clients.driftBannerTitle': 'Avst\u00e4mning beh\u00f6vs',
     'clients.driftBannerBody': 'Vissa klienter saknar de Keycloak-artefakter deras funktioner kr\u00e4ver. Att s\u00e4tta en klients funktioner avg\u00f6r vad den ska ha, men skapar ingenting. Tryck p\u00e5 St\u00e4m av alla f\u00f6r att skapa dem.',
+    'clients.driftUncheckedBadge': 'Kunde inte kontrolleras',
+    'clients.driftUncheckedHint': 'Applikationen kunde inte l\u00e4sa klientens scopes, policyer och beh\u00f6righeter i Keycloak, s\u00e5 det g\u00e5r inte att veta om klienten har det som dess funktioner kr\u00e4ver. En vanlig orsak \u00e4r att Authorization Services \u00e4r avst\u00e4ngt f\u00f6r klienten. Orsaken finns i applikationens logg.',
+    'clients.driftUncheckedBannerTitle': 'Vissa klienter kunde inte kontrolleras',
+    'clients.driftUncheckedBannerBody': 'Applikationen kunde inte l\u00e4sa dessa klienter i Keycloak, s\u00e5 det g\u00e5r inte att veta om de har det som deras funktioner kr\u00e4ver. En avst\u00e4mning reparerar dem inte f\u00f6rr\u00e4n de kan l\u00e4sas. Orsaken finns i applikationens logg.',
     'clients.badgeAllFunctions': 'Alla funktioner',
     'clients.badgeAllFunctionsHint': 'Klienten hanterar alla funktioner i realmen, även de som ännu inte har skapats. Markeringen sätts med skript och kan inte ändras här.',
     'clients.allFunctionsNote': 'Hanterar alla funktioner, även de som ännu inte har skapats.',
@@ -667,6 +676,7 @@ const translations = {
     'validation.userIdRequired': 'Ett användar-ID måste anges',
     'validation.userIdTaken': 'Detta användar-ID är upptaget. Välj ett annat.',
     'validation.orgAffiliationFormat': 'Måste anges på formatet användar-ID@organisationsnummer, där organisationsnumret är 10 siffror',
+    'validation.noQuotationMark': 'Får inte innehålla citattecken (")',
     'validation.eidAttributeRequired': 'Minst en användaridentitet måste anges',
 
     // Footer

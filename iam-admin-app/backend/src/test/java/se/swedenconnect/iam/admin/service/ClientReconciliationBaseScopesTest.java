@@ -95,14 +95,14 @@ class ClientReconciliationBaseScopesTest {
     this.held.put(complete.uuid(), new HashSet<>(REALM.values()));
     when(this.keycloakAdminClient.resolveIamAdminManagedClients()).thenReturn(List.of(old, complete));
 
-    assertThat(this.service.detectDrift()).containsExactly(Map.entry(old.clientId(), 1));
+    assertThat(this.service.detectDrift().missingByClientId()).containsExactly(Map.entry(old.clientId(), 1));
 
     final ReconciliationReport first = this.service.reconcileAll();
     assertThat(first.created()).isEqualTo(1);
     assertThat(first.clients()).isEqualTo(2);
     assertThat(first.errors()).isEmpty();
     assertThat(this.held.get(old.uuid())).contains("id-primary");
-    assertThat(this.service.detectDrift()).isEmpty();
+    assertThat(this.service.detectDrift().missingByClientId()).isEmpty();
 
     final ReconciliationReport second = this.service.reconcileAll();
     assertThat(second.created()).isZero();
@@ -132,14 +132,14 @@ class ClientReconciliationBaseScopesTest {
     this.realm = new HashMap<>(REALM);
     this.realm.remove(PRIMARY);
 
-    assertThat(this.service.detectDrift()).isEmpty();
+    assertThat(this.service.detectDrift().missingByClientId()).isEmpty();
     final ReconciliationReport before = this.service.reconcileAll();
     assertThat(before.created()).isZero();
     assertThat(before.errors()).isEmpty();
     assertThat(this.held.get(client.uuid())).doesNotContain("id-primary");
 
     this.realm = REALM;
-    assertThat(this.service.detectDrift()).containsExactly(Map.entry(client.clientId(), 1));
+    assertThat(this.service.detectDrift().missingByClientId()).containsExactly(Map.entry(client.clientId(), 1));
     assertThat(this.service.reconcileAll().created()).isEqualTo(1);
   }
 

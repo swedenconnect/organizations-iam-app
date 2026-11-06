@@ -828,6 +828,13 @@ organizations, such a client would otherwise be missing every scope and policy, 
 could never obtain a token from it no matter what rights they hold. It also repairs the
 result of a partial failure or a manual edit in the Keycloak admin console.
 
+A client whose scopes, policies and permissions cannot be read from Keycloak, for example because
+Authorization Services are turned off for it, is left alone for the rest of the run. The run's
+report gives one error for it, the reason is logged as a warning, and the other clients are
+reconciled as usual. The **Services** tab marks such a client as not checked and lists it above
+the clients, since it is not known whether it holds what it should. Turn Authorization Services
+on for the client, or remove its OIDC client role, and the next run handles it.
+
 Reconciliation both creates and removes: it creates the artifacts for the functions a client
 handles, and removes the ones for the functions it no longer handles, so narrowing a client's
 `client_functions` takes effect on the next run. Every operation checks for existence before acting, so a run that finds nothing missing

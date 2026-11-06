@@ -229,8 +229,8 @@ honoured.
 | `email`                     | string \| null  | Optional email address. Must contain `@` if given.                    |
 | `personal_identity_number`  | string \| null  | 12-digit Swedish personal identity number.                            |
 | `org_affiliation`           | string \| null  | Organizational affiliation, format `userID@organization-number`.      |
-| `hsa_id`                    | string \| null  | HSA-ID. Any value that is not blank.                                  |
-| `efos_id`                   | string \| null  | EFOS-ID. Any value that is not blank.                                 |
+| `hsa_id`                    | string \| null  | HSA-ID. Any value that is not blank and holds no quotation mark (`"`). |
+| `efos_id`                   | string \| null  | EFOS-ID. Any value that is not blank and holds no quotation mark (`"`). |
 | `phone_number`              | string \| null  | Optional phone number.                                                |
 | `rights`                    | array           | `{ org_identifier, function_id, right }`. `function_id: null` means the right is organization-wide. `right` is `read`, `write`, or `admin`. |
 
@@ -242,7 +242,9 @@ user entry with none of them is rejected as an error, regardless of the deployme
 Import does not look at the registration settings that enable each eID attribute
 (`personal-number-enabled`, `org-affiliation-enabled`, `hsa-id-enabled` and `efos-id-enabled`,
 see [User Registration Settings](iam-admin-configuration.md#user-registration-settings)). A
-value in the file is imported whether or not the registration form offers that field.
+value in the file is imported whether or not the registration form offers that field. For the
+same reason, an `hsa_id` or `efos_id` holding a quotation mark makes the entry an error whatever
+those settings are.
 
 There is no `superuser` field: superuser status cannot be granted through import.
 

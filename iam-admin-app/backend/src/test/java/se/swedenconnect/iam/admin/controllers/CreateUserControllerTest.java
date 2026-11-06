@@ -368,6 +368,38 @@ class CreateUserControllerTest {
     verify(this.keycloakAdminClient).createUser(null, NAME, EMAIL, null, null, "a b/c@å", "1", null, null);
   }
 
+  /** A quotation mark in an HSA-ID or an EFOS-ID is refused before any lookup is made. */
+  @Test
+  void create_hsaIdOrEfosIdWithQuote_returns400WithoutLookup() {
+    this.properties.getUserRegistration().setHsaIdEnabled(true);
+    this.properties.getUserRegistration().setEfosIdEnabled(true);
+
+    final ResponseEntity<?> hsa = this.controller.createUser(
+        eidRequest(PIN, null, "SE\"1", EFOS_ID), this.request);
+    final ResponseEntity<?> efos = this.controller.createUser(
+        eidRequest(PIN, null, HSA_ID, "\""), this.request);
+
+    assertThat(hsa.getStatusCode().value()).isEqualTo(400);
+    assertThat(hsa.getBody()).asString().contains("hsaId");
+    assertThat(efos.getStatusCode().value()).isEqualTo(400);
+    assertThat(efos.getBody()).asString().contains("efosId");
+    verify(this.keycloakAdminClient, never()).findUserIdByPersonalIdentityNumber(anyString());
+    verify(this.keycloakAdminClient, never()).findUserIdByHsaId(anyString());
+    verify(this.keycloakAdminClient, never()).findUserIdByEfosId(anyString());
+    verify(this.keycloakAdminClient, never())
+        .createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any());
+  }
+
+  /** With its setting off, a value holding a quotation mark is ignored like any other value. */
+  @Test
+  void create_quoteInDisabledHsaIdOrEfosId_isIgnored() {
+    final ResponseEntity<?> response = this.controller.createUser(
+        eidRequest(PIN, null, "SE\"1", "\""), this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(201);
+    verify(this.keycloakAdminClient).createUser(null, NAME, EMAIL, PIN, null, null, null, null, null);
+  }
+
   /** With all four settings on, all four values are written. */
   @Test
   @SuppressWarnings("unchecked")

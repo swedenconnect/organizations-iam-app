@@ -13,8 +13,8 @@ installation. See [#143](https://github.com/swedenconnect/organizations-iam-app/
 
 - **HSA-ID and EFOS-ID.** A user can be registered with an HSA-ID (SITHS) and an EFOS-ID (EFOS),
   in addition to the personal identity number and the organizational affiliation. They are
-  stored in the Keycloak user attributes `hsaId` and `efosId`. Any value that is not blank is
-  accepted. Like the other two, each value is unique, and it cannot be changed after the user
+  stored in the Keycloak user attributes `hsaId` and `efosId`. Any value that is not blank and
+  holds no quotation mark (`"`) is accepted. Like the other two, each value is unique, and it cannot be changed after the user
   has been created. See
   [User Registration Settings](../docs/iam-admin-configuration.md#user-registration-settings).
 

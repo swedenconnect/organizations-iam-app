@@ -123,9 +123,16 @@ export function validateIdentityValues(
     errors.orgAffiliation = t('validation.orgAffiliationFormat');
   }
 
-  // The HSA-ID and the EFOS-ID have no format beyond not being blank.
+  // The HSA-ID and the EFOS-ID have no format, but must not hold a quotation mark, since the
+  // backend places them within quotes when it looks for an existing user.
   const hsaId = settings.hsaIdEnabled ? values.hsaId.trim() : '';
   const efosId = settings.efosIdEnabled ? values.efosId.trim() : '';
+  if (hsaId.includes('"')) {
+    errors.hsaId = t('validation.noQuotationMark');
+  }
+  if (efosId.includes('"')) {
+    errors.efosId = t('validation.noQuotationMark');
+  }
 
   if (!pin && !orgAffiliation && !hsaId && !efosId) {
     if (eidAttributeMandatory(settings)) {

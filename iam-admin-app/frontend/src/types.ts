@@ -169,6 +169,15 @@ export interface ManagedClientInput {
   orgRightsAccessToken: boolean;
 }
 
+// GET /api/clients/drift.
+export interface ClientDrift {
+  // client_id -> number of Keycloak artifacts a reconciliation would create.
+  missingByClientId: Record<string, number>;
+  // client_id of each client whose artifacts could not be read. It is not known whether such a
+  // client holds what it should, so it must not look correctly configured.
+  uncheckedClientIds: string[];
+}
+
 export interface ReconciliationReport {
   clients: number;
   created: number;
