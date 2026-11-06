@@ -8,10 +8,9 @@
 
 ### Version 1.0.0
 
-**Date:** _not yet released_
+**Date:** 2026-11-06
 
-- Switching organization no longer reuses the access token obtained for the previous organization. Applications using the iam-security starter now keep access tokens per user, organization and
-  function in the session. See [issue #99](https://github.com/swedenconnect/organizations-iam-app/issues/99).
+- Switching organization no longer reuses the access token obtained for the previous organization. Applications using the iam-security starter now keep access tokens per user, organization and function in the session. See [issue #99](https://github.com/swedenconnect/organizations-iam-app/issues/99).
 
 - Import of a large file no longer stops part-way, and shows its progress ([#104](https://github.com/swedenconnect/organizations-iam-app/issues/104)).
 
