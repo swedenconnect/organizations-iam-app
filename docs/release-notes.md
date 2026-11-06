@@ -23,9 +23,17 @@
 
 - The admin application now has Spring Boot Actuator endpoints, `health` and `info`. See [Management Endpoints](iam-admin-configuration.md#management-endpoints).
 
+- Users can be registered with an HSA-ID or an EFOS-ID, and the new scope `https://id.swedenconnect.se/scope/primary-identifier` releases whichever primary identifiers a user has ([#143](https://github.com/swedenconnect/organizations-iam-app/issues/143)). An existing installation must run `bootstrap-realm.sh` again and then a reconciliation, see [Upgrading an Existing Installation](keycloak-setup.md#upgrading-an-existing-installation).
+
+- A client whose Keycloak artifacts cannot be read, for example one with Authorization Services turned off, no longer stops the Services tab from showing which clients need reconciliation, or a reconciliation from repairing the other clients. The Services tab lists such a client as not checked.
+
+- The eID user matcher tries a list of attributes in order, with the required and forbidden role set per attribute, so one identity provider can serve users identified by different attributes. The matcher settings `requiredRole` and `forbiddenRole`, and the `add-identity-provider.sh` options `--match-attribute`, `--saml-attribute`, `--saml-attribute-format`, `--required-role` and `--forbidden-role`, were removed. A matcher still using the role settings refuses every login until it is rewritten, see [The removed role settings](https://github.com/swedenconnect/organizations-iam-app/blob/main/keycloak/idp-user-matcher/README.md#removed-role-settings).
+
 - Accessibility fixes in the admin application: the import file field has a visible label, the pages fit narrow screens and high zoom without sideways scrolling, the page language follows the selected interface language, and icon buttons and form fields have names that screen readers announce ([#125](https://github.com/swedenconnect/organizations-iam-app/issues/125), [#126](https://github.com/swedenconnect/organizations-iam-app/issues/126), [#129](https://github.com/swedenconnect/organizations-iam-app/issues/129), [#130](https://github.com/swedenconnect/organizations-iam-app/issues/130), [#131](https://github.com/swedenconnect/organizations-iam-app/issues/131)).
 
 - Switching a client between a JWKS URI and an inline JWK Set no longer fails, and turning off the resource server role on a client now takes effect ([#108](https://github.com/swedenconnect/organizations-iam-app/issues/108)).
+
+- The admin application now lists all users, not only the first 50, and organization member lists show user rights directly after an import ([#123](https://github.com/swedenconnect/organizations-iam-app/issues/123)).
 
 
 ### Version 0.9.8

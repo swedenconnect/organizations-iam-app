@@ -91,7 +91,7 @@ class ImportAuditTest {
     when(this.keycloakAdminClient.fetchAllOrganizationGroups()).thenReturn(List.of(
         new OrganizationInfo(ORG, "Digg", null, "group-id", List.of("walletreg"), null, null)));
     when(this.keycloakAdminClient.findUserIdByPersonalIdentityNumber(anyString())).thenReturn(Optional.empty());
-    when(this.keycloakAdminClient.createUser(any(), anyString(), any(), any(), any(), any(), any()))
+    when(this.keycloakAdminClient.createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any()))
         .thenReturn("created-1", "created-2");
     when(this.organizationService.create(anyString(), anyString(), any(), any(), any(), any()))
         .thenAnswer(inv -> new OrganizationInfo(inv.getArgument(0), inv.getArgument(1), null,
@@ -143,6 +143,8 @@ class ImportAuditTest {
         .containsEntry("user_id", "created-1")
         .containsEntry("display_name", "Anna Andersson")
         .containsEntry("personal_identity_number", "197001011234")
+        .containsEntry("hsa_id", "SE2321000016-1234")
+        .containsEntry("efos_id", "efos-4711")
         .containsEntry("temporary_password_set", false);
     assertThat(this.publisher.single("user_right_assigned").getData())
         .containsEntry("organization_identifier", NEW_ORG)
@@ -231,7 +233,7 @@ class ImportAuditTest {
     assertThat(job.status()).isEqualTo(ImportJobStatus.FAILED);
     assertThat(job.error()).contains("audit entry could not be written");
     assertThat(job.report().users()).extracting(ImportItemOutcome::status).containsExactly("created");
-    verify(this.keycloakAdminClient, times(1)).createUser(any(), anyString(), any(), any(), any(), any(), any());
+    verify(this.keycloakAdminClient, times(1)).createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any());
     assertThat(object(this.publisher.single("import_completed"), "import")).containsEntry("status", "failed");
   }
 
@@ -300,6 +302,8 @@ class ImportAuditTest {
           {
             "name": "Anna Andersson",
             "personal_identity_number": "197001011234",
+            "hsa_id": "SE2321000016-1234",
+            "efos_id": "efos-4711",
             "rights": [
               { "org_identifier": "5560000001", "function_id": "demo", "right": "read" },
               { "org_identifier": "5560000001", "right": "write" }

@@ -24,15 +24,18 @@ import se.swedenconnect.iam.admin.keycloak.KeycloakAdminClient;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminException;
 import se.swedenconnect.iam.admin.keycloak.model.ClientArtifactState;
 import se.swedenconnect.iam.admin.keycloak.model.ManagedClientInfo;
+import se.swedenconnect.iam.admin.service.model.DriftReport;
 import se.swedenconnect.iam.admin.service.model.ReconciliationPlan;
 import se.swedenconnect.iam.admin.service.model.ReconciliationReport;
 import se.swedenconnect.iam.admin.service.model.ReconciliationTarget;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 
 /**
  * Brings the KeyCloak artifacts of managed clients in line with the org/function topology.
@@ -40,7 +43,9 @@ import java.util.Set;
  * <p>For every managed client, and every organization that has one of the client's functions
  * attached, the client must hold three OAuth2 client scopes, three Authorization Services scopes,
  * three group policies, three scope permissions, and three optional client scope assignments.
- * Reconciliation creates whatever is missing.</p>
+ * Every managed client must also hold the base optional client scopes, see
+ * {@code KeycloakAdminClient.BASE_OPTIONAL_SCOPES}. Reconciliation creates whatever is missing,
+ * so a base scope removed from a client by hand comes back on the next run.</p>
  *
  * <p>The operation is idempotent, so a run that finds nothing missing makes no changes. It exists
  * to repair drift — clients registered after functions were already attached, partial failures
@@ -109,7 +114,7 @@ public class ClientReconciliationService {
       }
     }
 
-    return this.apply(plan);
+    return this.apply(plan, clients);
   }
 
   /**
@@ -156,25 +161,46 @@ public class ClientReconciliationService {
    * organizations, and no user can obtain an org-scoped token from it. Surfacing the count lets
    * the Services tab say so rather than showing a client that looks correctly configured.</p>
    *
+   * <p>A base optional client scope the client lacks counts as missing too, when the realm has it.
+   * A client without it cannot release the claims the scope carries.</p>
+   *
    * <p>Removals are deliberately not counted. They are not a reason to warn: a client that holds
    * more than it should still works.</p>
    *
-   * @return client_id to the number of artifacts missing, for every OIDC client with at least one
-   *     missing artifact; never {@code null}
-   * @throws KeycloakAdminException on any Keycloak API error
+   * <p>A client whose artifacts cannot be read, for example because Authorization Services are
+   * turned off for it, is reported as unchecked and does not affect the result for the others. It
+   * is not left out, because that would make it look correctly configured.</p>
+   *
+   * @return the clients with at least one missing artifact, and the clients that could not be
+   *     checked; never {@code null}
+   * @throws KeycloakAdminException if the clients, the topology or the realm client scopes cannot
+   *     be read
    */
-  public @NonNull Map<String, Integer> detectDrift() {
+  public @NonNull DriftReport detectDrift() {
     final List<ManagedClientInfo> clients = this.keycloakAdminClient.resolveIamAdminManagedClients();
     final Map<String, Set<String>> topology = this.keycloakAdminClient.fetchOrgFunctionTopology();
     final ReconciliationPlan plan = plan(clients, topology);
 
     final Map<String, String> realmScopeIds = this.keycloakAdminClient.fetchRealmClientScopeIds();
-    final Map<String, ClientArtifactState> states = new LinkedHashMap<>();
+    final ClientStates states = new ClientStates(new ArrayList<>());
     final Map<String, Integer> drift = new LinkedHashMap<>();
 
+    for (final ManagedClientInfo client : clients) {
+      final ClientArtifactState state = states.get(client.uuid(), client.clientId());
+      if (state == null) {
+        continue;
+      }
+      final int missing = KeycloakAdminClient.countMissingBaseOptionalScopes(realmScopeIds, state);
+      if (missing > 0) {
+        drift.merge(client.clientId(), missing, Integer::sum);
+      }
+    }
+
     for (final ReconciliationTarget target : plan.ensure()) {
-      final ClientArtifactState state = states.computeIfAbsent(
-          target.clientUuid(), this.keycloakAdminClient::fetchClientArtifactState);
+      final ClientArtifactState state = states.get(target.clientUuid(), target.clientId());
+      if (state == null) {
+        continue;
+      }
       final int missing = KeycloakAdminClient.countMissingFunctionArtifacts(
           target.orgIdentifier(), target.functionId(), realmScopeIds, state);
       if (missing > 0) {
@@ -185,30 +211,56 @@ public class ClientReconciliationService {
     if (!drift.isEmpty()) {
       log.debug("Clients with missing artifacts: {}", drift);
     }
-    return drift;
+    return new DriftReport(drift, states.unreadableClientIds());
   }
 
   /**
    * Applies a plan, creating missing artifacts and — when the plan carries removals — deleting the
-   * ones that should no longer exist.
+   * ones that should no longer exist. Every client in {@code clients} is also given the base
+   * optional client scopes it lacks, whether or not the plan has work for it.
    *
    * <p>A failure on one target is recorded in the report and does not abort the run: a single
-   * broken client must not stop the others from being repaired.</p>
+   * broken client must not stop the others from being repaired. A client whose artifacts cannot be
+   * read is recorded once and skipped for the rest of the run. A base scope the realm does not
+   * have is logged and skipped.</p>
    *
    * @param plan the plan to apply
+   * @param clients the managed clients the plan was computed for
    * @return the reconciliation report; never {@code null}
    * @throws KeycloakAdminException if the realm client scopes cannot be read
    */
-  public @NonNull ReconciliationReport apply(final @NonNull ReconciliationPlan plan) {
+  public @NonNull ReconciliationReport apply(
+      final @NonNull ReconciliationPlan plan, final @NonNull List<ManagedClientInfo> clients) {
     final Map<String, String> realmScopeIds = this.keycloakAdminClient.fetchRealmClientScopeIds();
-    final Map<String, ClientArtifactState> states = new LinkedHashMap<>();
     final List<String> errors = new ArrayList<>();
+    final ClientStates states = new ClientStates(errors);
     int created = 0;
     int removed = 0;
 
+    if (!clients.isEmpty()) {
+      KeycloakAdminClient.warnMissingBaseOptionalScopes(realmScopeIds);
+    }
+    for (final ManagedClientInfo client : clients) {
+      final ClientArtifactState state = states.get(client.uuid(), client.clientId());
+      if (state == null) {
+        continue;
+      }
+      try {
+        created += this.keycloakAdminClient.ensureBaseOptionalScopes(client.uuid(), realmScopeIds, state);
+      }
+      catch (final KeycloakAdminException e) {
+        final String message = "Failed to add base optional client scopes on client '%s': %s".formatted(
+            client.clientId(), e.getMessage());
+        log.warn(message);
+        errors.add(message);
+      }
+    }
+
     for (final ReconciliationTarget target : plan.ensure()) {
-      final ClientArtifactState state = states.computeIfAbsent(
-          target.clientUuid(), this.keycloakAdminClient::fetchClientArtifactState);
+      final ClientArtifactState state = states.get(target.clientUuid(), target.clientId());
+      if (state == null) {
+        continue;
+      }
       final Integer count = this.attempt(errors, target, "create",
           () -> this.keycloakAdminClient.ensureFunctionArtifacts(
               target.clientUuid(), target.orgIdentifier(), target.functionId(), realmScopeIds, state));
@@ -218,6 +270,9 @@ public class ClientReconciliationService {
     }
 
     for (final ReconciliationTarget target : plan.remove()) {
+      if (states.isUnreadable(target.clientUuid())) {
+        continue;
+      }
       final Integer count = this.attempt(errors, target, "remove",
           () -> this.keycloakAdminClient.removeClientFunctionArtifacts(
               target.clientUuid(), target.orgIdentifier(), target.functionId(), realmScopeIds));
@@ -226,8 +281,13 @@ public class ClientReconciliationService {
       }
     }
 
+    final int clientCount = (int) Stream.concat(
+            clients.stream().map(ManagedClientInfo::uuid),
+            Stream.concat(plan.ensure().stream(), plan.remove().stream()).map(ReconciliationTarget::clientUuid))
+        .distinct()
+        .count();
     final ReconciliationReport report = new ReconciliationReport(
-        plan.clientCount(), created, removed, List.copyOf(errors));
+        clientCount, created, removed, List.copyOf(errors));
 
     if (created > 0 || removed > 0 || !errors.isEmpty()) {
       log.info("Client reconciliation: {} artifacts created, {} removed across {} clients, {} errors",
@@ -263,6 +323,80 @@ public class ClientReconciliationService {
       log.warn(message);
       errors.add(message);
       return null;
+    }
+  }
+
+  /**
+   * Reads each client's artifact state once, and remembers the clients that could not be read so
+   * that a failed read is logged and reported once per client.
+   */
+  private final class ClientStates {
+
+    /** The states read so far, by client UUID. */
+    private final Map<String, ClientArtifactState> states = new HashMap<>();
+
+    /** The client_id of each client that could not be read, by client UUID. */
+    private final Map<String, String> unreadable = new LinkedHashMap<>();
+
+    /** Where a failed read is reported. */
+    private final List<String> errors;
+
+    /**
+     * Constructor.
+     *
+     * @param errors the list a failed read is added to
+     */
+    ClientStates(final @NonNull List<String> errors) {
+      this.errors = errors;
+    }
+
+    /**
+     * Returns the artifact state of a client, reading it on first use.
+     *
+     * @param clientUuid the Keycloak UUID of the client
+     * @param clientId the OAuth2 client_id of the client, used in the error message
+     * @return the client's state, or {@code null} if it could not be read
+     */
+    @Nullable ClientArtifactState get(final @NonNull String clientUuid, final @NonNull String clientId) {
+      if (this.unreadable.containsKey(clientUuid)) {
+        return null;
+      }
+      final ClientArtifactState cached = this.states.get(clientUuid);
+      if (cached != null) {
+        return cached;
+      }
+      try {
+        final ClientArtifactState state =
+            ClientReconciliationService.this.keycloakAdminClient.fetchClientArtifactState(clientUuid);
+        this.states.put(clientUuid, state);
+        return state;
+      }
+      catch (final KeycloakAdminException e) {
+        final String message = "Failed to read the artifacts of client '%s': %s".formatted(clientId, e.getMessage());
+        log.warn(message);
+        this.errors.add(message);
+        this.unreadable.put(clientUuid, clientId);
+        return null;
+      }
+    }
+
+    /**
+     * Tells whether a client has been found unreadable.
+     *
+     * @param clientUuid the Keycloak UUID of the client
+     * @return {@code true} if a read of the client has failed
+     */
+    boolean isUnreadable(final @NonNull String clientUuid) {
+      return this.unreadable.containsKey(clientUuid);
+    }
+
+    /**
+     * Returns the client_id of each client that could not be read.
+     *
+     * @return the client IDs, in the order the reads failed; never {@code null}
+     */
+    @NonNull List<String> unreadableClientIds() {
+      return List.copyOf(this.unreadable.values());
     }
   }
 

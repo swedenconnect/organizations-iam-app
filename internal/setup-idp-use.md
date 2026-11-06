@@ -229,15 +229,14 @@ icon on its row and fill in the dialog:
 | Alias | `eid-match-on-pnr` |
 | Authenticator Reference | empty |
 | Authenticator Reference Max Age | empty |
-| Match attribute | `personalIdentityNumber` |
-| Required role | empty |
-| Forbidden role | empty |
+| Match attributes | one entry, `personalIdentityNumber` |
 
 Save.
 
 `Alias` is just a name for this configuration and is required by Keycloak. `Authenticator Reference`
-and `Authenticator Reference Max Age` are generic Keycloak fields, not used here. The two role fields
-are set in step 10, once the `superuser` role exists.
+and `Authenticator Reference Max Age` are generic Keycloak fields, not used here. Roles are added to
+the entry in step 10, once the `superuser` role exists. See the
+[matcher's README](../keycloak/idp-user-matcher/README.md#the-match-list) for the entry format.
 
 ## 6. Bind the flow
 
@@ -294,9 +293,14 @@ Not needed for the initial SAML test. When it is added:
 1. Register it as a second identity provider under its own alias.
 2. Set **Hide on login page** to On. It is reached only from the admin app's admin login route,
    which passes `kc_idp_hint=<alias>`.
-3. Give it its own first broker login flow, same two steps, with **Match attribute** set to whatever
-   the corporate IdP asserts and **Required role** = `superuser`.
-4. Set **Forbidden role** = `superuser` on the eID flow at the same time.
+3. Give it its own first broker login flow, same two steps, with one **Match attributes** entry for
+   whatever the corporate IdP asserts, carrying `requiredRole=superuser`, for example
+   `efosId;requiredRole=superuser`.
+4. Change the eID flow's entry to `personalIdentityNumber;forbiddenRole=superuser` at the same time.
+
+When both populations come through one proxy identity provider instead, there is one flow, and its
+list carries both entries in order: `personalIdentityNumber;forbiddenRole=superuser`, then
+`efosId;requiredRole=superuser`.
 
 ## Things to check while testing
 

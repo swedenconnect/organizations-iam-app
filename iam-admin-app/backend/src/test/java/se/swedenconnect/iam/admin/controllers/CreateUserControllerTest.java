@@ -62,6 +62,8 @@ class CreateUserControllerTest {
   private static final String EMAIL = "martin@example.com";
   private static final String PIN = "196911292032";
   private static final String ORG_AFFILIATION = "martin@2021006883";
+  private static final String HSA_ID = "SE2321000016-1234";
+  private static final String EFOS_ID = "efos-4711";
   private static final String CREATED_ID = "created-uuid";
 
   @Mock
@@ -90,8 +92,10 @@ class CreateUserControllerTest {
     when(this.keycloakAdminClient.findUserIdByPersonalIdentityNumber(anyString()))
         .thenReturn(Optional.empty());
     when(this.keycloakAdminClient.findUserIdByOrgAffiliation(anyString())).thenReturn(Optional.empty());
+    when(this.keycloakAdminClient.findUserIdByHsaId(anyString())).thenReturn(Optional.empty());
+    when(this.keycloakAdminClient.findUserIdByEfosId(anyString())).thenReturn(Optional.empty());
     when(this.keycloakAdminClient.usernameExists(anyString())).thenReturn(false);
-    when(this.keycloakAdminClient.createUser(any(), anyString(), any(), any(), any(), any(), any()))
+    when(this.keycloakAdminClient.createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any()))
         .thenReturn(CREATED_ID);
   }
 
@@ -106,7 +110,7 @@ class CreateUserControllerTest {
         request(NAME, EMAIL, null, PIN, null, null, null), this.request);
 
     assertThat(response.getStatusCode().value()).isEqualTo(201);
-    verify(this.keycloakAdminClient).createUser(null, NAME, EMAIL, PIN, null, null, null);
+    verify(this.keycloakAdminClient).createUser(null, NAME, EMAIL, PIN, null, null, null, null, null);
   }
 
   /** No eID attribute at all is refused when eid-attribute-required is set, which it is by default. */
@@ -117,7 +121,7 @@ class CreateUserControllerTest {
 
     assertThat(response.getStatusCode().value()).isEqualTo(400);
     verify(this.keycloakAdminClient, never())
-        .createUser(any(), anyString(), any(), any(), any(), any(), any());
+        .createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any());
   }
 
   /** With the requirement lifted, a user without any eID attribute is created. */
@@ -129,7 +133,7 @@ class CreateUserControllerTest {
         request(NAME, EMAIL, null, null, null, null, null), this.request);
 
     assertThat(response.getStatusCode().value()).isEqualTo(201);
-    verify(this.keycloakAdminClient).createUser(null, NAME, EMAIL, null, null, null, null);
+    verify(this.keycloakAdminClient).createUser(null, NAME, EMAIL, null, null, null, null, null, null);
   }
 
   /** A blank name is refused, as before. */
@@ -149,7 +153,7 @@ class CreateUserControllerTest {
 
     assertThat(response.getStatusCode().value()).isEqualTo(400);
     verify(this.keycloakAdminClient, never())
-        .createUser(any(), anyString(), any(), any(), any(), any(), any());
+        .createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any());
   }
 
   /** An email address without an '@' is refused. */
@@ -172,7 +176,7 @@ class CreateUserControllerTest {
         request(NAME, EMAIL, "martin", PIN, null, null, null), this.request);
 
     assertThat(response.getStatusCode().value()).isEqualTo(201);
-    verify(this.keycloakAdminClient).createUser(null, NAME, EMAIL, PIN, null, null, null);
+    verify(this.keycloakAdminClient).createUser(null, NAME, EMAIL, PIN, null, null, null, null, null);
     verify(this.keycloakAdminClient, never()).usernameExists(anyString());
   }
 
@@ -185,7 +189,7 @@ class CreateUserControllerTest {
         request(NAME, EMAIL, "martin", PIN, null, null, null), this.request);
 
     assertThat(response.getStatusCode().value()).isEqualTo(201);
-    verify(this.keycloakAdminClient).createUser("martin", NAME, EMAIL, PIN, null, null, null);
+    verify(this.keycloakAdminClient).createUser("martin", NAME, EMAIL, PIN, null, null, null, null, null);
   }
 
   /** A user ID that is already taken is refused, and no existing user is offered. */
@@ -200,7 +204,7 @@ class CreateUserControllerTest {
     assertThat(response.getStatusCode().value()).isEqualTo(409);
     assertThat(response.getBody()).isEqualTo(Map.of("reason", "USER_ID_TAKEN"));
     verify(this.keycloakAdminClient, never())
-        .createUser(any(), anyString(), any(), any(), any(), any(), any());
+        .createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any());
   }
 
   // ---------------------------------------------------------------------------
@@ -216,7 +220,7 @@ class CreateUserControllerTest {
         request(NAME, EMAIL, "martin", PIN, null, null, "secret"), this.request);
 
     assertThat(response.getStatusCode().value()).isEqualTo(201);
-    verify(this.keycloakAdminClient).createUser("martin", NAME, EMAIL, PIN, null, null, null);
+    verify(this.keycloakAdminClient).createUser("martin", NAME, EMAIL, PIN, null, null, null, null, null);
   }
 
   /** With both settings on, the password is passed on to Keycloak. */
@@ -229,7 +233,7 @@ class CreateUserControllerTest {
         request(NAME, EMAIL, "martin", PIN, null, null, "secret"), this.request);
 
     assertThat(response.getStatusCode().value()).isEqualTo(201);
-    verify(this.keycloakAdminClient).createUser("martin", NAME, EMAIL, PIN, null, null, "secret");
+    verify(this.keycloakAdminClient).createUser("martin", NAME, EMAIL, PIN, null, null, null, null, "secret");
   }
 
   // ---------------------------------------------------------------------------
@@ -246,7 +250,7 @@ class CreateUserControllerTest {
         request(NAME, EMAIL, null, PIN, ORG_AFFILIATION, null, null), this.request);
 
     assertThat(response.getStatusCode().value()).isEqualTo(201);
-    verify(this.keycloakAdminClient).createUser(null, NAME, EMAIL, null, ORG_AFFILIATION, null, null);
+    verify(this.keycloakAdminClient).createUser(null, NAME, EMAIL, null, ORG_AFFILIATION, null, null, null, null);
   }
 
   /** An orgAffiliation is ignored, and does not satisfy the requirement, when it is not enabled. */
@@ -260,7 +264,7 @@ class CreateUserControllerTest {
 
     assertThat(response.getStatusCode().value()).isEqualTo(400);
     verify(this.keycloakAdminClient, never())
-        .createUser(any(), anyString(), any(), any(), any(), any(), any());
+        .createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any());
   }
 
   /** An orgAffiliation alone satisfies the requirement. */
@@ -272,7 +276,7 @@ class CreateUserControllerTest {
         request(NAME, EMAIL, null, null, ORG_AFFILIATION, null, null), this.request);
 
     assertThat(response.getStatusCode().value()).isEqualTo(201);
-    verify(this.keycloakAdminClient).createUser(null, NAME, EMAIL, null, ORG_AFFILIATION, null, null);
+    verify(this.keycloakAdminClient).createUser(null, NAME, EMAIL, null, ORG_AFFILIATION, null, null, null, null);
   }
 
   /** The orgAffiliation format is validated: a local part, a single '@' and ten digits. */
@@ -287,12 +291,166 @@ class CreateUserControllerTest {
       assertThat(response.getStatusCode().value()).as("orgAffiliation '%s'", bad).isEqualTo(400);
     }
     verify(this.keycloakAdminClient, never())
-        .createUser(any(), anyString(), any(), any(), any(), any(), any());
+        .createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any());
+  }
+
+  /** An HSA-ID is passed on, trimmed, when its setting is on, and alone satisfies the requirement. */
+  @Test
+  void create_hsaIdOnly_returns201() {
+    this.properties.getUserRegistration().setPersonalNumberEnabled(false);
+    this.properties.getUserRegistration().setHsaIdEnabled(true);
+
+    final ResponseEntity<?> response = this.controller.createUser(
+        eidRequest(null, null, " " + HSA_ID + " ", null), this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(201);
+    verify(this.keycloakAdminClient).createUser(null, NAME, EMAIL, null, null, HSA_ID, null, null, null);
+  }
+
+  /** An EFOS-ID is passed on when its setting is on, and alone satisfies the requirement. */
+  @Test
+  void create_efosIdOnly_returns201() {
+    this.properties.getUserRegistration().setPersonalNumberEnabled(false);
+    this.properties.getUserRegistration().setEfosIdEnabled(true);
+
+    final ResponseEntity<?> response = this.controller.createUser(
+        eidRequest(null, null, null, EFOS_ID), this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(201);
+    verify(this.keycloakAdminClient).createUser(null, NAME, EMAIL, null, null, null, EFOS_ID, null, null);
+  }
+
+  /**
+   * With their settings off, an HSA-ID and an EFOS-ID are ignored, and do not satisfy the
+   * requirement. These are the defaults.
+   */
+  @Test
+  void create_hsaIdAndEfosIdIgnoredWhenDisabled() {
+    final ResponseEntity<?> refused = this.controller.createUser(
+        eidRequest(null, null, HSA_ID, EFOS_ID), this.request);
+
+    assertThat(refused.getStatusCode().value()).isEqualTo(400);
+
+    final ResponseEntity<?> created = this.controller.createUser(
+        eidRequest(PIN, null, HSA_ID, EFOS_ID), this.request);
+
+    assertThat(created.getStatusCode().value()).isEqualTo(201);
+    verify(this.keycloakAdminClient).createUser(null, NAME, EMAIL, PIN, null, null, null, null, null);
+    verify(this.keycloakAdminClient, never()).findUserIdByHsaId(anyString());
+    verify(this.keycloakAdminClient, never()).findUserIdByEfosId(anyString());
+  }
+
+  /** Blank values do not count, so they do not satisfy the requirement. */
+  @Test
+  void create_blankHsaIdAndEfosIdDoNotSatisfyTheRequirement() {
+    this.properties.getUserRegistration().setPersonalNumberEnabled(false);
+    this.properties.getUserRegistration().setHsaIdEnabled(true);
+    this.properties.getUserRegistration().setEfosIdEnabled(true);
+
+    final ResponseEntity<?> response = this.controller.createUser(
+        eidRequest(null, null, "  ", "\t"), this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(400);
+    verify(this.keycloakAdminClient, never())
+        .createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any());
+  }
+
+  /** No format is imposed on an HSA-ID or an EFOS-ID beyond not being blank. */
+  @Test
+  void create_hsaIdAndEfosIdHaveNoFormat() {
+    this.properties.getUserRegistration().setHsaIdEnabled(true);
+    this.properties.getUserRegistration().setEfosIdEnabled(true);
+
+    final ResponseEntity<?> response = this.controller.createUser(
+        eidRequest(null, null, "a b/c@å", "1"), this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(201);
+    verify(this.keycloakAdminClient).createUser(null, NAME, EMAIL, null, null, "a b/c@å", "1", null, null);
+  }
+
+  /** A quotation mark in an HSA-ID or an EFOS-ID is refused before any lookup is made. */
+  @Test
+  void create_hsaIdOrEfosIdWithQuote_returns400WithoutLookup() {
+    this.properties.getUserRegistration().setHsaIdEnabled(true);
+    this.properties.getUserRegistration().setEfosIdEnabled(true);
+
+    final ResponseEntity<?> hsa = this.controller.createUser(
+        eidRequest(PIN, null, "SE\"1", EFOS_ID), this.request);
+    final ResponseEntity<?> efos = this.controller.createUser(
+        eidRequest(PIN, null, HSA_ID, "\""), this.request);
+
+    assertThat(hsa.getStatusCode().value()).isEqualTo(400);
+    assertThat(hsa.getBody()).asString().contains("hsaId");
+    assertThat(efos.getStatusCode().value()).isEqualTo(400);
+    assertThat(efos.getBody()).asString().contains("efosId");
+    verify(this.keycloakAdminClient, never()).findUserIdByPersonalIdentityNumber(anyString());
+    verify(this.keycloakAdminClient, never()).findUserIdByHsaId(anyString());
+    verify(this.keycloakAdminClient, never()).findUserIdByEfosId(anyString());
+    verify(this.keycloakAdminClient, never())
+        .createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any());
+  }
+
+  /** With its setting off, a value holding a quotation mark is ignored like any other value. */
+  @Test
+  void create_quoteInDisabledHsaIdOrEfosId_isIgnored() {
+    final ResponseEntity<?> response = this.controller.createUser(
+        eidRequest(PIN, null, "SE\"1", "\""), this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(201);
+    verify(this.keycloakAdminClient).createUser(null, NAME, EMAIL, PIN, null, null, null, null, null);
+  }
+
+  /** With all four settings on, all four values are written. */
+  @Test
+  @SuppressWarnings("unchecked")
+  void create_allFourEidAttributes() {
+    this.properties.getUserRegistration().setOrgAffiliationEnabled(true);
+    this.properties.getUserRegistration().setHsaIdEnabled(true);
+    this.properties.getUserRegistration().setEfosIdEnabled(true);
+
+    final ResponseEntity<?> response = this.controller.createUser(
+        eidRequest(PIN, ORG_AFFILIATION, HSA_ID, EFOS_ID), this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(201);
+    verify(this.keycloakAdminClient).createUser(null, NAME, EMAIL, PIN, ORG_AFFILIATION, HSA_ID, EFOS_ID, null, null);
+    assertThat((Map<String, String>) response.getBody())
+        .containsEntry("hsaId", HSA_ID)
+        .containsEntry("efosId", EFOS_ID);
   }
 
   // ---------------------------------------------------------------------------
   // Duplicates
   // ---------------------------------------------------------------------------
+
+  /** An existing user with the same HSA-ID is reported with their ID. */
+  @Test
+  void create_duplicateHsaId_returns409WithExistingUser() {
+    this.properties.getUserRegistration().setHsaIdEnabled(true);
+    when(this.keycloakAdminClient.findUserIdByHsaId(HSA_ID)).thenReturn(Optional.of("existing-uuid"));
+
+    final ResponseEntity<?> response = this.controller.createUser(
+        eidRequest(PIN, null, HSA_ID, null), this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(409);
+    assertThat(response.getBody()).isEqualTo(Map.of("existingUserId", "existing-uuid"));
+    verify(this.keycloakAdminClient, never())
+        .createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any());
+  }
+
+  /** An existing user with the same EFOS-ID is reported with their ID. */
+  @Test
+  void create_duplicateEfosId_returns409WithExistingUser() {
+    this.properties.getUserRegistration().setEfosIdEnabled(true);
+    when(this.keycloakAdminClient.findUserIdByEfosId(EFOS_ID)).thenReturn(Optional.of("existing-uuid"));
+
+    final ResponseEntity<?> response = this.controller.createUser(
+        eidRequest(PIN, null, null, EFOS_ID), this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(409);
+    assertThat(response.getBody()).isEqualTo(Map.of("existingUserId", "existing-uuid"));
+    verify(this.keycloakAdminClient, never())
+        .createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any());
+  }
 
   /** An existing user with the same personal identity number is reported with their ID. */
   @Test
@@ -306,7 +464,7 @@ class CreateUserControllerTest {
     assertThat(response.getStatusCode().value()).isEqualTo(409);
     assertThat(response.getBody()).isEqualTo(Map.of("existingUserId", "existing-uuid"));
     verify(this.keycloakAdminClient, never())
-        .createUser(any(), anyString(), any(), any(), any(), any(), any());
+        .createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any());
   }
 
   /** The same treatment for an existing orgAffiliation. */
@@ -322,7 +480,7 @@ class CreateUserControllerTest {
     assertThat(response.getStatusCode().value()).isEqualTo(409);
     assertThat(response.getBody()).isEqualTo(Map.of("existingUserId", "existing-uuid"));
     verify(this.keycloakAdminClient, never())
-        .createUser(any(), anyString(), any(), any(), any(), any(), any());
+        .createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any());
   }
 
   // ---------------------------------------------------------------------------
@@ -364,15 +522,20 @@ class CreateUserControllerTest {
     assertThat(response.getStatusCode().value()).isEqualTo(201);
     final ArgumentCaptor<String> userId = ArgumentCaptor.forClass(String.class);
     verify(this.keycloakAdminClient).createUser(
-        userId.capture(), anyString(), any(), any(), any(), any(), any());
+        userId.capture(), anyString(), any(), any(), any(), any(), any(), any(), any());
     assertThat(userId.getValue()).isNull();
-    verify(this.keycloakAdminClient).createUser(null, NAME, EMAIL, null, null, null, null);
+    verify(this.keycloakAdminClient).createUser(null, NAME, EMAIL, null, null, null, null, null, null);
   }
 
   private static CreateUserRequest request(final String name, final String email, final String userId,
       final String pin, final String orgAffiliation, final String phoneNumber,
       final String temporaryPassword) {
-    return new CreateUserRequest(name, email, userId, pin, orgAffiliation, phoneNumber, temporaryPassword);
+    return new CreateUserRequest(name, email, userId, pin, orgAffiliation, null, null, phoneNumber, temporaryPassword);
+  }
+
+  private static CreateUserRequest eidRequest(final String pin, final String orgAffiliation, final String hsaId,
+      final String efosId) {
+    return new CreateUserRequest(NAME, EMAIL, null, pin, orgAffiliation, hsaId, efosId, null, null);
   }
 
 }

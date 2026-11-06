@@ -9,6 +9,9 @@ import { apiUrl, apiFetch } from '@/lib/api';
 
 export const DEFAULT_USER_PAGE_SIZE = 50;
 
+/** Batch size used internally by fetchAllUsers — large enough to fetch everything in one round-trip for typical deployments. */
+const FETCH_ALL_BATCH_SIZE = 500;
+
 /**
  * Get a page of users from the backend.
  */
@@ -18,6 +21,39 @@ export async function getUsers(page = 0, size = DEFAULT_USER_PAGE_SIZE): Promise
     throw new Error(`Failed to fetch users: ${response.status}`);
   }
   return response.json();
+}
+
+/**
+ * Fetch all users by paging through the backend until all pages are loaded.
+ * Uses a large batch size to minimise the number of HTTP round-trips.
+ */
+export async function fetchAllUsers(): Promise<UserPage> {
+  const first = await getUsers(0, FETCH_ALL_BATCH_SIZE);
+  if (first.totalPages <= 1) {
+    return first;
+  }
+  const rest = await Promise.all(
+    Array.from({ length: first.totalPages - 1 }, (_, i) => getUsers(i + 1, FETCH_ALL_BATCH_SIZE))
+  );
+  return {
+    ...first,
+    content: [first, ...rest].flatMap((p) => p.content),
+  };
+}
+
+/**
+ * Derive the user rights state (one entry per right) from the rights carried on the users.
+ */
+export function deriveUserRoles(users: User[]): UserOrganizationRole[] {
+  return users.flatMap((u) =>
+    (u.rights ?? []).map((r) => ({
+      id: `${u.id}:${r.orgIdentifier}:${r.functionId ?? '*'}`,
+      userId: u.id,
+      organizationId: r.orgIdentifier,
+      functionId: r.functionId ?? undefined,
+      role: r.right,
+    }))
+  );
 }
 
 /**
@@ -32,8 +68,9 @@ export class LastAdminError extends Error {
 }
 
 /**
- * Thrown when POST /api/users returns 409 because an identity given for the new user, the
- * personal identity number or the organizational affiliation, is already registered. The
+ * Thrown when POST /api/users returns 409 because an eID attribute given for the new user, the
+ * personal identity number, the organizational affiliation, the HSA-ID or the EFOS-ID, is already
+ * registered. The
  * existing user's Keycloak ID is included when the backend provides it, so the caller can
  * offer that user instead.
  */
@@ -68,6 +105,8 @@ export async function createUser(user: CreateUserInput): Promise<User> {
       userId: user.userId ?? null,
       personalIdentityNumber: user.personalIdentityNumber?.replace(/-/g, '') ?? null,
       orgAffiliation: user.orgAffiliation ?? null,
+      hsaId: user.hsaId ?? null,
+      efosId: user.efosId ?? null,
       phoneNumber: user.phoneNumber ?? null,
       temporaryPassword: user.temporaryPassword ?? null,
     }),
@@ -92,6 +131,8 @@ export async function createUser(user: CreateUserInput): Promise<User> {
     email: data.email ?? '',
     personalIdentityNumber: data.personalIdentityNumber ?? '',
     orgAffiliation: data.orgAffiliation || undefined,
+    hsaId: data.hsaId || undefined,
+    efosId: data.efosId || undefined,
     phoneNumber: data.phoneNumber ?? undefined,
     superuser: false,
     rights: [],
@@ -120,6 +161,8 @@ export async function updateUser(id: string, user: Partial<User>): Promise<User>
     email: data.email ?? '',
     personalIdentityNumber: data.personalIdentityNumber ?? '',
     orgAffiliation: data.orgAffiliation || undefined,
+    hsaId: data.hsaId || undefined,
+    efosId: data.efosId || undefined,
     phoneNumber: data.phoneNumber || undefined,
     superuser: user.superuser ?? false,
     rights: user.rights ?? [],
@@ -149,6 +192,8 @@ export async function getUserById(id: string): Promise<User | null> {
     email: data.email ?? '',
     personalIdentityNumber: data.personalIdentityNumber ?? '',
     orgAffiliation: data.orgAffiliation || undefined,
+    hsaId: data.hsaId || undefined,
+    efosId: data.efosId || undefined,
     phoneNumber: data.phoneNumber || undefined,
     superuser: false,
     rights: [],

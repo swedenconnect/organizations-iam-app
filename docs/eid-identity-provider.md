@@ -20,7 +20,7 @@ matched, never created.**
 2. [**The four artefacts**](#the-four-artefacts)
 3. [**Direct or through a proxy**](#direct-or-proxy)
 4. [**Registering the provider**](#registering-the-provider)
-5. [**One identity family per flow**](#one-family-per-flow)
+5. [**Several identity families**](#one-family-per-flow)
 6. [**Things that silently do not work**](#things-that-silently-do-not-work)
 7. [**Verifying it**](#verifying-it)
 
@@ -87,12 +87,17 @@ the whole arrangement.
 
 ### The role guards
 
-The matcher takes an optional `requiredRole` and `forbiddenRole`, both realm roles
-resolved by name. They are what keeps two user populations apart on one realm: give the
-eID provider `forbiddenRole = superuser` and an eID login can never land on a superuser
-account, even if one somehow carried a matching attribute. A configured role name that
-does not exist in the realm fails the flow rather than being ignored, so a typo cannot
-silently disable the guard.
+Each entry in the matcher's list may carry a `requiredRole` and a `forbiddenRole`, both
+realm roles resolved by name, for example `personalIdentityNumber;forbiddenRole=superuser`.
+They are what keeps two user populations apart on one realm: forbid `superuser` on the
+attribute regular users log in with, require it on the one superusers log in with, and a
+regular eID login can never land on a superuser account. A configured role name that does
+not exist in the realm fails the flow rather than being ignored, so a typo cannot silently
+disable the guard.
+
+The roles are checked at the first login only. Once Keycloak has linked the external
+identity to the user, later logins go straight to that user. See
+[Links and the role check](https://github.com/swedenconnect/organizations-iam-app/blob/main/keycloak/idp-user-matcher/README.md#links-and-the-role-check).
 
 ---
 
@@ -151,7 +156,7 @@ for every option.
     --sso-url https://proxy.example.org/idp/profile/SAML2/POST/SSO \
     --sp-entity-id https://keycloak.example.com/auth/realms/myrealm \
     --signing-certificate ./proxy-signing.crt \
-    --forbidden-role superuser
+    --match "personalIdentityNumber;samlAttribute=urn:oid:1.2.752.29.4.13;forbiddenRole=superuser"
 ```
 
 Where an identity provider for the same upstream already exists in another realm, its
@@ -165,7 +170,7 @@ certificate by hand:
     --username admin --password secret \
     --template-realm otherrealm --template-alias eid \
     --sp-entity-id https://keycloak.example.com/auth/realms/myrealm \
-    --forbidden-role superuser
+    --match "personalIdentityNumber;samlAttribute=urn:oid:1.2.752.29.4.13;forbiddenRole=superuser"
 ```
 
 The script sets strict SAML defaults: signature validation on, signed authentication
@@ -189,25 +194,38 @@ realm:
 ---
 
 <a name="one-family-per-flow"></a>
-## 5. One identity family per flow
+## 5. Several identity families
 
 Different eID methods identify a person with different attributes. A Swedish personal eID
-presents a personal identity number; a foreign eID presents an eIDAS person identifier or
-a provisional identifier; an organisational eID presents an organisational identity. The
-matcher's `matchAttribute` is **one value per execution**.
+presents a personal identity number; EFOS presents an EFOS-ID; a foreign eID presents an
+eIDAS person identifier or a provisional identifier; an organisational eID presents an
+organisational identity.
 
-So offering several eID families is not one provider with one flow. It is, per family, its
-own attribute importer and its own first broker login flow with its own `matchAttribute`.
-Plan for that from the start, because retrofitting it means re-cutting flows that are
-already bound and in use.
+The matcher's `matchAttribute` is an **ordered list**, so one provider and one flow can
+serve several families. Behind a proxy that fronts several eIDs, this is the normal case:
+the realm sees one provider. Add an attribute importer per attribute, and an entry per
+attribute in the list, in the order they should be tried:
 
-Two things can reduce the number of flows:
+```
+personalIdentityNumber;forbiddenRole=superuser
+efosId;requiredRole=superuser
+```
+
+An attribute absent from the login moves on to the next one, and the first attribute that
+finds a user decides. See
+[the matcher's README](https://github.com/swedenconnect/organizations-iam-app/blob/main/keycloak/idp-user-matcher/README.md#the-match-list)
+for every rule, including when a login is refused.
+
+Separate providers with their own flows are still the way to go when the realm brokers to
+the eIDs directly, since each provider then has its own flow anyway.
+
+Two things can reduce the number of attributes to match on:
 
 - Where the upstream can map a foreign identity onto a Swedish personal identity number
   and releases that mapped value, a foreign user with such a number can be matched on the
   same attribute as a domestic one.
 - Where the upstream releases which IdP actually authenticated the user, a single
-  conditional flow can branch on that instead of one flow per family.
+  conditional flow can branch on that.
 
 Both depend on what the upstream actually releases, so confirm before designing around
 them.
@@ -276,7 +294,8 @@ combination fail in both directions at once.
 
 ### Role names that do not exist
 
-A `requiredRole` or `forbiddenRole` naming a role the realm does not have fails the flow.
+A `requiredRole` or `forbiddenRole` in a list entry naming a role the realm does not have
+fails the flow.
 That is deliberate, so a typo cannot quietly remove a guard, but it means the roles have
 to exist before the provider is registered.
 

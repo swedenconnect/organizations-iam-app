@@ -14,6 +14,8 @@
 
     2.2. [Spring Boot Configuration](#spring-boot-configuration)
 
+    2.2b. [Identifying the User](#identifying-the-user)
+
     2.3. [The iam-security Starter](#the-iam-security-starter)
 
     2.4. [Authority Model](#authority-model)
@@ -109,9 +111,11 @@ Register the application using the `add-oidc-client.sh` script. This script crea
 client in Keycloak with `private_key_jwt` client authentication, adds the `org_rights`
 protocol mapper to the ID token, and adds the `scope-org-identifier-mapper` to the access
 token. It also adds `https://id.oidc.se/scope/naturalPersonNumber`,
-`https://id.oidc.se/scope/naturalPersonOrgId` and `phone` as optional client scopes, so the
-application can ask for the personal identity number, the organizational identity claims
-(`orgAffiliation`, `orgName`, `orgNumber`) and the phone number. See
+`https://id.oidc.se/scope/naturalPersonOrgId`,
+`https://id.swedenconnect.se/scope/primary-identifier` and `phone` as optional client scopes,
+so the application can ask for the personal identity number, the organizational identity
+claims (`orgAffiliation`, `orgName`, `orgNumber`), the user's primary identifiers (see
+[2.2b](#identifying-the-user)) and the phone number. See
 `compose/keycloak-scripts/README.md` for the full option reference.
 
 ```bash
@@ -204,6 +208,8 @@ spring:
               - https://id.oidc.se/scope/naturalPersonNumber
               # Add for the organizational identity claims (orgAffiliation, orgName, orgNumber):
               # - https://id.oidc.se/scope/naturalPersonOrgId
+              # Add for the user's primary identifiers, whichever the user has:
+              # - https://id.swedenconnect.se/scope/primary-identifier
             authorization-grant-type: authorization_code
             redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
             client-authentication-method: private_key_jwt
@@ -267,6 +273,38 @@ public class JwksController {
 ```
 
 Ensure `/jwks` is permitted in the security filter chain without authentication.
+
+<a name="identifying-the-user"></a>
+### 2.2b. Identifying the User
+
+A user is registered with one or more primary identifiers, depending on the eID the user logs
+in with: a personal identity number, an organizational affiliation, an HSA-ID (SITHS) or an
+EFOS-ID (EFOS). A client that needs to know who the user is, whichever of these the user has,
+requests the scope `https://id.swedenconnect.se/scope/primary-identifier`. It then receives
+the following claims:
+
+| Claim | Content |
+|---|---|
+| `https://id.oidc.se/claim/personalIdentityNumber` | The Swedish personal identity number, 12 digits |
+| `https://id.oidc.se/claim/orgAffiliation` | The organizational affiliation, `userID@organization-number` |
+| `http://sambi.se/attributes/1/employeeHsaId` | The HSA-ID |
+| `https://id.swedenconnect.se/claim/efos-id` | The EFOS-ID |
+
+- Each claim is a single string, with exactly the name in the table. It is not nested in a
+  JSON object.
+- A claim is present only when the user has that identifier. A user registered with only an
+  HSA-ID gets only the HSA-ID claim, so the client must handle any combination, including a
+  user with none of them.
+- The claims are in the ID token, the access token and the UserInfo response.
+- The user ID is the `sub` claim, which every token carries whatever scopes are requested.
+- The scope may be requested together with `https://id.oidc.se/scope/naturalPersonNumber` or
+  `https://id.oidc.se/scope/naturalPersonOrgId`. A claim that two scopes both release still
+  appears once, with one value.
+- Without the scope, none of these claims is released by it.
+
+A client registered before the scope existed has its request refused with the error
+`invalid_scope` until the client has been given the scope. See
+[Upgrading an Existing Installation](keycloak-setup.md#upgrading-an-existing-installation).
 
 <a name="the-iam-security-starter"></a>
 ### 2.3. The iam-security Starter

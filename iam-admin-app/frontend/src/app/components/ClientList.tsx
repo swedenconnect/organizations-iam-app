@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FunctionType, ManagedClient } from '@/types';
+import { ClientDrift, FunctionType, ManagedClient } from '@/types';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Input } from '@/app/components/ui/input';
@@ -19,10 +19,27 @@ import { useLanguage } from '@/app/contexts/LanguageContext';
 interface ClientListProps {
   clients: ManagedClient[];
   functions: FunctionType[];
-  /** client_id -> artifacts a reconciliation would create. Absent or 0 means fully provisioned. */
-  drift?: Record<string, number>;
+  /** What a reconciliation would create, and which clients could not be checked. */
+  drift?: ClientDrift;
   onEdit: (client: ManagedClient) => void;
   onDelete: (id: string) => void;
+}
+
+/** What the Services tab shows about a client's Keycloak artifacts. */
+export type ClientDriftStatus =
+  | { kind: 'unchecked' }
+  | { kind: 'missing'; missing: number }
+  | null;
+
+/**
+ * Tells what to show about a client's Keycloak artifacts. A client that could not be checked is
+ * never shown as correctly configured. `null` means the client holds what it should.
+ */
+export function clientDriftStatus(clientId: string, drift: ClientDrift | undefined): ClientDriftStatus {
+  if (!drift) return null;
+  if (drift.uncheckedClientIds.includes(clientId)) return { kind: 'unchecked' };
+  const missing = drift.missingByClientId[clientId] ?? 0;
+  return missing > 0 ? { kind: 'missing', missing } : null;
 }
 
 export function ClientList({
@@ -102,17 +119,30 @@ export function ClientList({
                       {t('clients.badgeAllFunctions')}
                     </span>
                   )}
-                  {(drift?.[client.clientId] ?? 0) > 0 && (
-                    <span
-                      className="px-2 py-0.5 rounded-full text-xs shrink-0 border border-amber-400 bg-amber-100 text-amber-900"
-                      title={t('clients.driftHint')}
-                    >
-                      {t('clients.driftBadge').replace(
-                        '{missing}',
-                        String(drift?.[client.clientId] ?? 0)
-                      )}
-                    </span>
-                  )}
+                  {(() => {
+                    const status = clientDriftStatus(client.clientId, drift);
+                    if (status?.kind === 'unchecked') {
+                      return (
+                        <span
+                          className="px-2 py-0.5 rounded-full text-xs shrink-0 border border-red-300 bg-red-50 text-red-800"
+                          title={t('clients.driftUncheckedHint')}
+                        >
+                          {t('clients.driftUncheckedBadge')}
+                        </span>
+                      );
+                    }
+                    if (status?.kind === 'missing') {
+                      return (
+                        <span
+                          className="px-2 py-0.5 rounded-full text-xs shrink-0 border border-amber-400 bg-amber-100 text-amber-900"
+                          title={t('clients.driftHint')}
+                        >
+                          {t('clients.driftBadge').replace('{missing}', String(status.missing))}
+                        </span>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
                 <p className="text-xs text-gray-500 mt-1 break-all">{client.clientId}</p>
               </div>

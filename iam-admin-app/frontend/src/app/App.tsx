@@ -11,7 +11,7 @@ import { ClientForm } from '@/app/components/ClientForm';
 import { ImportExportPanel } from '@/app/components/ImportExportPanel';
 import { Header } from '@/app/components/Header';
 import { Footer } from '@/app/components/Footer';
-import { Organization, User, UserOrganizationRole, FunctionType, OrganizationFunction, AdminSessionData, OrganizationData, ManagedClient, ManagedClientInput, UserRegistrationSettings } from '@/types';
+import { Organization, User, UserOrganizationRole, FunctionType, OrganizationFunction, AdminSessionData, OrganizationData, ManagedClient, ManagedClientInput, ClientDrift, UserRegistrationSettings } from '@/types';
 import { LastAdminError, UserIdTakenError } from '@/services/userService';
 import { UserFormValues } from '@/app/components/UserForm';
 import { DEFAULT_USER_REGISTRATION_SETTINGS, UserRegistrationProvider } from '@/app/contexts/UserRegistrationContext';
@@ -33,12 +33,12 @@ import {
   createOrganization,
   updateOrganization,
   deleteOrganization,
-  getUsers,
+  fetchAllUsers,
+  deriveUserRoles,
   createUser,
   updateUser,
   deleteUser,
   getUserById,
-  getUserRoles,
   addUserToOrganization,
   removeUserFromOrganization,
   addUserToFunction,
@@ -46,6 +46,7 @@ import {
   removeAllUserRoles,
   getClients,
   getClientDrift,
+  EMPTY_CLIENT_DRIFT,
   createClient,
   updateClient,
   deleteClient,
@@ -104,9 +105,9 @@ function AppContent() {
   const [organizationFunctions, setOrganizationFunctions] = useState<OrganizationFunction[]>([]);
 
   const [clients, setClients] = useState<ManagedClient[]>([]);
-  // client_id -> number of Keycloak artifacts a reconciliation would create. Non-empty means
-  // the markers say what a client should hold but nothing has created it yet.
-  const [clientDrift, setClientDrift] = useState<Record<string, number>>({});
+  // What a reconciliation would create per client, and the clients that could not be checked. A
+  // non-empty count means the markers say what a client should hold but nothing has created it yet.
+  const [clientDrift, setClientDrift] = useState<ClientDrift>(EMPTY_CLIENT_DRIFT);
   const [selectedClient, setSelectedClient] = useState<ManagedClient | null>(null);
   const [isClientFormOpen, setIsClientFormOpen] = useState(false);
   const [allowFunctionRemoval, setAllowFunctionRemoval] = useState(false);
@@ -135,10 +136,9 @@ function AppContent() {
 
 
   const loadData = useCallback(async (skipFunctions = false, skipOrganizations = false, skipUsers = false) => {
-    const [orgs, userPage, roles, funcs] = await Promise.all([
+    const [orgs, userPage, funcs] = await Promise.all([
       skipOrganizations ? Promise.resolve(null) : fetchAllOrganizations(),
-      skipUsers ? Promise.resolve(null) : getUsers(),
-      getUserRoles(),
+      skipUsers ? Promise.resolve(null) : fetchAllUsers(),
       skipFunctions ? Promise.resolve(null) : getFunctions(),
     ]);
 
@@ -161,18 +161,21 @@ function AppContent() {
       ));
     }
     if (userPage !== null) {
-      setUsers(userPage.content.map((u) => ({
+      const mappedUsers: User[] = userPage.content.map((u) => ({
         id: u.userId,
         personalIdentityNumber: u.personalIdentityNumber ?? '',
         orgAffiliation: u.orgAffiliation ?? undefined,
+        hsaId: u.hsaId ?? undefined,
+        efosId: u.efosId ?? undefined,
         name: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || u.userId,
         email: u.email ?? '',
         phoneNumber: u.phoneNumber ?? undefined,
         superuser: u.superuser,
         rights: u.rights,
-      })));
+      }));
+      setUsers(mappedUsers);
+      setUserRoles(deriveUserRoles(mappedUsers));
     }
-    setUserRoles(roles);
     if (funcs !== null) setFunctions(funcs);
   }, []);
 
@@ -233,7 +236,7 @@ function AppContent() {
             // Fetch orgs and users from the API (not cached in session)
             const [orgPage, userPage] = await Promise.all([
               fetchAllOrganizations(),
-              getUsers(),
+              fetchAllUsers(),
             ]);
 
             const mappedOrgs: Organization[] = orgPage.content.map(mapOrgData);
@@ -257,6 +260,8 @@ function AppContent() {
               id: u.userId,
               personalIdentityNumber: u.personalIdentityNumber ?? '',
               orgAffiliation: u.orgAffiliation ?? undefined,
+              hsaId: u.hsaId ?? undefined,
+              efosId: u.efosId ?? undefined,
               name: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.username || u.userId,
               email: u.email ?? '',
               phoneNumber: u.phoneNumber ?? undefined,
@@ -265,16 +270,7 @@ function AppContent() {
             }));
             setUsers(mappedUsers);
 
-            const derivedUserRoles: UserOrganizationRole[] = mappedUsers.flatMap((u) =>
-              (u.rights ?? []).map((r) => ({
-                id: `${u.id}:${r.orgIdentifier}:${r.functionId ?? '*'}`,
-                userId: u.id,
-                organizationId: r.orgIdentifier,
-                functionId: r.functionId ?? undefined,
-                role: r.right as 'read' | 'write' | 'admin',
-              }))
-            );
-            setUserRoles(derivedUserRoles);
+            setUserRoles(deriveUserRoles(mappedUsers));
           } else {
             await loadData();
           }
@@ -703,7 +699,7 @@ function AppContent() {
       setClientDrift(await getClientDrift());
     } catch (error) {
       console.error('Error loading client drift:', error);
-      setClientDrift({});
+      setClientDrift(EMPTY_CLIENT_DRIFT);
     }
   };
 
@@ -982,10 +978,22 @@ function AppContent() {
                 </div>
               </div>
 
-              {Object.keys(clientDrift).length > 0 && (
+              {Object.keys(clientDrift.missingByClientId).length > 0 && (
                 <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
                   <p className="font-medium">{t('clients.driftBannerTitle')}</p>
                   <p className="mt-1">{t('clients.driftBannerBody')}</p>
+                </div>
+              )}
+
+              {clientDrift.uncheckedClientIds.length > 0 && (
+                <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900">
+                  <p className="font-medium">{t('clients.driftUncheckedBannerTitle')}</p>
+                  <p className="mt-1">{t('clients.driftUncheckedBannerBody')}</p>
+                  <ul className="mt-1 list-disc pl-5">
+                    {clientDrift.uncheckedClientIds.map((clientId) => (
+                      <li key={clientId} className="break-all">{clientId}</li>
+                    ))}
+                  </ul>
                 </div>
               )}
 
