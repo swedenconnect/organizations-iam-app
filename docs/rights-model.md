@@ -59,8 +59,9 @@ The system supports the following requirements:
   [Claims and Scopes Specification for the Swedish OpenID Connect Profile](https://www.oidc.se/specifications/swedish-oidc-claims-specification-1_0.html).
   An organizational affiliation (`userID@organization-number`) may be recorded instead of, or in
   addition to, the personal identity number, and is released together with the organization name
-  and number as the organizational identity claims of the same specification. Which attributes
-  are collected when a user is registered, and whether at least one of them is required, is
+  and number as the organizational identity claims of the same specification. An HSA-ID, for
+  users logging in with SITHS, and an EFOS-ID, for users logging in with EFOS, may be recorded
+  as well. Which attributes are collected when a user is registered, and whether at least one of them is required, is
   configured per deployment. See [IAM Admin Configuration](iam-admin-configuration.md).
 - Usernames are random UUIDs carrying no semantic meaning, unless the deployment lets the
   administrator assign the user ID.
@@ -144,6 +145,19 @@ https://id.oidc.se/claim/personalIdentityNumber
 See
 the [Swedish OIDC Claims Specification](https://www.oidc.se/specifications/swedish-oidc-claims-specification-1_0.html)
 for the full definition.
+
+**Primary identifiers.** A user is identified by one or more of four attributes, depending on
+the eID the user logs in with. Each is unique: no two users share a value.
+
+| User attribute | Content | Claim |
+|---|---|---|
+| `personalIdentityNumber` | Personal identity number, 12 digits | `https://id.oidc.se/claim/personalIdentityNumber` |
+| `orgAffiliation` | Organizational affiliation, `userID@organization-number` | `https://id.oidc.se/claim/orgAffiliation` |
+| `hsaId` | HSA-ID | `http://sambi.se/attributes/1/employeeHsaId` |
+| `efosId` | EFOS-ID | `https://id.swedenconnect.se/claim/efos-id` |
+
+The scope `https://id.swedenconnect.se/scope/primary-identifier` releases the claims for the
+ones a user has. See [Identifying the User](iam-integration-guide.md#identifying-the-user).
 
 <a name="rights"></a>
 

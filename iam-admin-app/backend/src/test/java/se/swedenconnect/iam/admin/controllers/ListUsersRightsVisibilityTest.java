@@ -258,7 +258,7 @@ class ListUsersRightsVisibilityTest {
   }
 
   private static UserInfo userInfo(final String userId) {
-    return new UserInfo(userId, userId, "Klara", "Karlsson", null, null, null, null, false,
+    return new UserInfo(userId, userId, "Klara", "Karlsson", null, null, null, null, null, null, false,
         List.of());
   }
 

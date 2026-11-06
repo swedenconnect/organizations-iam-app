@@ -34,6 +34,8 @@ public record UserInfo(
     @Nullable String email,
     @Nullable String personalIdentityNumber,
     @Nullable String orgAffiliation,
+    @Nullable String hsaId,
+    @Nullable String efosId,
     @Nullable String phoneNumber,
     boolean superuser,
     @NonNull List<UserRight> rights) {
@@ -53,6 +55,8 @@ public record UserInfo(
         this.email,
         this.personalIdentityNumber,
         this.orgAffiliation,
+        this.hsaId,
+        this.efosId,
         this.phoneNumber,
         this.superuser,
         this.rights.stream().filter(rightsFilter).toList());

@@ -28,7 +28,9 @@ For an overview of the rights model and key concepts, see
 
     2.4c. [The Organizational Identity Claims and the `naturalPersonOrgId` Scope](#the-organizational-identity-claims)
 
-    2.4d. [The OIDC Sweden User Profile Attributes](#the-oidc-sweden-user-profile)
+    2.4d. [The User Profile Attributes](#the-oidc-sweden-user-profile)
+
+    2.4e. [The Primary Identifier Scope](#the-primary-identifier-scope)
 
     2.5. [The `org_rights` Protocol Mapper](#the-org_rights-protocol-mapper)
 
@@ -45,6 +47,8 @@ For an overview of the rights model and key concepts, see
     2.10. [Managed Clients and Reconciliation](#managed-clients-and-reconciliation)
 
     2.11. [The Login Theme](#the-login-theme)
+
+3. [**Upgrading an Existing Installation**](#upgrading-an-existing-installation)
 
 - [**Appendix A: Step-by-Step Setup with Examples**](#appendix-a-step-by-step-setup-with-examples)
 
@@ -310,7 +314,7 @@ All three are written when the user is created and are not maintained afterwards
 every other identity attribute on a user.
 
 <a name="the-oidc-sweden-user-profile"></a>
-### 2.4d. The OIDC Sweden User Profile Attributes
+### 2.4d. The User Profile Attributes
 
 The `oidc-sweden-claims-plugin` JAR registers the two protocol mapper types and an info
 endpoint, and nothing else. It creates no client scope and no user profile attribute in any
@@ -318,13 +322,15 @@ realm. `bootstrap-realm.sh` is what puts them there, and a realm that has not be
 bootstrapped releases none of these claims.
 
 The realm sets no unmanaged attribute policy, so an attribute that is not declared is
-silently dropped when a user is written. The declarations follow the plugin's own
-definitions: two attribute groups and ten attributes, each viewable by admin and user,
-editable by admin only, single-valued and not required.
+silently dropped when a user is written. The OIDC Sweden declarations follow the plugin's own
+definitions: two attribute groups and ten attributes. Two more attributes, `hsaId` and
+`efosId`, hold the HSA-ID and the EFOS-ID. They are not part of the Swedish OIDC Claims
+Specification, so they belong to no attribute group. Every attribute is viewable by admin and
+user, editable by admin only, single-valued and not required.
 
 | Attribute group | Attributes |
 |---|---|
-| (none) | `middleName`, `birthdate` |
+| (none) | `middleName`, `birthdate`, `hsaId`, `efosId` |
 | `oidc-sweden-natural-person` | `personalIdentityNumber`, `coordinationNumber`, `coordinationNumberLevel`, `previousCoordinationNumber` |
 | `oidc-sweden-org-id` | `orgAffiliation`, `orgName`, `orgNumber`, `orgUnit` |
 
@@ -334,9 +340,63 @@ there. A realm bootstrapped by an earlier version of the script therefore keeps 
 version put on it. The selector has no counterpart in the specification; remove it under
 **Realm settings → User profile** if the attribute should follow the definitions above.
 
-The IAM admin application writes `personalIdentityNumber`, `orgAffiliation`, `orgNumber` and
-`orgName`. The remaining attributes are declared so that a token can carry them when an
-identity provider or another administrative route supplies them.
+The IAM admin application writes `personalIdentityNumber`, `orgAffiliation`, `orgNumber`,
+`orgName`, `hsaId` and `efosId`. The remaining attributes are declared so that a token can carry
+them when an identity provider or another administrative route supplies them.
+
+<a name="the-primary-identifier-scope"></a>
+### 2.4e. The Primary Identifier Scope
+
+The scope `https://id.swedenconnect.se/scope/primary-identifier` releases the identifiers a
+user is registered with, whichever of them the user has. A client that needs to know who the
+user is, whatever eID the user is registered for, requests this one scope rather than one
+scope per identifier.
+
+**Client Scope:**
+
+| Setting | Value |
+|---|---|
+| Name | `https://id.swedenconnect.se/scope/primary-identifier` |
+| Protocol | `openid-connect` |
+| Include in token scope | `true` |
+| Mappers | Four of Keycloak's built-in **User Attribute** mappers, see below |
+
+**Mappers:**
+
+| Mapper name | User attribute | Claim name in the token | `claim.name` in the mapper configuration |
+|---|---|---|---|
+| `personalIdentityNumber` | `personalIdentityNumber` | `https://id.oidc.se/claim/personalIdentityNumber` | `https://id\.oidc\.se/claim/personalIdentityNumber` |
+| `orgAffiliation` | `orgAffiliation` | `https://id.oidc.se/claim/orgAffiliation` | `https://id\.oidc\.se/claim/orgAffiliation` |
+| `hsaId` | `hsaId` | `http://sambi.se/attributes/1/employeeHsaId` | `http://sambi\.se/attributes/1/employeeHsaId` |
+| `efosId` | `efosId` | `https://id.swedenconnect.se/claim/efos-id` | `https://id\.swedenconnect\.se/claim/efos-id` |
+
+Each mapper has the claim JSON type `String`, is not multivalued, and adds its claim to the ID
+token, the access token, the UserInfo response and token introspection. A user without a
+value for an attribute gets no claim for it.
+
+Keycloak reads an unescaped dot in a claim name as a path into a nested JSON object, so
+`https://id.oidc.se/claim/orgAffiliation` entered as it stands would produce a nested object
+rather than one claim. Every dot in the configured claim name is therefore escaped with a
+backslash, and the token carries the flat claim name from the third column. When the mappers
+are created by hand in the Admin Console, type the escaped form into **Token Claim Name**.
+
+The user ID is carried in `sub`, which every token holds, so the scope has no mapper for it.
+
+The scope can be requested together with `naturalPersonNumber` or `naturalPersonOrgId`. The
+personal identity number and the organizational affiliation are then emitted by two mappers,
+and the token still holds one value for each claim.
+
+**Attaching the scope to clients:**
+
+The scope is an **optional** client scope, so a client receives these claims only when it asks
+for the scope. `add-oidc-client.sh` adds it to the clients it registers, and the IAM admin
+application gives it to every client holding the OIDC client role, as one of the base
+optional scopes, see [2.10](#managed-clients-and-reconciliation). A client that does not hold
+the scope and requests it anyway has the request refused with the OAuth2 error
+`invalid_scope`.
+
+`bootstrap-realm.sh` creates the scope and its four mappers. Re-running it adds a mapper that
+is missing and leaves existing ones as they stand.
 
 <a name="the-org_rights-protocol-mapper"></a>
 ### 2.5. The `org_rights` Protocol Mapper
@@ -453,6 +513,7 @@ Assign the following roles from the `realm-management` client to the service acc
 
 - Add `https://id.oidc.se/scope/naturalPersonNumber` as an **optional** scope.
 - Add `https://id.oidc.se/scope/naturalPersonOrgId` as an **optional** scope.
+- Add `https://id.swedenconnect.se/scope/primary-identifier` as an **optional** scope.
 - Add `phone` as an **optional** scope.
 - Add `{org}:{function}:{right}` scopes as **optional** scopes as they are created.
 
@@ -505,6 +566,7 @@ Credentials tab, then set the **JWKS URL** on the Keys tab to the application's
 
 - Add `https://id.oidc.se/scope/naturalPersonNumber` as an **optional** scope.
 - Add `https://id.oidc.se/scope/naturalPersonOrgId` as an **optional** scope.
+- Add `https://id.swedenconnect.se/scope/primary-identifier` as an **optional** scope.
 - Add `phone` as an **optional** scope.
 - Add `{org}:{function}:{right}` scopes as **optional** scopes as they are created.
 
@@ -766,11 +828,43 @@ organizations, such a client would otherwise be missing every scope and policy, 
 could never obtain a token from it no matter what rights they hold. It also repairs the
 result of a partial failure or a manual edit in the Keycloak admin console.
 
+A client whose scopes, policies and permissions cannot be read from Keycloak, for example because
+Authorization Services are turned off for it, is left alone for the rest of the run. The run's
+report gives one error for it, the reason is logged as a warning, and the other clients are
+reconciled as usual. The **Services** tab marks such a client as not checked and lists it above
+the clients, since it is not known whether it holds what it should. Turn Authorization Services
+on for the client, or remove its OIDC client role, and the next run handles it.
+
 Reconciliation both creates and removes: it creates the artifacts for the functions a client
 handles, and removes the ones for the functions it no longer handles, so narrowing a client's
 `client_functions` takes effect on the next run. Every operation checks for existence before acting, so a run that finds nothing missing
 makes no changes, and concurrent runs on several application instances converge to the same
 state.
+
+**Base optional scopes:**
+
+Every client holding the OIDC client role is given four optional client scopes, whatever
+functions it handles:
+
+- `https://id.oidc.se/scope/naturalPersonNumber`
+- `https://id.oidc.se/scope/naturalPersonOrgId`
+- `https://id.swedenconnect.se/scope/primary-identifier`
+- `phone`
+
+They are added when a client is registered or takes on the OIDC client role, and every
+reconciliation run, on demand, on a schedule or after a client is created or updated in the
+admin application, adds any of them that a client lacks. A scope the client already holds, as
+an optional or a default scope, is left alone. A resource server without the OIDC client role
+is given none of them.
+
+A base scope that the realm does not have yet is logged as a warning and skipped, and the run
+goes on with the other scopes and clients. Once `bootstrap-realm.sh` has created the scope, the
+next run adds it. The scopes added count in the run's report, and the **Services** tab reports
+a client that lacks a base scope the realm has as needing reconciliation.
+
+A base scope removed from a client by hand in the Keycloak Admin Console comes back on the next
+reconciliation run. To keep a client from releasing these claims, leave the scope unrequested
+in the client's authorization requests instead.
 
 <a name="the-login-theme"></a>
 ### 2.11. The Login Theme (`IamOrgAdmin-Swedenconnect`)
@@ -816,6 +910,48 @@ Keycloak. For quick iteration on the CSS, a copy of the theme directory can be m
 `/opt/keycloak/themes/IamOrgAdmin-Swedenconnect/login`, which is the `compose/config/keycloak/themes`
 directory that the Compose file already mounts. Remove that copy again before using the JAR, since two
 themes with the same name conflict.
+
+---
+
+<a name="upgrading-an-existing-installation"></a>
+## 3. Upgrading an Existing Installation
+
+A new version of this project may add realm configuration, such as a client scope, a protocol
+mapper or a user profile attribute. `bootstrap-realm.sh` adds what is missing to a realm that
+already exists and leaves everything else as it stands, so an existing installation is
+upgraded by running it again. Existing clients get new base optional scopes from
+reconciliation.
+
+After deploying the new version of the provider JARs and the admin application, do the
+following, in order:
+
+1. Run `bootstrap-realm.sh` against the realm, with the same arguments as when it was set up:
+
+    ```bash
+    ./keycloak/scripts/bootstrap-realm.sh \
+        --url https://keycloak.example.com \
+        --realm orgiam \
+        --username admin \
+        --password <admin-password>
+    ```
+
+    This creates new client scopes and their mappers, and declares new user profile
+    attributes. Until it has run, the admin application cannot store values for attributes
+    the realm does not declare, since Keycloak drops them.
+
+2. Run reconciliation, either with **Reconcile All** under the **Services** tab, as a
+   superuser, or with `POST /api/clients/reconcile`. This gives every client holding the OIDC
+   client role the base optional scopes it lacks, see
+   [2.10](#managed-clients-and-reconciliation).
+
+Until both steps have been done, existing clients do not hold a new base scope. A client that
+requests such a scope before then has its request refused with the OAuth2 error
+`invalid_scope`, at the authorization endpoint as well as the token endpoint, and the user
+cannot log in through that client with that scope.
+
+Scheduled reconciliation is off by default (`iam.admin.client-reconciliation.enabled`), so do
+not rely on it to run by itself. Clients registered or updated in the admin application after
+step 1 get the new scopes at once.
 
 ---
 

@@ -114,7 +114,9 @@ for interactively.
 Bootstraps a new Keycloak realm with the full base configuration required by the IAM
 system, as described in
 [Keycloak Setup](https://docs.swedenconnect.se/organizations-iam-app/keycloak-setup.html)
-sections 2.1–2.5 and 2.8b.
+sections 2.1–2.5 and 2.8b. Running it again against an existing realm is how an installation
+gets the realm configuration a new version adds, see
+[Upgrading an Existing Installation](https://docs.swedenconnect.se/organizations-iam-app/keycloak-setup.html#upgrading-an-existing-installation).
 
 **What it sets up:**
 
@@ -127,10 +129,17 @@ sections 2.1–2.5 and 2.8b.
     - `https://id.oidc.se/scope/naturalPersonNumber` (`oidc-sweden-claims-mapper`)
     - `https://id.oidc.se/scope/naturalPersonOrgId` (`oidc-sweden-claims-mapper`)
 - User profile attribute groups: `oidc-sweden-natural-person` and `oidc-sweden-org-id`
-- User profile attributes: `middleName`, `birthdate`, `personalIdentityNumber`,
-  `coordinationNumber`, `coordinationNumberLevel`, `previousCoordinationNumber`,
-  `orgAffiliation`, `orgName`, `orgNumber` and `orgUnit`
+- User profile attributes of the Swedish OIDC Claims Specification: `middleName`,
+  `birthdate`, `personalIdentityNumber`, `coordinationNumber`, `coordinationNumberLevel`,
+  `previousCoordinationNumber`, `orgAffiliation`, `orgName`, `orgNumber` and `orgUnit`
+- User profile attributes outside that specification, in no attribute group: `hsaId` and
+  `efosId`
 - Client scope: `phone` (built-in; created if missing, with `phone_number` mapper)
+- Client scope: `https://id.swedenconnect.se/scope/primary-identifier`, with four built-in
+  User Attribute mappers releasing `personalIdentityNumber`, `orgAffiliation`, `hsaId` and
+  `efosId` into the ID token, the access token and the UserInfo response. The claim names have
+  their dots escaped, so that Keycloak does not nest them. See
+  [The Primary Identifier Scope](https://docs.swedenconnect.se/organizations-iam-app/keycloak-setup.html#the-primary-identifier-scope).
 - Client Policy profile: `resource-function-profile` (contains the `resource-function-executor`)
 - Client Policy: `resource-function-policy` (applies the profile to all confidential clients)
 
@@ -138,7 +147,8 @@ The `oidc-sweden-claims-plugin` JAR registers the two protocol mapper types and 
 else, so the scopes, attribute groups and attributes above are all created by this script.
 Only what is missing is added: an attribute already present keeps its definition, so a realm
 bootstrapped by an earlier version of the script keeps the scope selector that version put
-on `personalIdentityNumber`.
+on `personalIdentityNumber`. The mappers of the primary identifier scope are matched on name:
+a missing one is added, and an existing one is left as it stands.
 
 Does **not** create clients or users. All steps are idempotent and safe to re-run.
 
@@ -304,7 +314,8 @@ downstream APIs on behalf of users.
 - The `scope-org-identifier-mapper` on the access token
 - The `resource-audience-mapper` on the access token
 - Optional client scopes: `https://id.oidc.se/scope/naturalPersonNumber`,
-  `https://id.oidc.se/scope/naturalPersonOrgId` and `phone`
+  `https://id.oidc.se/scope/naturalPersonOrgId`,
+  `https://id.swedenconnect.se/scope/primary-identifier` and `phone`
 - Service account with `realm-management` roles (if `--service-account` is passed)
 
 A re-run against an existing client overwrites `redirectUris`, the iam-admin marker

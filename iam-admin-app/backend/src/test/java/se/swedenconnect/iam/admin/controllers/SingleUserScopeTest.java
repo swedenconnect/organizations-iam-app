@@ -159,6 +159,23 @@ class SingleUserScopeTest {
     assertThat(response.getStatusCode().value()).isEqualTo(200);
   }
 
+  /** The eID attributes are returned with the user, an absent one as an empty string. */
+  @Test
+  @SuppressWarnings("unchecked")
+  void getUser_returnsTheEidAttributes() {
+    this.setupSession(Set.of(ICA), orgEntry(ICA, "admin"));
+    this.setupRights(TARGET, new UserRight(ICA, null, "read"));
+    when(this.keycloakAdminClient.fetchUserById(TARGET)).thenReturn(Optional.of(new UserInfo(TARGET, TARGET,
+        "Klara", "Karlsson", null, "198001011234", null, "SE2321000016-1234", "efos-4711", null, false, List.of())));
+
+    final Map<String, String> body = (Map<String, String>) this.controller.getUser(TARGET, this.request).getBody();
+
+    assertThat(body).containsEntry("personalIdentityNumber", "198001011234")
+        .containsEntry("orgAffiliation", "")
+        .containsEntry("hsaId", "SE2321000016-1234")
+        .containsEntry("efosId", "efos-4711");
+  }
+
   /** And updated exactly as before. */
   @Test
   void updateUser_visibleToCaller_updatesTheUser() {
@@ -275,7 +292,7 @@ class SingleUserScopeTest {
   }
 
   private static UserInfo userInfo(final String userId) {
-    return new UserInfo(userId, userId, "Klara", "Karlsson", "klara@example.com", null, null, null,
+    return new UserInfo(userId, userId, "Klara", "Karlsson", "klara@example.com", null, null, null, null, null,
         false, List.of());
   }
 

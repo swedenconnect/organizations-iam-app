@@ -23,6 +23,10 @@
 
 - The admin application now has Spring Boot Actuator endpoints, `health` and `info`. See [Management Endpoints](iam-admin-configuration.md#management-endpoints).
 
+- Users can be registered with an HSA-ID or an EFOS-ID, and the new scope `https://id.swedenconnect.se/scope/primary-identifier` releases whichever primary identifiers a user has ([#143](https://github.com/swedenconnect/organizations-iam-app/issues/143)). An existing installation must run `bootstrap-realm.sh` again and then a reconciliation, see [Upgrading an Existing Installation](keycloak-setup.md#upgrading-an-existing-installation).
+
+- A client whose Keycloak artifacts cannot be read, for example one with Authorization Services turned off, no longer stops the Services tab from showing which clients need reconciliation, or a reconciliation from repairing the other clients. The Services tab lists such a client as not checked.
+
 - Accessibility fixes in the admin application: the import file field has a visible label, the pages fit narrow screens and high zoom without sideways scrolling, the page language follows the selected interface language, and icon buttons and form fields have names that screen readers announce ([#125](https://github.com/swedenconnect/organizations-iam-app/issues/125), [#126](https://github.com/swedenconnect/organizations-iam-app/issues/126), [#129](https://github.com/swedenconnect/organizations-iam-app/issues/129), [#130](https://github.com/swedenconnect/organizations-iam-app/issues/130), [#131](https://github.com/swedenconnect/organizations-iam-app/issues/131)).
 
 

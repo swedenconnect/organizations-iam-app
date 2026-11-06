@@ -48,13 +48,13 @@ import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
 import se.swedenconnect.iam.admin.keycloak.model.FunctionInfo;
 import se.swedenconnect.iam.admin.keycloak.model.ManagedClientInfo;
 import se.swedenconnect.iam.admin.service.ClientReconciliationService;
+import se.swedenconnect.iam.admin.service.model.DriftReport;
 import se.swedenconnect.iam.admin.service.model.ReconciliationReport;
 
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.text.ParseException;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -365,8 +365,12 @@ public class ClientController {
    * correctly configured while holding no scopes at all. This is what lets the Services tab say a
    * reconciliation is still needed.</p>
    *
+   * <p>A client whose artifacts cannot be read is listed as unchecked and does not fail the
+   * request.</p>
+   *
    * @param request the HTTP servlet request
-   * @return 200 with the affected clients; 403 if not superuser; 500 on Keycloak error
+   * @return 200 with the affected clients; 403 if not superuser; 500 if the clients, the topology
+   *     or the realm client scopes cannot be read
    */
   @GetMapping(value = "/clients/drift", produces = MediaType.APPLICATION_JSON_VALUE)
   public ResponseEntity<?> getDrift(final HttpServletRequest request) {
@@ -378,11 +382,12 @@ public class ClientController {
     }
 
     try {
-      final Map<String, Integer> drift = this.reconciliationService.detectDrift();
-      if (!drift.isEmpty()) {
-        log.info("GET /api/clients/drift — {} client(s) missing artifacts: {}", drift.size(), drift);
+      final DriftReport drift = this.reconciliationService.detectDrift();
+      if (!drift.missingByClientId().isEmpty()) {
+        log.info("GET /api/clients/drift — {} client(s) missing artifacts: {}",
+            drift.missingByClientId().size(), drift.missingByClientId());
       }
-      return ResponseEntity.ok(new ClientDriftResponse(drift));
+      return ResponseEntity.ok(new ClientDriftResponse(drift.missingByClientId(), drift.uncheckedClientIds()));
     }
     catch (final KeycloakAdminException e) {
       log.error("GET /api/clients/drift — Keycloak error: {}", e.getMessage(), e);

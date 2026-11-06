@@ -29,6 +29,7 @@ import java.util.Set;
  * @param policyNames names of the Authorization Services policies on the client
  * @param permissionNames names of the Authorization Services scope permissions on the client
  * @param optionalScopeIds Keycloak UUIDs of the client's optional OAuth2 client scopes
+ * @param defaultScopeIds Keycloak UUIDs of the client's default OAuth2 client scopes
  *
  * @author Felix Hellman
  */
@@ -36,5 +37,6 @@ public record ClientArtifactState(
     @NonNull Set<String> authzScopeNames,
     @NonNull Set<String> policyNames,
     @NonNull Set<String> permissionNames,
-    @NonNull Set<String> optionalScopeIds) {
+    @NonNull Set<String> optionalScopeIds,
+    @NonNull Set<String> defaultScopeIds) {
 }

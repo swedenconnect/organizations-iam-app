@@ -259,7 +259,8 @@ ReconciliationReport reconcileClient(String clientId);
   settled in `apply()`, against a per-client `ClientArtifactState` snapshot.
 - `apply()` creates everything missing, skipping what the snapshot already contains. A
   failure on one target is recorded in the report and the run continues, so one broken
-  client does not block the others.
+  client does not block the others. A client whose artifact state cannot be read is
+  recorded once and skipped for the rest of the run.
 - Every run also removes artifacts for org/function combinations the client no longer
   handles, i.e. when `client_functions` is narrowed. Narrowing `client_functions` is
   therefore enough to have the artifacts taken away on the next run.
@@ -334,6 +335,7 @@ New `se.swedenconnect.iam.admin.controllers.ClientController`, base path `/api/c
 | `DELETE` | `/api/clients/{id}` | Hard-delete the client from Keycloak |
 | `POST` | `/api/clients/{id}/reconcile` | Reconcile one client, return report |
 | `POST` | `/api/clients/reconcile` | Reconcile all managed clients, return report |
+| `GET` | `/api/clients/drift` | Per client, the number of artifacts a reconciliation would create (`missingByClientId`), and the clients whose artifacts could not be read (`uncheckedClientIds`) |
 
 `{id}` is the client's **Keycloak UUID**, not its client_id. A client_id is a URL, and a
 URL-encoded one in a path segment (`https%3A%2F%2F…`) is rejected with `400` by Spring

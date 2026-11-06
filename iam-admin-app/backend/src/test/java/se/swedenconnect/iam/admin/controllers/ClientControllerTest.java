@@ -29,14 +29,17 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.http.ResponseEntity;
+import se.swedenconnect.iam.admin.controllers.dto.ClientDriftResponse;
 import se.swedenconnect.iam.admin.controllers.dto.CreateManagedClientRequest;
 import se.swedenconnect.iam.admin.controllers.dto.UpdateManagedClientRequest;
 import se.swedenconnect.iam.admin.keycloak.AdminSessionBootstrapHandler;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminClient;
+import se.swedenconnect.iam.admin.keycloak.KeycloakAdminException;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
 import se.swedenconnect.iam.admin.keycloak.model.FunctionInfo;
 import se.swedenconnect.iam.admin.keycloak.model.ManagedClientInfo;
 import se.swedenconnect.iam.admin.service.ClientReconciliationService;
+import se.swedenconnect.iam.admin.service.model.DriftReport;
 import se.swedenconnect.iam.admin.service.model.ReconciliationReport;
 import se.swedenconnect.iam.commons.types.LocalizedString;
 import se.swedenconnect.iam.security.claims.OrgRightsClaim;
@@ -508,6 +511,33 @@ class ClientControllerTest {
 
     assertThat(response.getStatusCode().value()).isEqualTo(409);
     verify(this.keycloakAdminClient, never()).deleteManagedClient(anyString());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Drift
+  // ---------------------------------------------------------------------------
+
+  @Test
+  @DisplayName("Drift lists the clients that could not be checked next to the counts")
+  void driftListsUncheckedClients() {
+    setupSession(true);
+    when(this.reconciliationService.detectDrift()).thenReturn(
+        new DriftReport(Map.of(CLIENT_ID, 13), List.of("https://broken.example.se")));
+
+    final ResponseEntity<?> response = this.controller.getDrift(this.request);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(200);
+    assertThat(response.getBody()).isEqualTo(
+        new ClientDriftResponse(Map.of(CLIENT_ID, 13), List.of("https://broken.example.se")));
+  }
+
+  @Test
+  @DisplayName("Drift gives 500 when a read that concerns every client fails")
+  void driftFailsWhenEveryClientIsConcerned() {
+    setupSession(true);
+    when(this.reconciliationService.detectDrift()).thenThrow(new KeycloakAdminException("down"));
+
+    assertThat(this.controller.getDrift(this.request).getStatusCode().value()).isEqualTo(500);
   }
 
   // ---------------------------------------------------------------------------

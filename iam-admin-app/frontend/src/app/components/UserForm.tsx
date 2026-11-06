@@ -154,6 +154,8 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
           email,
           personalIdentityNumber: payload.personalIdentityNumber ?? '',
           orgAffiliation: payload.orgAffiliation,
+          hsaId: payload.hsaId,
+          efosId: payload.efosId,
           userId: payload.userId,
           temporaryPassword: payload.temporaryPassword,
           phoneNumber: resolvedPhone,
@@ -237,6 +239,22 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
                   <Label>{t('users.orgAffiliation')}</Label>
                   <div className="px-3 py-2 text-sm bg-gray-50 border rounded-md text-gray-700">
                     {user.orgAffiliation}
+                  </div>
+                </div>
+              )}
+              {user.hsaId && (
+                <div className="space-y-2">
+                  <Label>{t('users.hsaId')}</Label>
+                  <div className="px-3 py-2 text-sm bg-gray-50 border rounded-md text-gray-700">
+                    {user.hsaId}
+                  </div>
+                </div>
+              )}
+              {user.efosId && (
+                <div className="space-y-2">
+                  <Label>{t('users.efosId')}</Label>
+                  <div className="px-3 py-2 text-sm bg-gray-50 border rounded-md text-gray-700">
+                    {user.efosId}
                   </div>
                 </div>
               )}
