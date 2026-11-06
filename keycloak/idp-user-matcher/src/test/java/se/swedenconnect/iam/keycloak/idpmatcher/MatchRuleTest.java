@@ -75,6 +75,75 @@ class MatchRuleTest {
     assertTrue(e.getMessage().contains("entry 2"), e.getMessage());
   }
 
+  /** Blank entries at the start, in the middle and at the end are skipped, and the order is kept. */
+  @Test
+  void fromConfig_blankEntriesAreSkipped() {
+    final java.util.List<MatchRule> expected = java.util.List.of(
+        new MatchRule("efosId", "superuser", null), new MatchRule("personalIdentityNumber", null, null));
+
+    assertEquals(expected, fromList("##efosId;requiredRole=superuser##personalIdentityNumber"));
+    assertEquals(expected, fromList("efosId;requiredRole=superuser####personalIdentityNumber"));
+    assertEquals(expected, fromList("efosId;requiredRole=superuser##personalIdentityNumber##"));
+    assertEquals(expected, fromList("##efosId;requiredRole=superuser## ##personalIdentityNumber##"));
+  }
+
+  /** An entry holding only whitespace names no attribute and is skipped like an empty one. */
+  @Test
+  void fromConfig_whitespaceOnlyEntriesAreSkipped() {
+    assertEquals(java.util.List.of(new MatchRule("efosId", null, null)),
+        MatchRule.fromConfig(config(Map.of("matchAttribute", "  ##efosId##\t## "))));
+  }
+
+  /** A list of blank entries only is reported as a list with no entries. */
+  @Test
+  void fromConfig_allBlankIsAMissingList() {
+    for (final String list : java.util.List.of("##", "####", " ", " ## \t")) {
+      final MatchRule.InvalidMatchConfigurationException e = assertThrows(
+          MatchRule.InvalidMatchConfigurationException.class, () -> fromList(list));
+      assertTrue(e.getMessage().contains("missing or has no entries"), e.getMessage());
+    }
+  }
+
+  /** The position in an error counts the blank entries before the malformed one. */
+  @Test
+  void fromConfig_errorPositionCountsBlankEntries() {
+    final MatchRule.InvalidMatchConfigurationException e = assertThrows(
+        MatchRule.InvalidMatchConfigurationException.class,
+        () -> fromList("##efosId## ##personalIdentityNumber;role=x"));
+    assertTrue(e.getMessage().contains("entry 4"), e.getMessage());
+  }
+
+  /** Spaces around an attribute name in an entry that names one are still rejected. */
+  @Test
+  void fromConfig_spacesAroundANameAreStillRejected() {
+    final MatchRule.InvalidMatchConfigurationException e = assertThrows(
+        MatchRule.InvalidMatchConfigurationException.class, () -> fromList("## efosId"));
+    assertTrue(e.getMessage().contains("entry 2"), e.getMessage());
+    assertTrue(e.getMessage().contains("spaces"), e.getMessage());
+  }
+
+  /** An entry with roles but no attribute name is not blank, and is still rejected. */
+  @Test
+  void fromConfig_rolesWithoutAnAttributeAreStillRejected() {
+    final MatchRule.InvalidMatchConfigurationException e = assertThrows(
+        MatchRule.InvalidMatchConfigurationException.class,
+        () -> fromList("efosId##;requiredRole=superuser"));
+    assertTrue(e.getMessage().contains("entry 2"), e.getMessage());
+    assertTrue(e.getMessage().contains("no attribute name"), e.getMessage());
+  }
+
+  /** A duplicate separated by a blank entry is still a duplicate. */
+  @Test
+  void fromConfig_duplicateAcrossABlankEntry() {
+    final MatchRule.InvalidMatchConfigurationException e = assertThrows(
+        MatchRule.InvalidMatchConfigurationException.class, () -> fromList("efosId####efosId"));
+    assertTrue(e.getMessage().contains("more than once"), e.getMessage());
+  }
+
+  private static java.util.List<MatchRule> fromList(final String list) {
+    return MatchRule.fromConfig(config(Map.of("matchAttribute", list)));
+  }
+
   private static AuthenticatorConfigModel config(final Map<String, String> values) {
     final AuthenticatorConfigModel model = new AuthenticatorConfigModel();
     model.setConfig(values);

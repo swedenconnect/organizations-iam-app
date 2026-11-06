@@ -65,7 +65,8 @@ public record MatchRule(
    * Reads the ordered list of rules from the authenticator configuration.
    *
    * <p>The configuration fails closed: anything that could leave a role restriction unenforced, or
-   * the list ambiguous, is an error rather than something to work around.</p>
+   * the list ambiguous, is an error rather than something to work around. A blank entry is neither,
+   * so it is skipped. It is what the Admin Console stores for a row left empty.</p>
    *
    * @param config the authenticator configuration, may be {@code null} if the execution has none
    * @return the rules, in the configured order; never empty
@@ -88,8 +89,7 @@ public record MatchRule(
 
     final String list = values.get(IdpDetectExistingUserByAttributeAuthenticatorFactory.MATCH_ATTRIBUTE);
     if (list == null || list.isEmpty()) {
-      throw new InvalidMatchConfigurationException("'%s' is missing or has no entries"
-          .formatted(IdpDetectExistingUserByAttributeAuthenticatorFactory.MATCH_ATTRIBUTE));
+      throw noEntries();
     }
 
     final List<MatchRule> rules = new ArrayList<>();
@@ -98,12 +98,19 @@ public record MatchRule(
     // would hide a malformed entry.
     final String[] entries = list.split(Pattern.quote(Constants.CFG_DELIMITER), -1);
     for (int i = 0; i < entries.length; i++) {
+      if (entries[i].isBlank()) {
+        // The position still counts the blank entry, so an error names the row the admin sees
+        continue;
+      }
       final MatchRule rule = parse(entries[i], i + 1);
       if (!attributes.add(rule.attribute())) {
         throw new InvalidMatchConfigurationException(
             "attribute '%s' appears more than once".formatted(rule.attribute()));
       }
       rules.add(rule);
+    }
+    if (rules.isEmpty()) {
+      throw noEntries();
     }
     return List.copyOf(rules);
   }
@@ -160,6 +167,11 @@ public record MatchRule(
       }
     }
     return new MatchRule(attribute, requiredRole, forbiddenRole);
+  }
+
+  private static @NonNull InvalidMatchConfigurationException noEntries() {
+    return new InvalidMatchConfigurationException("'%s' is missing or has no entries"
+        .formatted(IdpDetectExistingUserByAttributeAuthenticatorFactory.MATCH_ATTRIBUTE));
   }
 
   private static boolean containsWhitespace(final @NonNull String value) {

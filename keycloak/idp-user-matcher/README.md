@@ -71,6 +71,9 @@ An entry may have one `requiredRole`, one `forbiddenRole`, both or neither, in e
 parts are separated by `;` and a role by `=`, with no spaces around either separator. Roles are
 **realm** roles, resolved by name.
 
+An empty entry, or one holding only spaces, is ignored. This is what a row left empty in the Admin
+Console gives. A list with only empty entries counts as having no entries.
+
 ### The order, and when the next attribute is tried
 
 The attributes are tried in the order of the list.
@@ -210,9 +213,11 @@ removes the old settings.
 
 The flow fails closed on all of:
 
-- the execution has no configuration, or `matchAttribute` is missing or has no entries
+- the execution has no configuration, or `matchAttribute` is missing or has no entries other than
+  empty ones
 - an entry is malformed: no attribute name, an unknown key, a key given twice, an empty role, or
-  spaces in the attribute name or around a separator
+  spaces in the attribute name or around a separator. The error gives the entry's position in the
+  list, counting empty entries, so it matches the row in the Admin Console.
 - the same attribute appears in more than one entry
 - a configured role does not exist in the realm
 - the removed `requiredRole` or `forbiddenRole` setting is present, even with an empty value

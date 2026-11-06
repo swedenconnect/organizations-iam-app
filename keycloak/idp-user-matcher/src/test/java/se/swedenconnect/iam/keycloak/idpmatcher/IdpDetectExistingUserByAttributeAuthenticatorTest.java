@@ -449,7 +449,6 @@ class IdpDetectExistingUserByAttributeAuthenticatorTest {
   /** Each kind of malformed entry refuses every login, even when an earlier entry would match. */
   @ParameterizedTest
   @ValueSource(strings = {
-      " ",
       ";forbiddenRole=superuser",
       "efosId;unknown=x",
       "efosId;requiredRole=superuser;requiredRole=superuser",
@@ -476,15 +475,32 @@ class IdpDetectExistingUserByAttributeAuthenticatorTest {
     verifyNoInteractions(this.userProvider);
   }
 
-  /** An empty entry between two others refuses every login. */
-  @Test
-  void emptyEntryInTheList_fails() {
-    this.config.put(IdpDetectExistingUserByAttributeAuthenticatorFactory.MATCH_ATTRIBUTE, PIN + "####" + EFOS);
+  /** A blank entry, a row left empty in the Admin Console, is skipped wherever it is in the list. */
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "##" + PIN + "##" + EFOS,
+      PIN + "####" + EFOS,
+      PIN + "## ##" + EFOS,
+      PIN + "##" + EFOS + "##",
+  })
+  void blankEntryInTheList_isSkipped(final String list) {
+    this.config.put(IdpDetectExistingUserByAttributeAuthenticatorFactory.MATCH_ATTRIBUTE, list);
     this.matching(PIN, PIN_VALUE, this.user(USER_ID, true));
 
     this.authenticate();
 
+    this.assertMatched(PIN);
+  }
+
+  /** A list of blank entries only refuses every login, as a list with no entries does. */
+  @Test
+  void onlyBlankEntries_fails() {
+    this.config.put(IdpDetectExistingUserByAttributeAuthenticatorFactory.MATCH_ATTRIBUTE, "## ##");
+
+    this.authenticate();
+
     this.assertFailedClosed();
+    verifyNoInteractions(this.userProvider);
   }
 
   /** The same attribute twice refuses every login, whatever roles the two entries carry. */
