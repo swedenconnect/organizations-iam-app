@@ -691,7 +691,7 @@ incoming identity to a user the admin application has already provisioned. Four 
 in one idempotent run:
 
 1. the identity provider itself, with strict SAML defaults
-2. a stock **Attribute Importer** mapper, which carries the identifying attribute into
+2. one stock **Attribute Importer** mapper per identifying attribute, which carries it into
    the brokered context
 3. a first broker login flow of exactly two executions, `idp-detect-existing-user-by-attr`
    followed by Keycloak's `idp-auto-link`
@@ -722,22 +722,54 @@ the authenticator is registered before it changes anything, and stops if it is n
 | `--sp-entity-id <entityId>` | Yes | Our SP entityID, exactly as registered upstream |
 | `--signing-certificate <file>` | No | Upstream signing certificate, PEM or bare base64 |
 | `--template-realm`, `--template-alias` | No | Copy the upstream entityID, SSO URL, certificate and ACRs from an existing provider instead of giving them |
-| `--match-attribute <name>` | No | Local user attribute to match on. Default `personalIdentityNumber` |
-| `--saml-attribute <name>` | No | SAML attribute carrying it. Default `urn:oid:1.2.752.29.4.13` |
-| `--forbidden-role <role>` | No | Matched user must **not** hold this realm role |
-| `--required-role <role>` | No | Matched user must hold this realm role |
+| `--match <entry>` | No | An attribute to match on, the SAML attribute carrying it, and optional roles. Repeatable, see below. Default `personalIdentityNumber;samlAttribute=urn:oid:1.2.752.29.4.13;samlFormat=URI` |
 | `--transient` | No | Lightweight users. Creates no mapper and no flow, see below |
+
+**The `--match` option.** Each occurrence is one entry:
+
+```
+<attribute>;samlAttribute=<name>[;samlFormat=URI|BASIC|UNSPECIFIED][;requiredRole=<role>][;forbiddenRole=<role>]
+```
+
+with no spaces around `;` and `=`. `samlFormat` defaults to `URI`. The order of the options is the
+order the matcher tries the attributes in. For each entry the script creates or updates an Attribute
+Importer mapper named after the attribute, and it writes the whole list, with the roles, to the
+matcher. See the
+[matcher's README](../idp-user-matcher/README.md#the-match-list) for how the list is evaluated.
+
+```bash
+./keycloak/scripts/add-identity-provider.sh ... \
+    --match "personalIdentityNumber;samlAttribute=urn:oid:1.2.752.29.4.13;forbiddenRole=superuser" \
+    --match "efosId;samlAttribute=<the SAML attribute carrying the EFOS-ID>;requiredRole=superuser"
+```
+
+The same attribute given twice, or a malformed entry, stops the script before anything is
+changed.
+
+**Removed options.** `--match-attribute`, `--saml-attribute`, `--saml-attribute-format`,
+`--required-role` and `--forbidden-role` were replaced by `--match`. Giving one of them is an
+error that names the replacement.
+
+**Re-running** updates everything in place and creates no duplicates. The matcher configuration
+is written in full, so the removed `requiredRole` and `forbiddenRole` settings are dropped from it,
+and the script says so. Its alias is kept; a new configuration is named after the flow, for example
+`eid-broker-match`. A mapper for an attribute that is no longer given with `--match` is left in
+place and reported, since it keeps copying values into the brokered context. Delete it in the
+Admin Console if that is not wanted.
 
 **The attribute format is the thing that silently breaks.** Keycloak's Attribute Importer
 defaults to `ATTRIBUTE_FORMAT_BASIC`, while Sweden Connect emits attributes in URI
 format. A mismatch means the attribute is never found, so the matcher refuses every login
 with the same generic error it gives for an unknown user. The script therefore defaults to
-`ATTRIBUTE_FORMAT_URI`; override with `--saml-attribute-format` only if you know the
-upstream differs.
+`ATTRIBUTE_FORMAT_URI`; override it with `samlFormat` in the `--match` entry only if you know
+the upstream differs.
 
-**Why the role guards matter.** They are what keeps two user populations apart on one
-realm. Give the eID provider `--forbidden-role superuser`, and an eID login can never
-land on a superuser account even if one somehow carried a matching attribute.
+**Why the roles matter.** They are what keeps two user populations apart on one realm. With
+one proxy identity provider there is one matcher, so the roles are set per attribute: forbid
+`superuser` on the attribute regular users log in with, and require it on the one superusers
+log in with. An attribute without roles lets superusers in too. The roles are checked at the
+first login only; after that the link decides, see
+[Links and the role check](../idp-user-matcher/README.md#links-and-the-role-check).
 
 **`--transient` is incompatible with matching.** The Sweden Connect provider only copies
 SAML attributes onto the brokered context when `doNotStoreUsers` is set, while matching

@@ -14,7 +14,7 @@ The plugins built from this directory:
 | [org-rights-mapper](org-rights-mapper/README.md) | Adds the `org_rights` claim derived from the user's group memberships under the `orgs` group. |
 | [scope-org-identifier-mapper](scope-org-identifier-mapper/README.md) | Extracts the organization identifier from the granted scope string and emits it as the `organization_identifier` claim. |
 | [resource-aud-plugin](resource-aud-plugin/README.md) | Validates the OAuth2 `resource` parameter against the target client's `client_functions` attribute and sets the `aud` claim to `[client_id, function]`. |
-| idp-user-matcher | Resolves an incoming brokered identity to an existing local user by matching on a configured user attribute. Never creates users, and fails the authentication flow unless exactly one enabled and permitted user matches. |
+| idp-user-matcher | Resolves an incoming brokered identity to an existing local user by trying a configured list of user attributes in order. Never creates users, and fails the authentication flow unless the attribute that finds a user finds exactly one enabled and permitted user. |
 
 <a name="provider-jars"></a>
 ## Provider JARs
@@ -43,7 +43,7 @@ the version number, and the one place to change it.
 The first four provider types are the ones `bootstrap-realm.sh` checks for before it configures
 a realm. `idp-detect-existing-user-by-attr` is used when an identity provider is brokered, and
 is not part of that check.
-| [idp-user-matcher](idp-user-matcher/README.md) | First broker login authenticator that resolves an incoming brokered identity to a pre-provisioned local user by matching on a configured user attribute. |
+| [idp-user-matcher](idp-user-matcher/README.md) | First broker login authenticator that resolves an incoming brokered identity to a pre-provisioned local user by trying a configured list of user attributes in order. |
 
 ## Build
 
