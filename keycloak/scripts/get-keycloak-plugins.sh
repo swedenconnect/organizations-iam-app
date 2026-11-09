@@ -21,9 +21,11 @@
 #
 # The JARs come from the distribution ZIP,
 # se.swedenconnect.iam.keycloak:keycloak-plugin-distribution:<version>:zip:plugins, which
-# defines the provider set of that release. A release version is fetched from Maven Central. A
-# version ending in -SNAPSHOT is taken from the local Maven repository, since snapshots of this
-# project are not published.
+# defines the provider set of that release. A release version is fetched from Maven Central for
+# versions up to 0.9.8, and from the GitHub Packages Maven registry of this project for later
+# versions, which needs a server with the id github and a token in settings.xml, see
+# docs/github-packages.md. A version ending in -SNAPSHOT is taken from the local Maven repository,
+# since snapshots of this project are not published.
 #
 # Does not need a Keycloak to be running, and does not talk to one.
 #
@@ -42,6 +44,8 @@ DIST_GROUP="se.swedenconnect.iam.keycloak"
 DIST_ARTIFACT="keycloak-plugin-distribution"
 DIST_CLASSIFIER="plugins"
 
+GITHUB_REPOSITORY_URL="https://maven.pkg.github.com/swedenconnect/organizations-iam-app"
+
 # ---------------------------------------------------------------------------
 # Usage
 # ---------------------------------------------------------------------------
@@ -52,8 +56,10 @@ Fetch the Keycloak provider JARs for a version of this project.
 
 The JARs are taken from the distribution ZIP
 ${DIST_GROUP}:${DIST_ARTIFACT}:<version>:zip:${DIST_CLASSIFIER}, which defines
-the provider set of that release. A release version comes from Maven Central; a -SNAPSHOT
-version comes from the local Maven repository, so build the project first in that case.
+the provider set of that release. A release version comes from Maven Central up to 0.9.8,
+and from GitHub Packages after that, which needs a server with the id github and a token in
+settings.xml. A -SNAPSHOT version comes from the local Maven repository, so build the project
+first in that case.
 
 Usage: $0 [OPTIONS]
 
@@ -96,6 +102,11 @@ COORDINATES="${DIST_GROUP}:${DIST_ARTIFACT}:${VERSION}:zip:${DIST_CLASSIFIER}"
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "${TEMP_DIR}"' EXIT
 
+LOCAL_REPO=$(mvn -q help:evaluate -Dexpression=settings.localRepository -DforceStdout 2>/dev/null || echo "")
+[ -z "${LOCAL_REPO}" ] && LOCAL_REPO="${HOME}/.m2/repository"
+
+LOCAL_ZIP="${LOCAL_REPO}/${DIST_GROUP//.//}/${DIST_ARTIFACT}/${VERSION}/${ZIP_NAME}"
+
 echo ""
 echo "==> Resolving ${COORDINATES}..."
 
@@ -107,11 +118,6 @@ case "${VERSION}" in
   *-SNAPSHOT)
     # Snapshots of this project are not published, so the local Maven repository is the only
     # place they can come from.
-    LOCAL_REPO=$(mvn -q help:evaluate -Dexpression=settings.localRepository -DforceStdout 2>/dev/null || echo "")
-    [ -z "${LOCAL_REPO}" ] && LOCAL_REPO="${HOME}/.m2/repository"
-
-    LOCAL_ZIP="${LOCAL_REPO}/${DIST_GROUP//.//}/${DIST_ARTIFACT}/${VERSION}/${ZIP_NAME}"
-
     if [ ! -f "${LOCAL_ZIP}" ]; then
       echo "ERROR: ${VERSION} is a snapshot, and it is not in the local Maven repository." >&2
       echo "       Looked for: ${LOCAL_ZIP}" >&2
@@ -128,16 +134,21 @@ case "${VERSION}" in
     ;;
 
   *)
-    # A release. mvn takes it from the local repository if it is already there, and from Maven
-    # Central otherwise.
-    if ! mvn -q dependency:copy \
+    # A release. mvn takes it from the local repository if it is already there, and otherwise
+    # from Maven Central or, for versions after 0.9.8, from GitHub Packages. It is then copied
+    # from the local repository.
+    if ! mvn -q dependency:get \
         -Dartifact="${COORDINATES}" \
-        -DoutputDirectory="${TEMP_DIR}" \
-        -Dmdep.useBaseVersion=true; then
+        -Dtransitive=false \
+        -DremoteRepositories="github::default::${GITHUB_REPOSITORY_URL}" ||
+       [ ! -f "${LOCAL_ZIP}" ]; then
       echo "ERROR: Could not resolve ${COORDINATES}." >&2
-      echo "       Check the version number, and that it has been released to Maven Central." >&2
+      echo "       Check the version number, and that it has been released. Versions after 0.9.8" >&2
+      echo "       are in GitHub Packages, which needs a server with the id github and a token with" >&2
+      echo "       read:packages in settings.xml, see docs/github-packages.md." >&2
       exit 1
     fi
+    cp "${LOCAL_ZIP}" "${TEMP_DIR}/${ZIP_NAME}"
     echo "    Resolved."
     ;;
 esac

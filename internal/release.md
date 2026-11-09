@@ -59,7 +59,7 @@ It does the release up to and including the tag, in one run:
    profile, so it also builds the Javadoc and source files that are published, but it signs nothing
    and uploads nothing. If the build, the tests or the Javadoc fail, the script stops here, before
    anything is committed, pushed or tagged. These are the only tests run in a release, since the
-   Maven Central workflow does not run them again.
+   GitHub Packages workflow does not run them again.
 9. Stops and asks you to write the release notes for this version in
    [`docs/release-notes.md`](../docs/release-notes.md), including the date. Do that now, then press
    Enter.
@@ -67,15 +67,15 @@ It does the release up to and including the tag, in one run:
     `origin`. If there is nothing to commit, because the version and the release notes were already
     committed on the branch, the current commit is used as the release commit.
 11. Asks whether to create the tag and push it, and says that this starts publishing and that a
-    published version cannot be removed or replaced. If you say no the script stops here. The
+    published version must never be replaced. If you say no the script stops here. The
     branch is pushed, there is no tag, and nothing is published. It prints the two commands you
     need to tag later.
 12. Creates the annotated tag `vX.Y.Z` on the release commit and pushes that one tag. This starts
-    the Maven Central workflow
-    ([`maven-central-deploy.yml`](../.github/workflows/maven-central-deploy.yml)), the Docker
+    the GitHub Packages workflow
+    ([`maven-github-deploy.yml`](../.github/workflows/maven-github-deploy.yml)), the Docker
     release workflow ([`docker-release.yml`](../.github/workflows/docker-release.yml)) and the
     GitHub release workflow ([`github-release.yml`](../.github/workflows/github-release.yml)). It
-    prints where to follow the Maven Central run.
+    prints where to follow the GitHub Packages run.
 13. Tells you to open a pull request from the branch into `main`, and to run
     `internal/scripts/post-release-bump.sh` on `main` once it is merged.
 
@@ -153,7 +153,7 @@ available, so this is a recommendation and nothing enforces it.
 
    The script does this for you.
 
-3. **The version in the POMs must match the tag.** The Maven Central workflow and the Docker
+3. **The version in the POMs must match the tag.** The GitHub Packages workflow and the Docker
    release workflow both check this, and both stop if the tag does not match the version, or if the
    version is still a snapshot.
 
@@ -161,18 +161,19 @@ available, so this is a recommendation and nothing enforces it.
    able to find the exact source of a release matters more than a tidy history. If a tag is wrong,
    release a new version.
 
-5. **Never release the same version twice.** Maven Central does not let a published version be
-   changed or taken down. Two different builds published under the same version can never be told
-   apart again.
+5. **Never release the same version twice.** GitHub Packages refuses to publish a version that is
+   already there, and versions up to 0.9.8 are on Maven Central, which never lets a published
+   version be changed or taken down. Two different builds published under the same version can
+   never be told apart again.
 
 ## What a tag starts
 
 Three workflows react to a pushed `v*` tag. They run next to each other and do not depend on each
 other. There is no approval step, publishing starts as soon as the tag is pushed.
 
-- [`maven-central-deploy.yml`](../.github/workflows/maven-central-deploy.yml) publishes every
-  module except the demo and admin application modules to Maven Central. See
-  [Publishing to Maven Central](#publishing-to-maven-central).
+- [`maven-github-deploy.yml`](../.github/workflows/maven-github-deploy.yml) publishes every
+  module except the demo and admin application modules to GitHub Packages. See
+  [Publishing to GitHub Packages](#publishing-to-github-packages).
 - [`docker-release.yml`](../.github/workflows/docker-release.yml) checks that the tag matches the
   Maven version and that the version is not a snapshot, installs the modules, and builds and pushes
   three images with Jib, for `linux/amd64` and `linux/arm64`, each tagged with the version and with
@@ -194,10 +195,19 @@ Snapshot images are published separately. Every push to `main` runs
 images tagged with the snapshot version, for example `1.0.1-SNAPSHOT`. When `main` holds a release
 version nothing is pushed, so a release image is never overwritten by later commits.
 
-## Publishing to Maven Central
+## Publishing to GitHub Packages
 
-Pushing the tag starts the Maven Central workflow, which builds the tagged commit and publishes the
-files as the `swedenconnect-bot` Central user. Nothing is published by hand.
+Pushing the tag starts the GitHub Packages workflow, which builds the tagged commit and publishes the
+files to the GitHub Packages Maven registry of this repository:
+
+```
+https://maven.pkg.github.com/swedenconnect/organizations-iam-app
+```
+
+Versions up to 0.9.8 were published to Maven Central and stay there. Version 1.0.0 was never
+published as a library, so 1.0.1 is the first version in GitHub Packages. Downloading from GitHub
+Packages always needs a token, also for public packages. How relying parties set that up is
+described in [Using the Artifacts from GitHub Packages](../docs/github-packages.md).
 
 ### What the workflow does
 
@@ -209,13 +219,22 @@ files as the `swedenconnect-bot` Central user. Nothing is published by hand.
    script, with the same profile, before the tag was pushed. A tag pushed without running the
    release script is therefore published without any tests being run, unless you built it yourself
    first. A failing build or Javadoc stops the release.
-4. Signs every file and uploads them to Central.
+4. Signs every file and deploys them with the Maven deploy plugin to the repository with the id
+   `github`.
+
+The workflow publishes with the token GitHub gives every workflow, `GITHUB_TOKEN`. The deploy job
+has the permissions `contents: read` and `packages: write`, which lets that token publish packages
+for this repository. No other secret than the GPG key is used.
+
+The workflow can also be started by hand from the Actions page, with a tag such as `v1.0.1` as
+input. It then checks out that tag and does exactly what a pushed tag does. Use this to run a
+failed publish again once the cause is fixed.
 
 The version check is [`internal/scripts/check-release-version.sh`](scripts/check-release-version.sh).
 You can run it yourself before tagging:
 
 ```bash
-./internal/scripts/check-release-version.sh v1.0.0
+./internal/scripts/check-release-version.sh v1.0.1
 ```
 
 It reads the version of every `pom.xml` under version control, skips a module where the
@@ -235,15 +254,17 @@ Every module of the build, except the demo and admin application modules:
 - `keycloak-plugin-distribution`, the ZIP of the Keycloak providers of a release
 - `keycloak-scripts-distribution`, the ZIP of the realm administration scripts
 
-**Not published** to Maven Central:
+Each one is published with its POM, its source and javadoc files, and a signature for every file.
+
+**Not published:**
 
 - the `demo` tree, that is `demo`, `demo-app`, `demo-app-fe`, `demo-app-be` and `demo-service`
 - the admin application tree, that is `iam-admin-app`, `admin-app-frontend` and
   `admin-app-backend`
 
 They are still built by every build, the `release` profile included, and their Docker images are
-published as described above. They hold large application JARs that nobody fetches from Maven
-Central. No published module depends on them. Releases 0.9.0 to 0.9.8 did publish them, and those
+published as described above. They hold large application JARs that nobody fetches as Maven
+artifacts. No published module depends on them. Releases 0.9.0 to 0.9.8 did publish them, and those
 versions stay on Maven Central.
 
 No list of published modules is kept anywhere, so a module added to the build later is published,
@@ -252,36 +273,23 @@ property to `false`, and [`demo/pom.xml`](../demo/pom.xml) and
 [`iam-admin-app/pom.xml`](../iam-admin-app/pom.xml) set it to `true` for their trees. A module tree
 that must not be published does the same in its own POM.
 
-- The Central publishing plugin reads `skipPublishing` for each module and leaves the files of a
-  skipped module out of the bundle it uploads. This holds for the workflow and for a deploy by
-  hand, since both use the `release` profile.
-- The root `pom.xml` sets `maven.deploy.skip` to the value of `skipPublishing`, so a `mvn deploy`
-  without the `release` profile, which uses the Maven deploy plugin, skips the same modules.
+- The root `pom.xml` sets `maven.deploy.skip` to the value of `skipPublishing`, so the Maven deploy
+  plugin skips those modules, with or without the `release` profile.
+- The Central publishing plugin of the `maven-central-release` profile reads `skipPublishing` for
+  each module and leaves the files of a skipped module out of the bundle it uploads.
 - The version check reads `skipPublishing` too, so the check and the publishing cannot disagree
   on which modules are published.
 
-To see what a release would upload without uploading anything, build the bundle with the
-`skipUpload` option of the plugin. This needs a release version in the POMs, so do it on a copy of
-the repository with its own local Maven repository, so that no release version reaches
-`~/.m2`:
-
-```bash
-mvn versions:set -DnewVersion=X.Y.Z -DprocessAllModules=true -DgenerateBackupPoms=false
-mvn -Dmaven.repo.local=/path/to/scratch-repo -Prelease -Dgpg.skip=true -DskipTests -DskipUpload=true clean deploy
-unzip -l target/central-publishing/central-bundle.zip
-```
-
 ### What the `release` profile does
 
-The `release` profile in the parent POM adds the source and javadoc files that Central requires,
-signs everything with GPG, and uploads it through the Sonatype Central publishing plugin.
-`autoPublish` is on, so an upload that passes Central's checks goes live without anyone pressing a
-button in the Central portal.
+The `release` profile in the parent POM adds the source and javadoc files, signs everything with
+GPG, and points the deploy at GitHub Packages, as the repository with the id `github`. It gives no
+snapshot repository, so a snapshot version cannot be deployed with it.
 
 The admin application frontend holds no Java code, so its `release` profile adds an empty source
 file and an empty javadoc file instead. The module is not published, so these are built but not
-uploaded. The login theme holds no Java code either. Its source file
-holds the theme resources, and its `release` profile adds an empty javadoc file.
+uploaded. The login theme holds no Java code either. Its source file holds the theme resources, and
+its `release` profile adds an empty javadoc file.
 
 ### Signing
 
@@ -292,27 +300,23 @@ by this, so signing from your own machine still works with `gpg`.
 
 ### Secrets
 
-These are organisation secrets and they already exist. The workflow reads them and adds nothing of
-its own:
+These are organisation secrets and they already exist:
 
-| Secret | What it holds |
-|--------|---------------|
-| `MAVEN_CENTRAL_USERNAME` | the user name half of a Central portal token, not the bot's login name |
-| `MAVEN_CENTRAL_TOKEN_PASSWORD` | the password half of the same token |
-| `BOT_GPG_PRIVATE_KEY` | the private key, in ASCII armour |
-| `BOT_GPG_PASSWORD` | the password for that key |
+| Secret | What it holds | Used by |
+|--------|---------------|---------|
+| `BOT_GPG_PRIVATE_KEY` | the private key, in ASCII armour | both Maven workflows |
+| `BOT_GPG_PASSWORD` | the password for that key | both Maven workflows |
+| `MAVEN_CENTRAL_USERNAME` | the user name half of a Central portal token, not the bot's login name | the Maven Central workflow only |
+| `MAVEN_CENTRAL_TOKEN_PASSWORD` | the password half of the same token | the Maven Central workflow only |
 
-The public half of the key is already on a key server, so the workflow does not need it. The two
-Central values reach Maven as environment references in a generated `settings.xml`, so no secret is
-written to a file or shown in the log.
-
-The build fetches everything from Maven Central and the Shibboleth repository, so the generated
-`settings.xml` holds the `central` server only. The Docker workflows use no secret, only the token
-GitHub gives every workflow.
+The public half of the key is already on a key server, so the workflows do not need it. The
+credentials reach Maven as environment references in a generated `settings.xml`, so no secret is
+written to a file or shown in the log. The Docker workflows use no secret, only the token GitHub
+gives every workflow.
 
 ### Trying it out first
 
-A published version cannot be changed, so everything is built before the tag is pushed. The
+A published version must never be replaced, so everything is built before the tag is pushed. The
 release script does this for you. To do the same by hand:
 
 ```bash
@@ -322,17 +326,63 @@ mvn -Prelease -Dgpg.skip=true clean install
 This builds every file the release would upload, source and javadoc files included, and runs the
 tests, but signs nothing and uploads nothing.
 
-### Publishing by hand
-
-Only if the workflow cannot be used. You need a Central portal token as a server with the id
-`central` in your `~/.m2/settings.xml`, and a GPG key that `gpg` can find on your machine, with its
-public half on a key server that Central checks. Run it from the tagged commit, so that what
-reaches Central is built from exactly the source the tag points at:
+To see what a release would deploy without uploading anything, deploy to a directory instead of
+GitHub Packages. This needs a release version in the POMs, so do it on a copy of the repository with
+its own local Maven repository, so that no release version reaches `~/.m2`:
 
 ```bash
-git checkout v1.0.0
+mvn versions:set -DnewVersion=X.Y.Z -DprocessAllModules=true -DgenerateBackupPoms=false
+mvn -Dmaven.repo.local=/path/to/scratch-repo -Prelease -Dgpg.skip=true -DskipTests \
+    -DaltDeploymentRepository=local::file:///path/to/scratch-deploy clean deploy
+find /path/to/scratch-deploy -type f
+```
+
+### Publishing by hand
+
+Only if the workflow cannot be used, for example when it cannot be started on the tag. You need:
+
+- A classic personal access token with the `write:packages` scope, from a GitHub account that can
+  write to this repository. Fine-grained tokens are not accepted by the Maven registry.
+- A server with the id `github` in your `~/.m2/settings.xml`, with your GitHub user name and that
+  token:
+
+  ```xml
+  <server>
+    <id>github</id>
+    <username>YOUR_GITHUB_USERNAME</username>
+    <password>${env.GITHUB_PACKAGES_TOKEN}</password>
+  </server>
+  ```
+
+- A GPG key that `gpg` can find on your machine.
+
+Run it from the tagged commit, so that what is published is built from exactly the source the tag
+points at:
+
+```bash
+git checkout v1.0.1
+./internal/scripts/check-release-version.sh v1.0.1
 mvn -Prelease clean deploy
 ```
+
+### Publishing to Maven Central again
+
+Publishing to Maven Central is kept possible, in case it is needed again. It is not part of a
+normal release.
+
+- [`maven-central-deploy.yml`](../.github/workflows/maven-central-deploy.yml) does not start on
+  tags. It can only be started by hand from the Actions page, with a tag as input. It checks out
+  that tag, runs the same version check, and deploys with
+  `mvn -Prelease,maven-central-release clean deploy -DskipTests`, as the `swedenconnect-bot`
+  Central user.
+- The `maven-central-release` profile in the parent POM holds the Sonatype Central publishing
+  plugin. Selected together with `release`, it replaces the deploy to GitHub Packages with an upload
+  to Central, as the server with the id `central` in `settings.xml`. `autoPublish` is on, so an
+  upload that passes Central's checks goes live without anyone pressing a button in the Central
+  portal.
+
+Maven Central does not let a published version be removed or replaced. Publishing a version to
+both GitHub Packages and Maven Central is fine, since it is the same build of the same tag.
 
 ## Version numbers
 
@@ -414,12 +464,12 @@ delete the bump branch with `git branch -D bump/X_Y_Z`, then run the script agai
   in the POMs, or the version is still a snapshot. Nothing was published. Fix the version and
   release a new one rather than moving the tag.
 - **The Docker release workflow failed later.** The images are not on ghcr.io, or only some of
-  them. It is independent of Maven Central, so the workflow can be run again on the same tag from
-  the Actions page once the cause is fixed.
+  them. It is independent of the Maven artifacts, so the workflow can be run again on the same tag
+  from the Actions page once the cause is fixed.
 - **The GitHub release workflow failed.** Run it again, or create the release by hand from the tag
   on GitHub.
-- **The Maven Central workflow failed.** What to do depends on how far the run got. In every case,
-  release a new version instead of moving the tag:
+- **The GitHub Packages workflow failed.** What to do depends on how far the run got. In every
+  case, never move the tag:
   - **The version check failed.** Nothing was built and nothing was uploaded. The tag does not
     match the version in the POMs, or the version is still a snapshot. Fix the version and release a
     new version.
@@ -427,12 +477,12 @@ delete the bump branch with `git branch -D bump/X_Y_Z`, then run the script agai
     release script has already built the Javadoc and source files, so this points to something that
     differs between your machine and the runner, such as the Java version. Fix the problem on `main`
     and release a new version.
-  - **The upload or Central's own checks failed.** An upload that fails those checks never goes
-    live, so nothing was published. Look at the deployment in the Central portal, fix the cause,
-    and release a new version. Running the workflow again on the same tag only works if the upload
-    never reached Central at all.
-  - **The files went live but are wrong.** They cannot be replaced or taken down. Release a new
-    version.
+  - **The deploy failed part of the way.** The modules are deployed one at a time, so some may be
+    published and some not. If the cause is outside the build, such as a network error, start the
+    workflow again by hand with the same tag once it is fixed. A module that is already published
+    is refused by GitHub Packages, so in that case delete the published versions of that release
+    on the package pages of the repository first, or release a new version.
+  - **The files are published but are wrong.** Release a new version.
 
 -----
 

@@ -50,7 +50,7 @@
 
     <!--
       The theme holds no Java code, so the release profile of the parent builds no javadoc jar for it. Maven Central
-      requires one for a jar, so an empty one is built here. The source jar is built by the parent, from the theme
+      requires one for a jar, and a release keeps the files Maven Central requires, so an empty one is built here. The source jar is built by the parent, from the theme
       resources.
       -->
     <profile>

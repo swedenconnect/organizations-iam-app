@@ -2,7 +2,7 @@
 
 # Sweden Connect Organizations and Users IAM Application
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) ![Maven Central](https://img.shields.io/maven-central/v/se.swedenconnect.iam/iam-parent.svg)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 A centralized administration application for assigning and delegating rights for organizations and users against various target systems. Built on Keycloak with custom protocol mappers, a Spring Boot admin application, and shared security libraries.
 
@@ -23,9 +23,13 @@ Full documentation is available at https://docs.swedenconnect.se/organizations-i
 | [demo](demo) | Example applications showing how the security library is integrated, a demo app acting as OIDC and OAuth2 client, and a demo service acting as resource server. |
 | [compose](compose) | The Docker Compose local development environment for the services and Keycloak. See [compose/README.md](compose/README.md) for how to set it up. |
 
+## Maven artifacts
+
+The libraries and Keycloak plugins are published to the GitHub Packages Maven registry of this repository, from version 1.0.1. Versions up to 0.9.8 are on Maven Central. Downloading from GitHub Packages needs a GitHub token, see [Using the Artifacts from GitHub Packages](docs/github-packages.md).
+
 ## For maintainers
 
-How to make a release, and what is published to Maven Central and as Docker images, is described in [internal/release.md](internal/release.md).
+How to make a release, and what is published to GitHub Packages and as Docker images, is described in [internal/release.md](internal/release.md).
 
 ---
 

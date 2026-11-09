@@ -1,0 +1,92 @@
+# Publishes the release artifacts to the GitHub Packages Maven registry of this repository when a
+# version tag is pushed.
+#
+# It runs alongside the Docker release and GitHub release workflows, which react to the same tags,
+# and does not depend on them. The deploy uses the "release" profile of the parent POM, the same one
+# used for a deploy from a developer machine. Every module of the build is published, except the
+# demo and admin application modules, which set the skipPublishing property in demo/pom.xml and
+# iam-admin-app/pom.xml.
+#
+# It can also be started by hand with a tag as input. It then checks out that tag and does exactly
+# what a pushed tag does.
+#
+# A published version should never be replaced, so the tag and the version in the POMs are checked
+# before anything is built. If that check fails nothing is published.
+name: Publish to GitHub Packages
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The release tag to publish, for example v1.0.1'
+        required: true
+        type: string
+
+# Nothing by default. The deploy job asks for what it needs.
+permissions: {}
+
+jobs:
+  deploy:
+    name: Deploy to GitHub Packages
+    runs-on: ubuntu-latest
+
+    # Reading the repository, and publishing packages for this repository with the token GitHub
+    # gives the workflow. Every dependency comes from Maven Central or the Shibboleth repository.
+    permissions:
+      contents: read
+      packages: write
+
+    env:
+      # The tag that started the workflow, or the one given when started by hand.
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+    steps:
+      # The ref is given in full, so a branch of the same name as the tag is never checked out.
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ env.TAG }}
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+          cache: 'maven'
+
+      # The settings.xml that setup-java writes is replaced here, so the server is stated where it is
+      # used. The values are environment references, so no secret is written to the file or shown in
+      # the log. GITHUB_ACTOR is set by GitHub on every run.
+      - name: Configure the Maven servers
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'SETTINGS'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0">
+            <servers>
+              <server>
+                <id>github</id>
+                <username>${env.GITHUB_ACTOR}</username>
+                <password>${env.GITHUB_TOKEN}</password>
+              </server>
+            </servers>
+          </settings>
+          SETTINGS
+
+      # Nothing has been built at this point, so a tag that does not match publishes nothing.
+      - name: Check that the tag matches the Maven version of every published module
+        run: ./internal/scripts/check-release-version.sh "${TAG}"
+
+      # A full build and then the deploy. The tests are not run, since internal/scripts/release.sh has
+      # run them, with the same release profile, before the tag was pushed. They are still compiled,
+      # and the test source files are still attached, so what is published is unchanged. Signing uses
+      # the Bouncy Castle signer of the Maven GPG plugin, which takes the key and its passphrase from
+      # the environment, so the runner needs no gpg executable and no key import. Selecting it on the
+      # command line leaves the release profile usable as it is from a developer machine.
+      - name: Build and deploy to GitHub Packages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MAVEN_GPG_KEY: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.BOT_GPG_PASSWORD }}
+        run: mvn -Prelease clean deploy -DskipTests -Dgpg.signer=bc --no-transfer-progress

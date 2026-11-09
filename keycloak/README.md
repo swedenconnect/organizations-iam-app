@@ -70,7 +70,7 @@ dependencies, never the contents of a target directory. That is what keeps the Z
 JAR from an earlier build, or from a module that has since been removed or renamed, cannot end
 up in it. Add a provider to the release by adding a dependency there, and nowhere else.
 
-It is built with the rest of the project and published to Maven Central alongside the
+It is built with the rest of the project and published to GitHub Packages alongside the
 individual plugin artifacts, which keep their own coordinates and file names.
 
 ```bash

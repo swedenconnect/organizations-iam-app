@@ -57,9 +57,10 @@
 
     <!--
       Whether a module is left out of publishing. A module tree that must not be published sets skipPublishing to
-      true in its own POM, as demo/pom.xml and iam-admin-app/pom.xml do. The Central publishing plugin of the release
-      profile reads skipPublishing, and maven.deploy.skip makes the Maven deploy plugin skip the same modules when
-      deploy runs without the release profile. internal/scripts/check-release-version.sh reads skipPublishing too.
+      true in its own POM, as demo/pom.xml and iam-admin-app/pom.xml do. maven.deploy.skip makes the Maven deploy
+      plugin, which deploys to GitHub Packages in the release profile, skip those modules. The Central publishing
+      plugin of the maven-central-release profile reads skipPublishing directly. internal/scripts/check-release-version.sh
+      reads skipPublishing too.
     -->
     <skipPublishing>false</skipPublishing>
     <maven.deploy.skip>${skipPublishing}</maven.deploy.skip>
@@ -429,8 +430,22 @@
 
   <profiles>
 
+    <!--
+      Builds the source and javadoc files, signs everything with GPG, and deploys with the Maven deploy plugin to the
+      GitHub Packages Maven registry of this repository. The credentials are those of a server with the id github in
+      settings.xml. No snapshot repository is given, since snapshots are not published. Every module of the build is
+      deployed, except those where skipPublishing, and so maven.deploy.skip, is true.
+      -->
     <profile>
       <id>release</id>
+
+      <distributionManagement>
+        <repository>
+          <id>github</id>
+          <name>GitHub Packages</name>
+          <url>https://maven.pkg.github.com/swedenconnect/organizations-iam-app</url>
+        </repository>
+      </distributionManagement>
 
       <build>
         <plugins>
@@ -479,23 +494,6 @@
             </executions>
           </plugin>
 
-          <!--
-            Every module of the build is published, except those where the skipPublishing property is true. The
-            plugin reads that property for each module. demo/pom.xml and iam-admin-app/pom.xml set it for their
-            trees. Nothing lists the published modules, so a module added elsewhere later is published too.
-            internal/scripts/check-release-version.sh reads the same property.
-            -->
-          <plugin>
-            <groupId>org.sonatype.central</groupId>
-            <artifactId>central-publishing-maven-plugin</artifactId>
-            <version>0.12.0</version>
-            <extensions>true</extensions>
-            <configuration>
-              <publishingServerId>central</publishingServerId>
-              <autoPublish>true</autoPublish>
-            </configuration>
-          </plugin>
-
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-gpg-plugin</artifactId>
@@ -509,6 +507,34 @@
                 </goals>
               </execution>
             </executions>
+          </plugin>
+
+        </plugins>
+      </build>
+
+    </profile>
+
+    <!--
+      Kept in case publishing to Maven Central is needed again. Selected together with the release profile, as in
+      -Prelease,maven-central-release, it replaces the deploy to GitHub Packages with an upload to Maven Central
+      through the Sonatype Central publishing plugin, as the server with the id central in settings.xml. The plugin
+      reads skipPublishing for each module and leaves a skipped module out of the bundle it uploads.
+      -->
+    <profile>
+      <id>maven-central-release</id>
+
+      <build>
+        <plugins>
+
+          <plugin>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <version>0.12.0</version>
+            <extensions>true</extensions>
+            <configuration>
+              <publishingServerId>central</publishingServerId>
+              <autoPublish>true</autoPublish>
+            </configuration>
           </plugin>
 
         </plugins>

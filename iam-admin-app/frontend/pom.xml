@@ -129,7 +129,7 @@
 
     <!--
       This module holds no Java code, so the release profile of the parent builds no source or javadoc jar for it.
-      Empty ones are built here. The module is not published to Maven Central, so they are not uploaded, but they keep
+      Empty ones are built here. The module is not published, so they are not uploaded, but they keep
       the release build of the module the same as for a published jar.
       -->
     <profile>

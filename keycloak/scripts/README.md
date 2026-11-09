@@ -66,7 +66,7 @@ repository to be set up. See [The scripts ZIP](../README.md#scripts-distribution
 
 **Required provider JARs**: see
 [Provider JARs](../README.md#provider-jars) for the full list: which provider type each JAR
-registers, and whether it is built from this repository or fetched from Maven Central. Most
+registers, and whether it is built from this repository or fetched from elsewhere. Most
 are built here; `oidc-sweden-claims-plugin` is an external artifact at a pinned version.
 
 These scripts configure any reachable Keycloak, so they cannot deploy the providers
@@ -806,7 +806,8 @@ needs `mvn` and `unzip`.
 
 | Version | Source |
 |---|---|
-| A release, for example `0.9.3` | Maven Central, or the local Maven repository if it is already cached there |
+| A release up to 0.9.8, for example `0.9.3` | Maven Central, or the local Maven repository if it is already cached there |
+| A later release, for example `1.0.1` | GitHub Packages, or the local Maven repository if it is already cached there. This needs a `github` server with a token in `settings.xml`, see [Using the artifacts from GitHub Packages](../../docs/github-packages.md) |
 | A snapshot, for example `0.9.3-SNAPSHOT` | The local Maven repository only, since snapshots of this project are never published |
 
 Given a snapshot that is not in the local Maven repository, the script stops and says so: the
