@@ -2,7 +2,7 @@
 
 # Organizations and Users IAM - Release Notes
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) ![Maven Central](https://img.shields.io/maven-central/v/se.swedenconnect.iam/iam-parent.svg)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 ---
 
@@ -10,7 +10,9 @@
 
 **Date:** _not yet released_
 
-- The demo and admin application modules are no longer published to Maven Central. The admin application and the demo applications are still published as Docker images.
+- Releases are published to GitHub Packages instead of Maven Central. Versions up to 0.9.8 stay on Maven Central, and relying parties go from 0.9.8 directly to 1.0.1. Downloading needs a GitHub token, see [Using the Artifacts from GitHub Packages](github-packages.md).
+
+- The demo and admin application modules are no longer published as Maven artifacts. The admin application and the demo applications are still published as Docker images.
 
 ---
 

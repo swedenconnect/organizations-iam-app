@@ -26,6 +26,9 @@ a Spring Boot admin application.
   local Docker Compose environment from a fresh checkout and running the demo
   applications that illustrate the integration patterns.
 
+- [Using the Artifacts from GitHub Packages](github-packages.md) – Where the Maven
+  artifacts are published, and the token and settings a build needs to download them.
+
 - [IAM Security Library](iam-security.md) — Reference documentation for the
   `iam-security-base` and `iam-security-spring-boot-starter` modules.
 
