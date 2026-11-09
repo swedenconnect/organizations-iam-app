@@ -8,7 +8,7 @@
 
 ### Version 1.0.1
 
-**Date:** _not yet released_
+**Date:** 2026-11-09
 
 - Releases are published to GitHub Packages instead of Maven Central. Versions up to 0.9.8 stay on Maven Central, and relying parties go from 0.9.8 directly to 1.0.1. Downloading needs a GitHub token, see [Using the Artifacts from GitHub Packages](github-packages.md).
 
