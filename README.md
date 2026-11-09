@@ -25,7 +25,7 @@ Full documentation is available at https://docs.swedenconnect.se/organizations-i
 
 ## Maven artifacts
 
-The libraries and Keycloak plugins are published to the GitHub Packages Maven registry of this repository, from version 1.0.1. Versions up to 0.9.8 are on Maven Central. Downloading from GitHub Packages needs a GitHub token, see [Using the Artifacts from GitHub Packages](docs/github-packages.md).
+The libraries and Keycloak plugins are published to the GitHub Packages Maven registry of this repository, from version 1.0.1. Versions up to 0.9.8 are on Maven Central. Downloading from GitHub Packages needs a GitHub token, see [Using the Artifacts from GitHub Packages]([docs/github-packages.md](https://docs.swedenconnect.se/organizations-iam-app/github-packages.html).
 
 ## For maintainers
 
