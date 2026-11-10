@@ -271,9 +271,10 @@ STATUS=$(api_put "${REALM_BASE}" "${UPDATED_REALM}")
 # A new realm records nothing: Keycloak leaves both user and admin events off, so a
 # login, a failed login and an administrative change leave no trace anywhere.
 #
-# Which event types are stored is left as Keycloak has it. With no type listed,
-# Keycloak stores the types that are saved by default, which covers LOGIN,
-# LOGIN_ERROR, LOGOUT and CODE_TO_TOKEN and leaves out the high-volume ones such as
+# Which event types are stored is left as Keycloak has it. A new realm already lists
+# every type it knows, so turning saving on is all it takes; a realm whose list is
+# empty stores the types that are saved by default instead, which covers LOGIN,
+# LOGIN_ERROR, LOGOUT and CODE_TO_TOKEN and leaves out high-volume ones such as
 # REFRESH_TOKEN. The admin application keeps its own audit log of the changes it
 # makes, see docs/audit-events.md; these are Keycloak's own records, which also cover
 # a login that never reached the application.

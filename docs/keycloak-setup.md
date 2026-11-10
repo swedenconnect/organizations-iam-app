@@ -143,8 +143,9 @@ Keycloak's own event store is turned on, since a new realm records nothing at al
   that has no expiration of its own; `--events-expiration <seconds>` changes it.
 - **Admin events:** enabled.
 
-Which event types are stored is left as Keycloak has it. With no type listed, Keycloak stores
-the types it saves by default, which covers `LOGIN`, `LOGIN_ERROR`, `LOGOUT` and
+Which event types are stored is left as Keycloak has it. A new realm already lists every type
+it knows, so turning saving on is all it takes. A realm whose list is empty stores the types
+Keycloak saves by default instead, which covers `LOGIN`, `LOGIN_ERROR`, `LOGOUT` and
 `CODE_TO_TOKEN`, and leaves out high-volume types such as `REFRESH_TOKEN`. These are
 Keycloak's own records, and they cover a login that never reached the admin application. The
 admin application keeps its own [audit log](audit-events.md) of the changes it makes.
@@ -1025,8 +1026,9 @@ In **Realm settings → Events → Admin events config**:
 
 - Set **Save events** to `ON`
 
-**Saved types** may be left empty. Keycloak then stores the event types it saves by default,
-which includes `LOGIN` and `LOGIN_ERROR`.
+Leave **Saved types** as it is. A new realm already lists every event type, and a list left
+empty makes Keycloak store the types it saves by default, which include `LOGIN` and
+`LOGIN_ERROR`.
 
 In **Realm settings → User profile → Attribute groups**, click "Create attributes group"
 twice and create:
