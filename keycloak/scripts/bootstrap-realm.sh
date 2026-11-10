@@ -38,6 +38,7 @@ REALM=""
 DISPLAY_NAME=""
 CACERT=""
 INSECURE="false"
+EVENTS_EXPIRATION="7776000"
 
 # ---------------------------------------------------------------------------
 # Usage
@@ -60,6 +61,9 @@ Options:
   --display-name <name>    Realm display name (defaults to realm name)
   --cacert <file>          CA certificate file for TLS verification
   --insecure               Skip TLS certificate verification (dev only)
+  --events-expiration <s>  How long stored login events are kept, in seconds
+                           (default: 7776000, 90 days). Only set on a realm
+                           that has no expiration of its own.
   --help, -h               Show this help message
 EOF
 }
@@ -79,6 +83,7 @@ while [ $# -gt 0 ]; do
     --display-name)   DISPLAY_NAME="$2";    shift 2 ;;
     --cacert)         CACERT="$2";          shift 2 ;;
     --insecure)       INSECURE="true";      shift ;;
+    --events-expiration) EVENTS_EXPIRATION="$2"; shift 2 ;;
     *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
   esac
 done
@@ -258,6 +263,62 @@ print(json.dumps(realm))
 ")
 STATUS=$(api_put "${REALM_BASE}" "${UPDATED_REALM}")
 [ "${STATUS}" = "204" ] && echo "    Done." || echo "    WARNING: Unexpected HTTP status: ${STATUS}" >&2
+
+# ---------------------------------------------------------------------------
+# Step 1c: Login and admin events
+# ---------------------------------------------------------------------------
+#
+# A new realm records nothing: Keycloak leaves both user and admin events off, so a
+# login, a failed login and an administrative change leave no trace anywhere.
+#
+# Which event types are stored is left as Keycloak has it. With no type listed,
+# Keycloak stores the types that are saved by default, which covers LOGIN,
+# LOGIN_ERROR, LOGOUT and CODE_TO_TOKEN and leaves out the high-volume ones such as
+# REFRESH_TOKEN. The admin application keeps its own audit log of the changes it
+# makes, see docs/audit-events.md; these are Keycloak's own records, which also cover
+# a login that never reached the application.
+#
+# Only what is off is turned on, so a realm where an operator has chosen an
+# expiration, a type list, or admin event representations keeps those choices.
+
+echo "==> Configuring login and admin events..."
+
+EVENTS_CONFIG=$(api_get "${REALM_BASE}/events/config")
+UPDATED_EVENTS=$(EVENTS_JSON="${EVENTS_CONFIG}" EXPIRATION="${EVENTS_EXPIRATION}" python3 -c "
+import os, json
+
+config = json.loads(os.environ['EVENTS_JSON'])
+expiration = int(os.environ['EXPIRATION'])
+turned_on = []
+
+if not config.get('eventsEnabled'):
+    config['eventsEnabled'] = True
+    turned_on.append('login events')
+if not config.get('eventsExpiration'):
+    config['eventsExpiration'] = expiration
+    turned_on.append('an expiration of %d seconds' % expiration)
+if not config.get('adminEventsEnabled'):
+    config['adminEventsEnabled'] = True
+    turned_on.append('admin events')
+
+print(json.dumps({'turnedOn': turned_on, 'config': config}))
+")
+TURNED_ON=$(echo "${UPDATED_EVENTS}" | python3 -c "
+import sys, json
+print(', '.join(json.load(sys.stdin)['turnedOn']))
+")
+if [ -z "${TURNED_ON}" ]; then
+  echo "    Login and admin events already configured, nothing written."
+else
+  EVENTS_BODY=$(echo "${UPDATED_EVENTS}" | python3 -c "
+import sys, json
+print(json.dumps(json.load(sys.stdin)['config']))
+")
+  STATUS=$(api_put "${REALM_BASE}/events/config" "${EVENTS_BODY}")
+  [ "${STATUS}" = "204" ] \
+    && echo "    Turned on ${TURNED_ON}." \
+    || echo "    WARNING: Unexpected HTTP status: ${STATUS}" >&2
+fi
 
 # ---------------------------------------------------------------------------
 # Step 2: Top-level groups

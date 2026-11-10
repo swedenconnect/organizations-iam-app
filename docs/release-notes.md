@@ -10,7 +10,7 @@
 
 **Date:** _not yet released_
 
--
+- Realms created by `bootstrap-realm.sh` record logins, failed logins and administrative changes. Keycloak's own events were off, so nothing was stored ([#139](https://github.com/swedenconnect/organizations-iam-app/issues/139)).
 
 ---
 
