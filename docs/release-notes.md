@@ -10,7 +10,11 @@
 
 **Date:** _not yet released_
 
--
+- Saving a user with an email address that is already registered is reported on the email field instead of failing with a server error ([#184](https://github.com/swedenconnect/organizations-iam-app/issues/184)).
+
+- The user list is shown a page at a time, and a newly created user is shown on the page that holds them.
+
+- Users are created from the Users page by a superuser only. An organization administrator adds a user from the organization or function they are to have a right in, since a user without any right is outside the administrator's scope ([#114](https://github.com/swedenconnect/organizations-iam-app/issues/114)).
 
 ---
 
@@ -51,13 +55,6 @@
 - Switching a client between a JWKS URI and an inline JWK Set no longer fails, and turning off the resource server role on a client now takes effect ([#108](https://github.com/swedenconnect/organizations-iam-app/issues/108)).
 
 - The admin application now lists all users, not only the first 50, and organization member lists show user rights directly after an import ([#123](https://github.com/swedenconnect/organizations-iam-app/issues/123)).
-
-
-- Saving a user with an email address that is already registered is reported on the email field instead of failing with a server error ([#184](https://github.com/swedenconnect/organizations-iam-app/issues/184)).
-
-- The user list is shown a page at a time, and a newly created user is shown on the page that holds them.
-
-- Users are created from the Users page by a superuser only. An organization administrator adds a user from the organization or function they are to have a right in, since a user without any right is outside the administrator's scope ([#114](https://github.com/swedenconnect/organizations-iam-app/issues/114)).
 
 ### Version 0.9.8
 
