@@ -93,6 +93,18 @@ export class UserIdTakenError extends Error {
 }
 
 /**
+ * Thrown when creating or updating a user is refused because the email address is already
+ * registered for another user. Which user holds the address is not disclosed by the backend, so
+ * there is nothing to offer here — the administrator must use another address.
+ */
+export class EmailTakenError extends Error {
+  constructor() {
+    super('EMAIL_TAKEN');
+    this.name = 'EmailTakenError';
+  }
+}
+
+/**
  * Create a new user
  */
 export async function createUser(user: CreateUserInput): Promise<User> {
@@ -116,6 +128,9 @@ export async function createUser(user: CreateUserInput): Promise<User> {
     const body = await response.json().catch(() => ({}));
     if (body?.reason === 'USER_ID_TAKEN') {
       throw new UserIdTakenError();
+    }
+    if (body?.reason === 'EMAIL_TAKEN') {
+      throw new EmailTakenError();
     }
     const existingUserId: string | undefined = body?.existingUserId;
     throw new DuplicateIdentityError(existingUserId);
@@ -153,6 +168,12 @@ export async function updateUser(id: string, user: Partial<User>): Promise<User>
     }),
   });
   if (response.status === 403) throw new Error('FORBIDDEN');
+  if (response.status === 409) {
+    const body = await response.json().catch(() => ({}));
+    if (body?.reason === 'EMAIL_TAKEN') {
+      throw new EmailTakenError();
+    }
+  }
   if (!response.ok) throw new Error(`Failed to update user: ${response.status}`);
   const data = await response.json();
   return {

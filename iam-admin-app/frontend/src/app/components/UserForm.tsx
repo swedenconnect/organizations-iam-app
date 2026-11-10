@@ -8,7 +8,7 @@ import { Badge } from '@/app/components/ui/badge';
 import { useLanguage } from '@/app/contexts/LanguageContext';
 import { Building2, Boxes, X } from 'lucide-react';
 import { formatPersonalIdentityNumber, resolveOrgName } from '@/utils';
-import { UserIdTakenError } from '@/services/userService';
+import { EmailTakenError, UserIdTakenError } from '@/services/userService';
 import { useUserRegistration } from '@/app/contexts/UserRegistrationContext';
 import {
   EMPTY_IDENTITY_VALUES,
@@ -39,7 +39,10 @@ interface UserFormProps {
   /** When false, the admin right is read-only: it cannot be granted, changed or removed here. */
   canAssignAdmin: boolean;
   onClose: () => void;
-  /** Rejects with a UserIdTakenError when the chosen user ID is already in use. */
+  /**
+   * Rejects with a UserIdTakenError when the chosen user ID is already in use, and with an
+   * EmailTakenError when the email address is already registered for another user.
+   */
   onSave: (user: UserFormValues) => Promise<void> | void;
   onRemoveRight: (
     userId: string,
@@ -131,13 +134,21 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
 
     if (user) {
       // Edit mode: do not include personalIdentityNumber
-      onSave({
-        id: user.id,
-        name,
-        email,
-        personalIdentityNumber: user.personalIdentityNumber,
-        phoneNumber: resolvedPhone,
-      });
+      try {
+        await onSave({
+          id: user.id,
+          name,
+          email,
+          personalIdentityNumber: user.personalIdentityNumber,
+          phoneNumber: resolvedPhone,
+        });
+      } catch (err) {
+        // The profile was not saved, so the staged right changes are left staged
+        if (err instanceof EmailTakenError) {
+          setEmailError(t('validation.emailTaken'));
+        }
+        return;
+      }
       for (const op of pendingOps) {
         if (op.kind === 'remove') {
           onRemoveRight(user.id, op.orgIdentifier, op.functionId, op.right);
@@ -163,6 +174,8 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
       } catch (err) {
         if (err instanceof UserIdTakenError) {
           setIdentityErrors({ userId: t('validation.userIdTaken') });
+        } else if (err instanceof EmailTakenError) {
+          setEmailError(t('validation.emailTaken'));
         }
       }
     }

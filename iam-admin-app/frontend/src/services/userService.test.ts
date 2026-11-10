@@ -8,7 +8,8 @@ vi.mock('@/lib/api', () => ({
   apiFetch: (input: string) => apiFetch(input),
 }));
 
-const { fetchAllUsers, deriveUserRoles } = await import('@/services/userService');
+const { fetchAllUsers, deriveUserRoles, createUser, updateUser, DuplicateIdentityError,
+  EmailTakenError, UserIdTakenError } = await import('@/services/userService');
 
 /** A minimal user as GET /api/users returns it. */
 function userData(userId: string): UserData {
@@ -133,5 +134,49 @@ describe('deriveUserRoles', () => {
       user('b', [{ orgIdentifier: 'org2', functionId: null, right: 'read' }]),
     ]);
     expect(roles.map((r) => r.id)).toEqual(['a:org1:*', 'a:org1:f1', 'b:org2:*']);
+  });
+});
+
+/**
+ * How the backend's answers are turned into errors the form can report against the right field.
+ * A 409 with reason EMAIL_TAKEN is the answer to an email address that is already registered,
+ * see issue #184, and must not be mistaken for a duplicate eID identity.
+ */
+describe('conflict handling', () => {
+  beforeEach(() => {
+    apiFetch.mockReset();
+  });
+
+  /** The backend refusing the write with the given body. */
+  function conflict(body: unknown) {
+    apiFetch.mockResolvedValue(new Response(JSON.stringify(body), { status: 409 }));
+  }
+
+  it('reports an email address that is already registered when creating a user', async () => {
+    conflict({ reason: 'EMAIL_TAKEN' });
+
+    await expect(createUser({ name: 'Klara', email: 'klara@example.com' } as never))
+      .rejects.toBeInstanceOf(EmailTakenError);
+  });
+
+  it('reports an email address that is already registered when updating a user', async () => {
+    conflict({ reason: 'EMAIL_TAKEN' });
+
+    await expect(updateUser('target-uuid', { name: 'Klara', email: 'klara@example.com' }))
+      .rejects.toBeInstanceOf(EmailTakenError);
+  });
+
+  it('keeps a taken user ID apart from a taken email address', async () => {
+    conflict({ reason: 'USER_ID_TAKEN' });
+
+    await expect(createUser({ name: 'Klara', userId: 'klara' } as never))
+      .rejects.toBeInstanceOf(UserIdTakenError);
+  });
+
+  it('still reports a duplicate eID identity as such', async () => {
+    conflict({ existingUserId: 'other-uuid' });
+
+    await expect(createUser({ name: 'Klara', personalIdentityNumber: '196911292032' } as never))
+      .rejects.toBeInstanceOf(DuplicateIdentityError);
   });
 });

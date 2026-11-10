@@ -4,6 +4,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/ca
 import { Badge } from '@/app/components/ui/badge';
 import { Input } from '@/app/components/ui/input';
 import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/app/components/ui/pagination';
+import { cn } from '@/app/components/ui/utils';
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -15,8 +25,8 @@ import {
 } from '@/app/components/ui/alert-dialog';
 import { Pencil, Trash2, Users, Mail, Phone, Search, Building2, Boxes, ChevronDown, ChevronRight, ShieldCheck, X } from 'lucide-react';
 import { useLanguage } from '@/app/contexts/LanguageContext';
-import { useState } from 'react';
-import { formatPersonalIdentityNumber, resolveOrgName } from '@/utils';
+import { useState, useEffect } from 'react';
+import { formatPersonalIdentityNumber, getPageNumbers, resolveOrgName } from '@/utils';
 
 function groupRightsByOrg(rights: UserRightData[]) {
   const map = new Map<string, { orgRights: UserRightData[]; funcRights: UserRightData[] }>();
@@ -88,6 +98,44 @@ function checkDeleteSafety(
   return reasons;
 }
 
+/** Users shown per page of the list. */
+export const USERS_PER_PAGE = 50;
+
+/**
+ * The users to show on a page, with the page clamped to what the list actually holds: a page
+ * beyond the end, which a search or a deletion can leave behind, shows the last page instead.
+ *
+ * @param users the users to page through
+ * @param page the 0-based page asked for
+ * @param size the page size
+ */
+export function pageOfUsers<T>(users: T[], page: number, size = USERS_PER_PAGE): {
+  content: T[];
+  currentPage: number;
+  totalPages: number;
+} {
+  const totalPages = Math.max(1, Math.ceil(users.length / size));
+  const currentPage = Math.min(Math.max(page, 0), totalPages - 1);
+  return {
+    content: users.slice(currentPage * size, currentPage * size + size),
+    currentPage,
+    totalPages,
+  };
+}
+
+/**
+ * The 0-based page holding the given user, or {@code null} when the list does not hold them.
+ *
+ * @param users the users to page through
+ * @param userId the user to look for
+ * @param size the page size
+ */
+export function pageHoldingUser(
+  users: { id: string }[], userId: string, size = USERS_PER_PAGE): number | null {
+  const index = users.findIndex((u) => u.id === userId);
+  return index < 0 ? null : Math.floor(index / size);
+}
+
 interface UserListProps {
   users: User[];
   organizations: Organization[];
@@ -111,11 +159,16 @@ interface UserListProps {
     newRight: 'read' | 'write' | 'admin',
     oldRight: 'read' | 'write' | 'admin'
   ) => void;
+  /** A user to bring into view, by turning to the page that holds them. */
+  revealUserId?: string | null;
+  /** Called once the user has been brought into view, so the request is not repeated. */
+  onRevealUserHandled?: () => void;
 }
 
-export function UserList({ users, organizations, functions, currentUserId, isSuperuser, canAssignAdmin, onEdit, onDeleteUser, onRemoveRight, onChangeRight }: UserListProps) {
+export function UserList({ users, organizations, functions, currentUserId, isSuperuser, canAssignAdmin, onEdit, onDeleteUser, onRemoveRight, onChangeRight, revealUserId, onRevealUserHandled }: UserListProps) {
   const { t, language } = useLanguage();
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(0);
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
 
   const [confirmRemove, setConfirmRemove] = useState<{
@@ -156,6 +209,22 @@ export function UserList({ users, organizations, functions, currentUserId, isSup
     );
   });
 
+  // The whole set of users is held in state, so the list pages through it here rather than
+  // asking the backend for one page: the search above searches every user, not just a page.
+  const { content: pagedUsers, currentPage, totalPages } = pageOfUsers(filteredUsers, page);
+
+  // A user just created is on the last page as often as not, so turn to the page holding them.
+  useEffect(() => {
+    if (!revealUserId) {
+      return;
+    }
+    const target = pageHoldingUser(filteredUsers, revealUserId);
+    if (target !== null) {
+      setPage(target);
+    }
+    onRevealUserHandled?.();
+  }, [revealUserId, filteredUsers, onRevealUserHandled]);
+
   const toggleExpanded = (userId: string) => {
     const newExpanded = new Set(expandedUsers);
     if (newExpanded.has(userId)) {
@@ -175,7 +244,7 @@ export function UserList({ users, organizations, functions, currentUserId, isSup
           type="text"
           placeholder={t('search.users')}
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={(e) => { setSearchTerm(e.target.value); setPage(0); }}
           className="pl-10"
         />
       </div>
@@ -185,12 +254,15 @@ export function UserList({ users, organizations, functions, currentUserId, isSup
           <CardContent className="pt-6">
             <div className="text-center text-gray-500">
               <Users className="w-12 h-12 mx-auto mb-2 opacity-20" />
-              <p>{searchTerm ? t('common.noResults') : 'No users yet. Create your first one!'}</p>
+              <p>{searchTerm
+                ? t('common.noResults')
+                : isSuperuser ? t('users.emptyCreateFirst') : t('users.emptyNoRightsYet')}</p>
             </div>
           </CardContent>
         </Card>
       ) : (
-        filteredUsers.map((user) => {
+        <>
+        {pagedUsers.map((user) => {
           const isExpanded = expandedUsers.has(user.id);
           const isSelf = user.id === currentUserId;
 
@@ -466,7 +538,43 @@ export function UserList({ users, organizations, functions, currentUserId, isSup
               )}
             </Card>
           );
-        })
+        })}
+        {totalPages > 1 && (
+          <Pagination className="mt-2">
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  onClick={() => setPage(Math.max(0, currentPage - 1))}
+                  className={cn(currentPage === 0 && 'pointer-events-none opacity-50')}
+                />
+              </PaginationItem>
+              {getPageNumbers(currentPage, totalPages).map((item, idx) =>
+                item === 'ellipsis' ? (
+                  <PaginationItem key={`ellipsis-${idx}`}>
+                    <PaginationEllipsis />
+                  </PaginationItem>
+                ) : (
+                  <PaginationItem key={item}>
+                    <PaginationLink
+                      isActive={item === currentPage}
+                      onClick={() => setPage(item as number)}
+                      className="cursor-pointer"
+                    >
+                      {(item as number) + 1}
+                    </PaginationLink>
+                  </PaginationItem>
+                )
+              )}
+              <PaginationItem>
+                <PaginationNext
+                  onClick={() => setPage(Math.min(totalPages - 1, currentPage + 1))}
+                  className={cn(currentPage === totalPages - 1 && 'pointer-events-none opacity-50')}
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
+        )}
+        </>
       )}
 
       {/* Remove right confirmation */}

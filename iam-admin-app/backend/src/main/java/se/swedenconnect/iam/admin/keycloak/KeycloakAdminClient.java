@@ -228,8 +228,7 @@ public class KeycloakAdminClient {
       }
       log.error("Keycloak admin API error {} for GET {}: {}",
           e.getStatusCode(), uri, e.getResponseBodyAsString());
-      throw new KeycloakAdminException(
-          "Keycloak admin API returned " + e.getStatusCode() + " for GET " + uri, e);
+      throw KeycloakAdminException.forResponse("GET " + uri, e);
     }
     catch (final KeycloakAdminException e) {
       throw e;
@@ -283,8 +282,7 @@ public class KeycloakAdminClient {
       }
       log.error("Keycloak admin API error {} for POST {}: {}",
           e.getStatusCode(), path, e.getResponseBodyAsString());
-      throw new KeycloakAdminException(
-          "Keycloak admin API returned " + e.getStatusCode() + " for POST " + path, e);
+      throw KeycloakAdminException.forResponse("POST " + path, e);
     }
     catch (final KeycloakAdminException e) {
       throw e;
@@ -338,8 +336,7 @@ public class KeycloakAdminClient {
       }
       log.error("Keycloak admin API error {} for POST {}: {}",
           e.getStatusCode(), path, e.getResponseBodyAsString());
-      throw new KeycloakAdminException(
-          "Keycloak admin API returned " + e.getStatusCode() + " for POST " + path, e);
+      throw KeycloakAdminException.forResponse("POST " + path, e);
     }
     catch (final KeycloakAdminException e) {
       throw e;
@@ -376,8 +373,7 @@ public class KeycloakAdminClient {
       }
       log.error("Keycloak admin API error {} for PUT {}: {}",
           e.getStatusCode(), path, e.getResponseBodyAsString());
-      throw new KeycloakAdminException(
-          "Keycloak admin API returned " + e.getStatusCode() + " for PUT " + path, e);
+      throw KeycloakAdminException.forResponse("PUT " + path, e);
     }
     catch (final KeycloakAdminException e) {
       throw e;
@@ -413,8 +409,7 @@ public class KeycloakAdminClient {
       }
       log.error("Keycloak admin API error {} for PUT {}: {}",
           e.getStatusCode(), path, e.getResponseBodyAsString());
-      throw new KeycloakAdminException(
-          "Keycloak admin API returned " + e.getStatusCode() + " for PUT " + path, e);
+      throw KeycloakAdminException.forResponse("PUT " + path, e);
     }
     catch (final KeycloakAdminException e) {
       throw e;
@@ -451,8 +446,7 @@ public class KeycloakAdminClient {
       }
       log.error("Keycloak admin API error {} for DELETE {}: {}",
           e.getStatusCode(), path, e.getResponseBodyAsString());
-      throw new KeycloakAdminException(
-          "Keycloak admin API returned " + e.getStatusCode() + " for DELETE " + path, e);
+      throw KeycloakAdminException.forResponse("DELETE " + path, e);
     }
     catch (final KeycloakAdminException e) {
       throw e;
@@ -3050,6 +3044,27 @@ public class KeycloakAdminClient {
         .queryParam("exact", "true")
         .build(Map.of("q", attribute + ":\"" + value + "\""));
     final List<Map<String, Object>> users = this.adminGet(uri, new ParameterizedTypeReference<>() {});
+    if (users == null || users.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.ofNullable(getString(users.getFirst(), "id"));
+  }
+
+  /**
+   * Looks up a user by email address and returns their Keycloak UUID if found.
+   *
+   * <p>Keycloak refuses to register the same email address twice unless the realm allows it, so
+   * this lookup lets an administrator be told which field is at fault before the write is
+   * attempted. The UUID is for the caller's own use — which user holds an address is not something
+   * a response may reveal.</p>
+   *
+   * @param email the email address
+   * @return the Keycloak user UUID, or {@link Optional#empty()} if no such user exists
+   */
+  public Optional<String> findUserIdByEmail(final @NonNull String email) {
+    final List<Map<String, Object>> users = this.adminGet(
+        "/users?email=" + URLEncoder.encode(email, StandardCharsets.UTF_8) + "&exact=true",
+        new ParameterizedTypeReference<>() {});
     if (users == null || users.isEmpty()) {
       return Optional.empty();
     }

@@ -12,7 +12,7 @@ import { ImportExportPanel } from '@/app/components/ImportExportPanel';
 import { Header } from '@/app/components/Header';
 import { Footer } from '@/app/components/Footer';
 import { Organization, User, UserOrganizationRole, FunctionType, OrganizationFunction, AdminSessionData, OrganizationData, ManagedClient, ManagedClientInput, ClientDrift, UserRegistrationSettings } from '@/types';
-import { LastAdminError, UserIdTakenError } from '@/services/userService';
+import { EmailTakenError, LastAdminError, UserIdTakenError } from '@/services/userService';
 import { UserFormValues } from '@/app/components/UserForm';
 import { DEFAULT_USER_REGISTRATION_SETTINGS, UserRegistrationProvider } from '@/app/contexts/UserRegistrationContext';
 import { Button } from '@/app/components/ui/button';
@@ -121,6 +121,8 @@ function AppContent() {
 
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  /** A user just created, to be shown on whichever page of the list now holds them. */
+  const [revealUserId, setRevealUserId] = useState<string | null>(null);
   const [selectedFunction, setSelectedFunction] = useState<FunctionType | null>(null);
   const [activeTab, setActiveTab] = useState<string>('organizations');
   const [expandOrgId, setExpandOrgId] = useState<string | null>(null);
@@ -400,15 +402,16 @@ function AppContent() {
       } else {
         // Create new
         const newUser = await createUser(user);
-        setUsers([...users, newUser]);
+        setUsers(prev => [...prev, newUser]);
+        setRevealUserId(newUser.id);
         toast.success(t('toast.userCreated'));
       }
       setIsUserFormOpen(false);
       setSelectedUser(null);
     } catch (error) {
       console.error('Error saving user:', error);
-      if (error instanceof UserIdTakenError) {
-        // Reported against the user ID field by the form itself
+      if (error instanceof UserIdTakenError || error instanceof EmailTakenError) {
+        // Reported against the user ID or email field by the form itself
         throw error;
       }
       if (error instanceof Error && error.message === 'DUPLICATE_IDENTITY') {
@@ -901,10 +904,12 @@ function AppContent() {
                     {users.length} {users.length !== 1 ? t('users.count_plural') : t('users.count')}
                   </p>
                 </div>
-                <Button onClick={handleCreateUser} className="bg-primary hover:bg-primary/90">
-                  <Plus className="w-4 h-4 mr-2" />
-                  {t('users.create')}
-                </Button>
+                {(sessionData?.superuser ?? false) && (
+                  <Button onClick={handleCreateUser} className="bg-primary hover:bg-primary/90">
+                    <Plus className="w-4 h-4 mr-2" />
+                    {t('users.create')}
+                  </Button>
+                )}
               </div>
 
               <UserList
@@ -918,6 +923,8 @@ function AppContent() {
                 onDeleteUser={handleDeleteUser}
                 onRemoveRight={handleUserListRemoveRight}
                 onChangeRight={handleUserListChangeRight}
+                revealUserId={revealUserId}
+                onRevealUserHandled={() => setRevealUserId(null)}
               />
             </TabsContent>
 
