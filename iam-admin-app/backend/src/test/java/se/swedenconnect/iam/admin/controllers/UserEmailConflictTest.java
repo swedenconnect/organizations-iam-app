@@ -264,7 +264,8 @@ class UserEmailConflictTest {
   }
 
   private static UserInfo userInfo() {
-    return new UserInfo(TARGET, TARGET, "Klara", "Karlsson", EMAIL, null, null, null, false, List.of());
+    return new UserInfo(
+        TARGET, TARGET, "Klara", "Karlsson", EMAIL, null, null, null, null, null, false, List.of());
   }
 
   private static void setupCallerAuth() {

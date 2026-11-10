@@ -55,9 +55,9 @@
 
 - Saving a user with an email address that is already registered is reported on the email field instead of failing with a server error ([#184](https://github.com/swedenconnect/organizations-iam-app/issues/184)).
 
-- The user list has page controls, so more than the first page of users can be reached, and a newly created user is shown on the page that holds them.
+- The user list is shown a page at a time, and a newly created user is shown on the page that holds them.
 
-- Users are created from the Users page by a superuser only. An organization administrator adds a user from the organization or function they are to have a right in, since a user without any right is outside the administrator's scope.
+- Users are created from the Users page by a superuser only. An organization administrator adds a user from the organization or function they are to have a right in, since a user without any right is outside the administrator's scope ([#114](https://github.com/swedenconnect/organizations-iam-app/issues/114)).
 
 ### Version 0.9.8
 
