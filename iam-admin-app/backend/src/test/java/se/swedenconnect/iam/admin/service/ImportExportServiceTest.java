@@ -292,6 +292,36 @@ class ImportExportServiceTest {
         .createUser(isNull(), eq("Anna Andersson"), any(), eq(PIN), isNull(), isNull(), isNull(), any(), isNull());
   }
 
+  /**
+   * A name the realm's user profile refuses is reported on the row, rather than letting Keycloak
+   * refuse it half-way through the import and stop the job. See
+   * <a href="https://github.com/swedenconnect/organizations-iam-app/issues/136">issue #136</a>.
+   */
+  @Test
+  void aNameTheRealmRefusesIsAnError() {
+    final ImportPreviewReport report = this.dryRun("""
+        {
+          "schema_version": "1.0",
+          "functions": [],
+          "organizations": [],
+          "users": [
+            {
+              "name": "Anna <img src=x> Andersson",
+              "personal_identity_number": "197001011234",
+              "rights": []
+            }
+          ]
+        }
+        """);
+
+    assertThat(report.users().getFirst().status()).isEqualTo("error");
+    assertThat(report.users().getFirst().reason()).contains("name must not contain");
+
+    this.confirm(report.batchId());
+    verify(this.keycloakAdminClient, never())
+        .createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any());
+  }
+
   @Test
   void aTakenUsernameIsAnErrorAndNotADuplicate() {
     this.properties.getUserRegistration().setAllowSelectUserId(true);

@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Badge } from '@/app/components/ui/badge';
 import { useLanguage } from '@/app/contexts/LanguageContext';
 import { Building2, Boxes, X } from 'lucide-react';
-import { formatPersonalIdentityNumber, resolveOrgName } from '@/utils';
+import { formatPersonalIdentityNumber, isAllowedPersonName, PROHIBITED_NAME_CHARACTERS, resolveOrgName } from '@/utils';
 import { EmailTakenError, UserIdTakenError } from '@/services/userService';
 import { useUserRegistration } from '@/app/contexts/UserRegistrationContext';
 import {
@@ -68,6 +68,7 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
   const [identity, setIdentity] = useState<IdentityValues>(EMPTY_IDENTITY_VALUES);
   const [identityErrors, setIdentityErrors] = useState<IdentityErrors>({});
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [nameError, setNameError] = useState('');
   const [emailError, setEmailError] = useState('');
   const [phoneError, setPhoneError] = useState('');
 
@@ -92,6 +93,7 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
     }
     setIdentity(EMPTY_IDENTITY_VALUES);
     setIdentityErrors({});
+    setNameError('');
     setEmailError('');
     setPhoneError('');
     setStagedRights(user?.rights ?? []);
@@ -101,6 +103,13 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // The realm refuses these characters in a name, so say so here rather than on the way back
+    if (!isAllowedPersonName(name.trim())) {
+      setNameError(`${t('validation.nameCharacters')} ${PROHIBITED_NAME_CHARACTERS}`);
+      return;
+    }
+    setNameError('');
 
     // Validate the identity values (create mode only)
     if (!user) {
@@ -230,10 +239,11 @@ export function UserForm({ user, organizations, functions, isOpen, currentUserId
             <Input
               id={`${idPrefix}-name`}
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => { setName(e.target.value); setNameError(''); }}
               placeholder=""
               required
             />
+            {nameError && <p className="text-sm text-red-500">{nameError}</p>}
           </div>
 
           {/* Identities — read-only in edit mode, collected in create mode */}

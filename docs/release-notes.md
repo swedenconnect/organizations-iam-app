@@ -16,6 +16,8 @@
 
 - Users are created from the Users page by a superuser only. An organization administrator adds a user from the organization or function they are to have a right in, since a user without any right is outside the administrator's scope ([#114](https://github.com/swedenconnect/organizations-iam-app/issues/114)).
 
+- A user name the realm refuses, for example one containing `<` or `>`, is reported on the name field instead of failing with a server error, and an error response no longer carries a stack trace ([#136](https://github.com/swedenconnect/organizations-iam-app/issues/136)).
+
 ---
 
 ### Version 1.0.1
