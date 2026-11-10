@@ -10,7 +10,7 @@
 
 **Date:** _not yet released_
 
--
+- The published Docker images no longer contain Spring Boot DevTools, which kept stack traces and error messages in error responses for any caller. It is now in a Maven profile of its own, see [Spring Boot DevTools](local-environment.md#spring-boot-devtools) ([#118](https://github.com/swedenconnect/organizations-iam-app/issues/118)).
 
 ---
 

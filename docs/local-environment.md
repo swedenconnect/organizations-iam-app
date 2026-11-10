@@ -534,6 +534,24 @@ docker compose -f compose/docker-compose.yml stop iam-demo-app iam-demo-service
 
 Keycloak and the IAM admin application keep running as containers either way.
 
+<a name="spring-boot-devtools"></a>
+### Spring Boot DevTools
+
+DevTools is declared in a Maven profile of its own and is off unless a build asks for it:
+
+```bash
+mvn -Pdevtools spring-boot:run
+```
+
+In IntelliJ, tick **devtools** under **Maven → Profiles** to put it on a run configuration's
+classpath.
+
+It is kept out of the normal build because the published images are built with Jib, which copies
+the runtime classpath into the image and starts the main class directly. DevTools does not see a
+packaged application there and stays active, which turns stack traces and error messages on in
+every error response, to any caller, and starts a LiveReload server. See
+[issue #118](https://github.com/swedenconnect/organizations-iam-app/issues/118).
+
 ---
 
 Copyright &copy; 2026, [Myndigheten för digital förvaltning - Swedish Agency for

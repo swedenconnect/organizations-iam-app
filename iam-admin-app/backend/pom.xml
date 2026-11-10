@@ -90,13 +90,6 @@
 
     <dependency>
       <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-devtools</artifactId>
-      <scope>runtime</scope>
-      <optional>true</optional>
-    </dependency>
-
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-webmvc-test</artifactId>
       <scope>test</scope>
     </dependency>
@@ -236,5 +229,34 @@
 
     </plugins>
   </build>
+
+  <profiles>
+    <!--
+      Spring Boot DevTools is a development convenience, and it must not reach a published image.
+      Jib copies the runtime classpath into the image and starts the main class directly, so
+      DevTools does not see a packaged application and stays active: it turns stack traces and
+      error messages on in every error response, to any caller, and it runs a LiveReload server.
+      See https://github.com/swedenconnect/organizations-iam-app/issues/118.
+
+      It is therefore declared here rather than among the dependencies, and only a build that asks
+      for it gets it:
+
+          mvn -Pdevtools spring-boot:run
+
+      In IntelliJ, tick "devtools" under Maven -> Profiles to have it on the classpath of a run
+      configuration.
+    -->
+    <profile>
+      <id>devtools</id>
+      <dependencies>
+        <dependency>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-devtools</artifactId>
+          <scope>runtime</scope>
+          <optional>true</optional>
+        </dependency>
+      </dependencies>
+    </profile>
+  </profiles>
 
 </project>
