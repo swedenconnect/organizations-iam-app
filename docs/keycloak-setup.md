@@ -346,6 +346,10 @@ The IAM admin application writes `personalIdentityNumber`, `orgAffiliation`, `or
 `orgName`, `hsaId`, `efosId` and `phoneNumber`. The remaining attributes are declared so that a
 token can carry them when an identity provider or another administrative route supplies them.
 
+At startup the admin application reads the realm's user profile and logs a warning naming every
+attribute it writes that the realm would discard, so a missing declaration shows up in the log
+rather than as values that quietly fail to save.
+
 <a name="the-primary-identifier-scope"></a>
 ### 2.4e. The Primary Identifier Scope
 
