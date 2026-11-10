@@ -10,7 +10,7 @@
 
 **Date:** _not yet released_
 
--
+- A phone number given for a user is stored. Keycloak discarded it, because the realm did not declare the attribute ([#185](https://github.com/swedenconnect/organizations-iam-app/issues/185)).
 
 ---
 

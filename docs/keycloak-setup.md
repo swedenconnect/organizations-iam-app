@@ -323,14 +323,16 @@ bootstrapped releases none of these claims.
 
 The realm sets no unmanaged attribute policy, so an attribute that is not declared is
 silently dropped when a user is written. The OIDC Sweden declarations follow the plugin's own
-definitions: two attribute groups and ten attributes. Two more attributes, `hsaId` and
-`efosId`, hold the HSA-ID and the EFOS-ID. They are not part of the Swedish OIDC Claims
-Specification, so they belong to no attribute group. Every attribute is viewable by admin and
-user, editable by admin only, single-valued and not required.
+definitions: two attribute groups and ten attributes. Three more attributes are declared
+outside that specification: `hsaId` and `efosId` hold the HSA-ID and the EFOS-ID, and
+`phoneNumber` holds the phone number, which is the attribute Keycloak's built-in `phone`
+client scope reads for the `phone_number` claim. None of the three is part of the Swedish
+OIDC Claims Specification, so they belong to no attribute group. Every attribute is viewable
+by admin and user, editable by admin only, single-valued and not required.
 
 | Attribute group | Attributes |
 |---|---|
-| (none) | `middleName`, `birthdate`, `hsaId`, `efosId` |
+| (none) | `middleName`, `birthdate`, `hsaId`, `efosId`, `phoneNumber` |
 | `oidc-sweden-natural-person` | `personalIdentityNumber`, `coordinationNumber`, `coordinationNumberLevel`, `previousCoordinationNumber` |
 | `oidc-sweden-org-id` | `orgAffiliation`, `orgName`, `orgNumber`, `orgUnit` |
 
@@ -341,8 +343,8 @@ version put on it. The selector has no counterpart in the specification; remove 
 **Realm settings → User profile** if the attribute should follow the definitions above.
 
 The IAM admin application writes `personalIdentityNumber`, `orgAffiliation`, `orgNumber`,
-`orgName`, `hsaId` and `efosId`. The remaining attributes are declared so that a token can carry
-them when an identity provider or another administrative route supplies them.
+`orgName`, `hsaId`, `efosId` and `phoneNumber`. The remaining attributes are declared so that a
+token can carry them when an identity provider or another administrative route supplies them.
 
 <a name="the-primary-identifier-scope"></a>
 ### 2.4e. The Primary Identifier Scope
@@ -1025,6 +1027,9 @@ with permissions set so that only admins can edit while both users and admins ca
 | `orgName` | Organization Name | `oidc-sweden-org-id` |
 | `orgNumber` | Organization Number | `oidc-sweden-org-id` |
 | `orgUnit` | Organizational Unit | `oidc-sweden-org-id` |
+| `hsaId` | HSA-ID | (none) |
+| `efosId` | EFOS-ID | (none) |
+| `phoneNumber` | Phone Number | (none) |
 
 > **Note:** The groups must exist before the attributes: an attribute naming a group that has
 > not been created is rejected. Which claims a token carries is decided by the client scopes

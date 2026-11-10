@@ -539,11 +539,11 @@ fi
 # ---------------------------------------------------------------------------
 #
 # The two attribute groups and ten attributes of the Swedish OIDC Claims
-# Specification, as the oidc-sweden-claims-plugin defines them, and the two
-# identifiers outside that specification, hsaId and efosId. Neither the plugin nor
-# Keycloak declares any of them in a realm, so that is this script's job. Without a
-# declaration Keycloak drops the attribute when a user is written, since the realm
-# sets no unmanaged attribute policy.
+# Specification, as the oidc-sweden-claims-plugin defines them, and the three
+# attributes outside that specification: hsaId, efosId and phoneNumber. Neither the
+# plugin nor Keycloak declares any of them in a realm, so that is this script's job.
+# Without a declaration Keycloak drops the attribute when a user is written, since the
+# realm sets no unmanaged attribute policy.
 #
 # Groups are written before the attributes that reference them, and only what is
 # missing is added: an attribute already present keeps its definition exactly as it
@@ -580,7 +580,9 @@ groups = [
 ]
 
 # name, display name, group. middleName and birthdate deliberately have no group, and
-# hsaId and efosId are not part of the OIDC Sweden specification, so they have none either.
+# hsaId, efosId and phoneNumber are not part of the OIDC Sweden specification, so they
+# have none either. phoneNumber is the attribute Keycloak's built-in phone client scope
+# reads for the phone_number claim, and the one the admin application stores.
 attributes = [
     ('middleName', 'Middle Name', None),
     ('birthdate', 'Date of Birth', None),
@@ -594,6 +596,7 @@ attributes = [
     ('orgUnit', 'Organizational Unit', 'oidc-sweden-org-id'),
     ('hsaId', 'HSA-ID', None),
     ('efosId', 'EFOS-ID', None),
+    ('phoneNumber', 'Phone Number', None),
 ]
 
 existing_groups = profile.setdefault('groups', [])
