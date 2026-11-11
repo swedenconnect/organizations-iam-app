@@ -57,7 +57,6 @@ import se.swedenconnect.iam.admin.keycloak.model.UserRight;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -182,9 +181,8 @@ public class UserController {
    * @param req     the request body
    * @param request the HTTP servlet request
    * @return 201 Created with the created user, 400 on invalid input, 403 if not authenticated,
-   *         409 if the user ID is taken, if the email address is already registered, or if a user
-   *         with the same personal identity number, organizational affiliation, HSA-ID or EFOS-ID
-   *         already exists
+   *         409 if the user ID is taken, or if a user with the same personal identity number,
+   *         organizational affiliation, HSA-ID or EFOS-ID already exists
    */
   @PostMapping(value = "/users",
       consumes = MediaType.APPLICATION_JSON_VALUE,
@@ -285,22 +283,12 @@ public class UserController {
       }
     }
 
-    if (email != null && !email.isBlank()
-        && this.keycloakAdminClient.findUserIdByEmail(email).isPresent()) {
-      log.info("POST /api/users — rejected: email '{}' is already registered", email);
-      return ResponseEntity.status(409).body(Map.of("reason", "EMAIL_TAKEN"));
-    }
-
     final String userId;
     try {
       userId = this.keycloakAdminClient.createUser(
           selectedUserId, name, email, pin, orgAffiliation, hsaId, efosId, phoneNumber, temporaryPassword);
     }
     catch (final KeycloakAdminException e) {
-      if (isEmailConflict(e)) {
-        log.info("POST /api/users — rejected by Keycloak: email '{}' is already registered", email);
-        return ResponseEntity.status(409).body(Map.of("reason", "EMAIL_TAKEN"));
-      }
       this.eventPublisher.publishEvent(IamErrorAuditEvent.operationFailed(
           new AuditData.Operation(AuditOperations.CREATE_USER, null), AuditData.Target.none(), e));
       throw e;
@@ -376,10 +364,6 @@ public class UserController {
    *
    * <p>The eID attributes and rights are not updated here.</p>
    *
-   * <p>An email address another user already holds is refused with a 409 and
-   * {@code {"reason":"EMAIL_TAKEN"}}, the same answer the create endpoint gives. Which user holds
-   * the address is not disclosed.</p>
-   *
    * <p>A regular admin may only address a user that is visible to them, see
    * {@code resolveVisibleUser}. A user outside the caller's scope is
    * reported exactly as an unknown UUID is, and is left unchanged.</p>
@@ -389,8 +373,7 @@ public class UserController {
    * @param request the HTTP servlet request
    * @return 200 with updated user data on success, 400 on invalid input,
    *         403 if not authenticated or self-update, 404 if not found or outside the caller's
-   *         scope, 409 if the email address is already registered for another user,
-   *         500 on Keycloak error
+   *         scope, 500 on Keycloak error
    */
   @PutMapping(value = "/users/{userId}",
       consumes = MediaType.APPLICATION_JSON_VALUE,
@@ -437,13 +420,6 @@ public class UserController {
       return ResponseEntity.notFound().build();
     }
 
-    if (req.email() != null && !req.email().isBlank()
-        && this.keycloakAdminClient.findUserIdByEmail(req.email())
-            .filter(holder -> !holder.equals(userId)).isPresent()) {
-      log.info("PUT /api/users/{} — rejected: email '{}' is already registered", userId, req.email());
-      return ResponseEntity.status(409).body(Map.of("reason", "EMAIL_TAKEN"));
-    }
-
     try {
       this.keycloakAdminClient.updateUser(userId, name, req.email(), req.phoneNumber());
       log.info("PUT /api/users/{} — profile updated", userId);
@@ -478,11 +454,6 @@ public class UserController {
           .orElse(ResponseEntity.notFound().build());
     }
     catch (final KeycloakAdminException e) {
-      if (isEmailConflict(e)) {
-        log.info("PUT /api/users/{} — rejected by Keycloak: email '{}' is already registered",
-            userId, req.email());
-        return ResponseEntity.status(409).body(Map.of("reason", "EMAIL_TAKEN"));
-      }
       log.error("PUT /api/users/{} — Keycloak error: {}", userId, e.getMessage());
       this.eventPublisher.publishEvent(IamErrorAuditEvent.operationFailed(
           new AuditData.Operation(AuditOperations.UPDATE_USER, null),
@@ -586,23 +557,6 @@ public class UserController {
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
-
-  /**
-   * Tells whether Keycloak refused the write because the email address is already registered.
-   *
-   * <p>Keycloak answers {@code 409} with {@code User exists with same email} when the realm does
-   * not allow an address to be used twice. That is the administrator's to fix, so it is answered
-   * with a 409 of our own rather than a server error. The match is on the status and the message
-   * Keycloak sends; a conflict it reports for any other reason is left alone.</p>
-   *
-   * @param e the exception from the Keycloak admin client
-   * @return {@code true} for an email conflict
-   */
-  private static boolean isEmailConflict(final @NonNull KeycloakAdminException e) {
-    final String message = e.getKeycloakErrorMessage();
-    return e.isConflict() && message != null
-        && message.toLowerCase(Locale.ROOT).contains("same email");
-  }
 
   /**
    * Loads a user the caller is entitled to address, by the same visibility rule the list endpoint

@@ -21,7 +21,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { Search, User as UserIcon, Loader2, Info } from 'lucide-react';
 import { useLanguage } from '@/app/contexts/LanguageContext';
-import { createUser, DuplicateIdentityError, EmailTakenError, UserIdTakenError } from '@/services/userService';
+import { createUser, DuplicateIdentityError, UserIdTakenError } from '@/services/userService';
 import { useUserRegistration } from '@/app/contexts/UserRegistrationContext';
 import {
   EMPTY_IDENTITY_VALUES,
@@ -184,8 +184,6 @@ export function AddUserToOrgDialog({
     } catch (err) {
       if (err instanceof UserIdTakenError) {
         setIdentityErrors({ userId: t('validation.userIdTaken') });
-      } else if (err instanceof EmailTakenError) {
-        setFieldErrors({ email: t('validation.emailTaken') });
       } else if (err instanceof DuplicateIdentityError) {
         const existing = err.existingUserId
           ? users.find((u) => u.id === err.existingUserId) ?? null

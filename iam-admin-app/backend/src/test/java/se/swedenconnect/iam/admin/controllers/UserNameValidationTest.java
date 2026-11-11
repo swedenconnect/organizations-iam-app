@@ -99,7 +99,6 @@ class UserNameValidationTest {
     setupCallerAuth();
 
     when(this.keycloakAdminClient.findUserIdByPersonalIdentityNumber(anyString())).thenReturn(Optional.empty());
-    when(this.keycloakAdminClient.findUserIdByEmail(anyString())).thenReturn(Optional.empty());
     when(this.keycloakAdminClient.usernameExists(anyString())).thenReturn(false);
     when(this.keycloakAdminClient.fetchUserById(TARGET)).thenReturn(Optional.of(userInfo()));
     when(this.keycloakAdminClient.fetchUserRights(anyString())).thenReturn(List.of());

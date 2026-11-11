@@ -26,10 +26,9 @@ import tools.jackson.databind.ObjectMapper;
  * account token cannot be obtained or when the server returns a non-2xx response.
  *
  * <p>An exception raised from an HTTP response carries the status code and the {@code errorMessage}
- * Keycloak puts in the response body, see {@link #forResponse}. Callers use those to tell a
- * conflict the administrator can act on, such as an email address that is already registered, from
- * a genuine server failure. The Keycloak message is meant for the log and for matching in code —
- * it is never passed on to a client.</p>
+ * Keycloak puts in the response body, see {@link #forResponse}. Callers use those to tell a request
+ * Keycloak refused, which the administrator can act on, from a genuine server failure. The Keycloak
+ * message is meant for the log and for matching in code — it is never passed on to a client.</p>
  *
  * @author Martin Lindström
  */
@@ -101,16 +100,6 @@ public class KeycloakAdminException extends RuntimeException {
    */
   public @Nullable String getKeycloakErrorMessage() {
     return this.keycloakErrorMessage;
-  }
-
-  /**
-   * Tells whether Keycloak refused the operation as a conflict (409), i.e. because the realm
-   * already holds what the request tried to create or change.
-   *
-   * @return {@code true} for a 409 response
-   */
-  public boolean isConflict() {
-    return this.status == 409;
   }
 
   /**

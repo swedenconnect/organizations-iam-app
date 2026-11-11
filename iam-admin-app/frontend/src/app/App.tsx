@@ -12,7 +12,7 @@ import { ImportExportPanel } from '@/app/components/ImportExportPanel';
 import { Header } from '@/app/components/Header';
 import { Footer } from '@/app/components/Footer';
 import { Organization, User, UserOrganizationRole, FunctionType, OrganizationFunction, AdminSessionData, OrganizationData, ManagedClient, ManagedClientInput, ClientDrift, UserRegistrationSettings } from '@/types';
-import { EmailTakenError, LastAdminError, UserIdTakenError } from '@/services/userService';
+import { LastAdminError, UserIdTakenError } from '@/services/userService';
 import { UserFormValues } from '@/app/components/UserForm';
 import { DEFAULT_USER_REGISTRATION_SETTINGS, UserRegistrationProvider } from '@/app/contexts/UserRegistrationContext';
 import { Button } from '@/app/components/ui/button';
@@ -410,8 +410,8 @@ function AppContent() {
       setSelectedUser(null);
     } catch (error) {
       console.error('Error saving user:', error);
-      if (error instanceof UserIdTakenError || error instanceof EmailTakenError) {
-        // Reported against the user ID or email field by the form itself
+      if (error instanceof UserIdTakenError) {
+        // Reported against the user ID field by the form itself
         throw error;
       }
       if (error instanceof Error && error.message === 'DUPLICATE_IDENTITY') {

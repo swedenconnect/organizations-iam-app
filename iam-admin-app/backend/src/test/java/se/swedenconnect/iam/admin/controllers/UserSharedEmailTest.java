@@ -54,37 +54,36 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.InstanceOfAssertFactories.throwable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Tests that an email address that is already registered is reported as a conflict the
- * administrator can act on, and not as a server error, on both {@code POST /api/users} and
+ * Tests that two users may hold the same email address, on both {@code POST /api/users} and
  * {@code PUT /api/users/{userId}}. See
- * <a href="https://github.com/swedenconnect/organizations-iam-app/issues/184">issue #184</a>.
+ * <a href="https://github.com/swedenconnect/organizations-iam-app/issues/191">issue #191</a>.
  *
- * <p>The address is refused before the write when it is known to be taken, and a conflict Keycloak
- * reports anyway — a race, or a rule only Keycloak knows — is answered the same way. Which user
- * holds the address is never disclosed, and a Keycloak failure of any other kind stays a failure.
- * </p>
+ * <p>The address is contact information, not an identity: the application neither looks a user up
+ * by it nor refuses it because somebody else has it. A realm that does forbid a shared address
+ * answers 409, which is passed on as the conflict it is rather than hidden, and a Keycloak failure
+ * of any other kind is a 500 that carries nothing Keycloak said.</p>
  *
  * @author Per Fredrik Plars
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-class UserEmailConflictTest {
+class UserSharedEmailTest {
 
   private static final String NAME = "Martin Lindström";
   private static final String EMAIL = "martin@example.com";
   private static final String PIN = "196911292032";
   private static final String CALLER = "caller-uuid";
   private static final String TARGET = "target-uuid";
-  private static final String OTHER = "other-uuid";
 
   /** What Keycloak answers when the realm does not allow an address to be registered twice. */
   private static final String KEYCLOAK_EMAIL_CONFLICT = "{\"errorMessage\":\"User exists with same email\"}";
@@ -113,7 +112,6 @@ class UserEmailConflictTest {
 
     when(this.keycloakAdminClient.findUserIdByPersonalIdentityNumber(anyString())).thenReturn(Optional.empty());
     when(this.keycloakAdminClient.findUserIdByOrgAffiliation(anyString())).thenReturn(Optional.empty());
-    when(this.keycloakAdminClient.findUserIdByEmail(anyString())).thenReturn(Optional.empty());
     when(this.keycloakAdminClient.usernameExists(anyString())).thenReturn(false);
     when(this.keycloakAdminClient.createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any()))
         .thenReturn("created-uuid");
@@ -130,88 +128,46 @@ class UserEmailConflictTest {
   // POST /api/users
   // ---------------------------------------------------------------------------
 
-  /** An address that is already registered is refused before anything is written. */
+  /** An address somebody else already holds is created like any other. */
   @Test
-  void create_emailAlreadyRegistered_returns409AndWritesNothing() {
-    when(this.keycloakAdminClient.findUserIdByEmail(EMAIL)).thenReturn(Optional.of(OTHER));
-
+  void create_emailAnotherUserHolds_isAllowed() {
     final ResponseEntity<?> response = this.controller.createUser(
         new CreateUserRequest(NAME, EMAIL, null, PIN, null, null, null, null, null), this.request);
 
-    assertThat(response.getStatusCode().value()).isEqualTo(409);
-    assertThat(response.getBody()).isEqualTo(Map.of("reason", "EMAIL_TAKEN"));
-    verify(this.keycloakAdminClient, never())
-        .createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any());
+    assertThat(response.getStatusCode().value()).isEqualTo(201);
+    verify(this.keycloakAdminClient)
+        .createUser(any(), anyString(), eq(EMAIL), any(), any(), any(), any(), any(), any());
   }
 
-  /** The user holding the address is not disclosed, unlike for the other identities. */
+  /** A realm that does forbid a shared address answers 409, and that is not swallowed. */
   @Test
-  void create_emailAlreadyRegistered_doesNotDiscloseTheExistingUser() {
-    when(this.keycloakAdminClient.findUserIdByEmail(EMAIL)).thenReturn(Optional.of(OTHER));
-
-    final ResponseEntity<?> response = this.controller.createUser(
-        new CreateUserRequest(NAME, EMAIL, null, PIN, null, null, null, null, null), this.request);
-
-    assertThat(response.getBody()).asString().doesNotContain(OTHER);
-  }
-
-  /** A conflict Keycloak reports anyway, after the check passed, is answered the same way. */
-  @Test
-  void create_keycloakReportsEmailConflict_returns409() {
+  void create_realmForbidsASharedAddress_theConflictIsPassedOn() {
     when(this.keycloakAdminClient.createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any()))
         .thenThrow(emailConflict("POST /users"));
 
-    final ResponseEntity<?> response = this.controller.createUser(
-        new CreateUserRequest(NAME, EMAIL, null, PIN, null, null, null, null, null), this.request);
-
-    assertThat(response.getStatusCode().value()).isEqualTo(409);
-    assertThat(response.getBody()).isEqualTo(Map.of("reason", "EMAIL_TAKEN"));
-  }
-
-  /** A Keycloak failure of any other kind is still a failure. */
-  @Test
-  void create_keycloakFailsForAnotherReason_isNotTurnedIntoAConflict() {
-    when(this.keycloakAdminClient.createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any()))
-        .thenThrow(serverError("POST /users"));
-
     assertThatThrownBy(() -> this.controller.createUser(
         new CreateUserRequest(NAME, EMAIL, null, PIN, null, null, null, null, null), this.request))
-        .isInstanceOf(KeycloakAdminException.class);
-  }
-
-  /** A conflict over something else than the email address is not reported as an email conflict. */
-  @Test
-  void create_keycloakReportsAnotherConflict_isNotTurnedIntoAnEmailConflict() {
-    when(this.keycloakAdminClient.createUser(any(), anyString(), any(), any(), any(), any(), any(), any(), any()))
-        .thenThrow(conflict("POST /users", "{\"errorMessage\":\"User exists with same username\"}"));
-
-    assertThatThrownBy(() -> this.controller.createUser(
-        new CreateUserRequest(NAME, EMAIL, null, PIN, null, null, null, null, null), this.request))
-        .isInstanceOf(KeycloakAdminException.class);
+        .asInstanceOf(throwable(KeycloakAdminException.class))
+        .satisfies(e -> assertThat(e.getStatus()).isEqualTo(409));
   }
 
   // ---------------------------------------------------------------------------
   // PUT /api/users/{userId}
   // ---------------------------------------------------------------------------
 
-  /** An address another user holds is refused before anything is written. */
+  /** An address another user holds is saved like any other. */
   @Test
-  void update_emailAlreadyRegisteredForAnotherUser_returns409AndWritesNothing() {
-    when(this.keycloakAdminClient.findUserIdByEmail("taken@example.com")).thenReturn(Optional.of(OTHER));
-
+  void update_emailAnotherUserHolds_isAllowed() {
     final ResponseEntity<?> response = this.controller.updateUser(
-        TARGET, new UpdateUserRequest("New Name", "taken@example.com", null), this.request);
+        TARGET, new UpdateUserRequest("New Name", "shared@example.com", null), this.request);
 
-    assertThat(response.getStatusCode().value()).isEqualTo(409);
-    assertThat(response.getBody()).isEqualTo(Map.of("reason", "EMAIL_TAKEN"));
-    verify(this.keycloakAdminClient, never()).updateUser(anyString(), anyString(), any(), any());
+    assertThat(response.getStatusCode().value()).isEqualTo(200);
+    verify(this.keycloakAdminClient).updateUser(TARGET, "New Name", "shared@example.com", null);
   }
 
-  /** The user's own address is not a conflict with themselves. */
+  /** The user's own address is saved unchanged. */
   @Test
-  void update_emailHeldByTheUserThemselves_isAllowed() {
-    when(this.keycloakAdminClient.findUserIdByEmail(EMAIL)).thenReturn(Optional.of(TARGET));
-
+  void update_theUsersOwnAddress_isAllowed() {
     final ResponseEntity<?> response = this.controller.updateUser(
         TARGET, new UpdateUserRequest("New Name", EMAIL, null), this.request);
 
@@ -219,22 +175,9 @@ class UserEmailConflictTest {
     verify(this.keycloakAdminClient).updateUser(TARGET, "New Name", EMAIL, null);
   }
 
-  /** A conflict Keycloak reports anyway, after the check passed, is answered the same way. */
+  /** A Keycloak failure is a 500, and the Keycloak message is not passed on. */
   @Test
-  void update_keycloakReportsEmailConflict_returns409() {
-    doThrow(emailConflict("PUT /users/" + TARGET))
-        .when(this.keycloakAdminClient).updateUser(anyString(), anyString(), any(), any());
-
-    final ResponseEntity<?> response = this.controller.updateUser(
-        TARGET, new UpdateUserRequest("New Name", EMAIL, null), this.request);
-
-    assertThat(response.getStatusCode().value()).isEqualTo(409);
-    assertThat(response.getBody()).isEqualTo(Map.of("reason", "EMAIL_TAKEN"));
-  }
-
-  /** Another Keycloak failure is a 500, and the Keycloak message is not passed on. */
-  @Test
-  void update_keycloakFailsForAnotherReason_returns500WithoutTheKeycloakMessage() {
+  void update_keycloakFails_returns500WithoutTheKeycloakMessage() {
     doThrow(serverError("PUT /users/" + TARGET))
         .when(this.keycloakAdminClient).updateUser(anyString(), anyString(), any(), any());
 
@@ -250,12 +193,9 @@ class UserEmailConflictTest {
   // ---------------------------------------------------------------------------
 
   private static KeycloakAdminException emailConflict(final String operation) {
-    return conflict(operation, KEYCLOAK_EMAIL_CONFLICT);
-  }
-
-  private static KeycloakAdminException conflict(final String operation, final String body) {
     return KeycloakAdminException.forResponse(operation, new HttpClientErrorException(
-        HttpStatus.CONFLICT, "Conflict", body.getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8));
+        HttpStatus.CONFLICT, "Conflict",
+        KEYCLOAK_EMAIL_CONFLICT.getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8));
   }
 
   private static KeycloakAdminException serverError(final String operation) {
