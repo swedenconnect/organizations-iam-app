@@ -10,7 +10,7 @@
 
 **Date:** _not yet released_
 
-- Saving a user with an email address that is already registered is reported on the email field instead of failing with a server error ([#184](https://github.com/swedenconnect/organizations-iam-app/issues/184)).
+- Two users may hold the same email address, and saving an address that is already registered no longer fails with a server error ([#191](https://github.com/swedenconnect/organizations-iam-app/issues/191), [#184](https://github.com/swedenconnect/organizations-iam-app/issues/184)).
 
 - The user list is shown a page at a time, and a newly created user is shown on the page that holds them.
 

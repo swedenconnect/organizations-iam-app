@@ -32,26 +32,24 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class KeycloakAdminExceptionTest {
 
-  /** The status and the Keycloak message are both kept, and a 409 is reported as a conflict. */
+  /** The status and the Keycloak message are both kept. */
   @Test
   void forResponse_conflict_keepsStatusAndMessage() {
     final KeycloakAdminException e = KeycloakAdminException.forResponse(
         "POST /users", response(HttpStatus.CONFLICT, "{\"errorMessage\":\"User exists with same email\"}"));
 
     assertThat(e.getStatus()).isEqualTo(409);
-    assertThat(e.isConflict()).isTrue();
     assertThat(e.getKeycloakErrorMessage()).isEqualTo("User exists with same email");
     assertThat(e.getMessage()).isEqualTo("Keycloak admin API returned 409 CONFLICT for POST /users");
   }
 
-  /** A response that is not a conflict is not reported as one. */
+  /** A server error keeps its status, and has no Keycloak message to keep. */
   @Test
-  void forResponse_serverError_isNoConflict() {
+  void forResponse_serverError_keepsTheStatus() {
     final KeycloakAdminException e = KeycloakAdminException.forResponse(
         "PUT /users/abc", response(HttpStatus.INTERNAL_SERVER_ERROR, ""));
 
     assertThat(e.getStatus()).isEqualTo(500);
-    assertThat(e.isConflict()).isFalse();
     assertThat(e.getKeycloakErrorMessage()).isNull();
   }
 
@@ -72,7 +70,6 @@ class KeycloakAdminExceptionTest {
     final KeycloakAdminException e = new KeycloakAdminException("User not found: abc");
 
     assertThat(e.getStatus()).isZero();
-    assertThat(e.isConflict()).isFalse();
     assertThat(e.getKeycloakErrorMessage()).isNull();
   }
 

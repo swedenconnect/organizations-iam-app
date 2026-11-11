@@ -9,7 +9,7 @@ vi.mock('@/lib/api', () => ({
 }));
 
 const { fetchAllUsers, deriveUserRoles, createUser, updateUser, DuplicateIdentityError,
-  EmailTakenError, UserIdTakenError } = await import('@/services/userService');
+  UserIdTakenError } = await import('@/services/userService');
 
 /** A minimal user as GET /api/users returns it. */
 function userData(userId: string): UserData {
@@ -139,8 +139,8 @@ describe('deriveUserRoles', () => {
 
 /**
  * How the backend's answers are turned into errors the form can report against the right field.
- * A 409 with reason EMAIL_TAKEN is the answer to an email address that is already registered,
- * see issue #184, and must not be mistaken for a duplicate eID identity.
+ * A taken user ID must not be mistaken for a duplicate eID identity. An email address somebody
+ * else holds is not a conflict at all, see issue #191.
  */
 describe('conflict handling', () => {
   beforeEach(() => {
@@ -152,21 +152,7 @@ describe('conflict handling', () => {
     apiFetch.mockResolvedValue(new Response(JSON.stringify(body), { status: 409 }));
   }
 
-  it('reports an email address that is already registered when creating a user', async () => {
-    conflict({ reason: 'EMAIL_TAKEN' });
-
-    await expect(createUser({ name: 'Klara', email: 'klara@example.com' } as never))
-      .rejects.toBeInstanceOf(EmailTakenError);
-  });
-
-  it('reports an email address that is already registered when updating a user', async () => {
-    conflict({ reason: 'EMAIL_TAKEN' });
-
-    await expect(updateUser('target-uuid', { name: 'Klara', email: 'klara@example.com' }))
-      .rejects.toBeInstanceOf(EmailTakenError);
-  });
-
-  it('keeps a taken user ID apart from a taken email address', async () => {
+  it('reports a taken user ID as such', async () => {
     conflict({ reason: 'USER_ID_TAKEN' });
 
     await expect(createUser({ name: 'Klara', userId: 'klara' } as never))
@@ -178,5 +164,14 @@ describe('conflict handling', () => {
 
     await expect(createUser({ name: 'Klara', personalIdentityNumber: '196911292032' } as never))
       .rejects.toBeInstanceOf(DuplicateIdentityError);
+  });
+
+  it('saves a user with an email address somebody else holds', async () => {
+    apiFetch.mockResolvedValue(new Response(JSON.stringify(
+      { userId: 'target-uuid', username: 'target-uuid', email: 'shared@example.com' }),
+      { status: 200 }));
+
+    await expect(updateUser('target-uuid', { name: 'Klara', email: 'shared@example.com' }))
+      .resolves.toMatchObject({ email: 'shared@example.com' });
   });
 });

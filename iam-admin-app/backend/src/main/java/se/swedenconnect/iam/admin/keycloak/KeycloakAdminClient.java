@@ -3051,27 +3051,6 @@ public class KeycloakAdminClient {
   }
 
   /**
-   * Looks up a user by email address and returns their Keycloak UUID if found.
-   *
-   * <p>Keycloak refuses to register the same email address twice unless the realm allows it, so
-   * this lookup lets an administrator be told which field is at fault before the write is
-   * attempted. The UUID is for the caller's own use — which user holds an address is not something
-   * a response may reveal.</p>
-   *
-   * @param email the email address
-   * @return the Keycloak user UUID, or {@link Optional#empty()} if no such user exists
-   */
-  public Optional<String> findUserIdByEmail(final @NonNull String email) {
-    final List<Map<String, Object>> users = this.adminGet(
-        "/users?email=" + URLEncoder.encode(email, StandardCharsets.UTF_8) + "&exact=true",
-        new ParameterizedTypeReference<>() {});
-    if (users == null || users.isEmpty()) {
-      return Optional.empty();
-    }
-    return Optional.ofNullable(getString(users.getFirst(), "id"));
-  }
-
-  /**
    * Tells whether the given user ID is already taken as a Keycloak {@code username}.
    *
    * @param userId the user ID to check

@@ -226,6 +226,7 @@ print(json.dumps({
   "displayNameHtml": sys.argv[2],
   "registrationAllowed": False,
   "loginWithEmailAllowed": False,
+  "duplicateEmailsAllowed": True,
   "resetPasswordAllowed": False,
 }))
 ' "${REALM}" "${DISPLAY_NAME}")
@@ -234,15 +235,15 @@ print(json.dumps({
 fi
 
 # ---------------------------------------------------------------------------
-# Step 1b: Configure ACR-to-LoA mappings and Fine-Grained Admin Permissions
+# Step 1b: Configure ACR-to-LoA mappings, Fine-Grained Admin Permissions and shared emails
 # ---------------------------------------------------------------------------
 
-echo "==> Configuring realm settings (ACR-to-LoA, admin permissions)..."
+echo "==> Configuring realm settings (ACR-to-LoA, admin permissions, shared email addresses)..."
 
 # Read-merge-write to avoid clobbering other realm settings
 CURRENT_REALM=$(api_get "${REALM_BASE}")
 UPDATED_REALM=$(CURRENT_JSON="${CURRENT_REALM}" python3 -c "
-import os, json
+import os, json, sys
 realm = json.loads(os.environ['CURRENT_JSON'])
 
 if not realm.get('attributes'):
@@ -254,6 +255,15 @@ realm['attributes']['acr.loa.map'] = (
     '\"http://id.elegnamnden.se/loa/1.0/loa4\":\"3\"}'
 )
 realm['adminPermissionsEnabled'] = True
+
+# An email address is contact information here, not an identity: two users may hold the same
+# one. Keycloak's default is to refuse that. The two settings are mutually exclusive, and
+# Keycloak turns login by email off without saying so, so say it here.
+if realm.get('loginWithEmailAllowed'):
+    print('    WARNING: login with email is on and is turned off by allowing shared '
+          'email addresses.', file=sys.stderr)
+realm['duplicateEmailsAllowed'] = True
+
 print(json.dumps(realm))
 ")
 STATUS=$(api_put "${REALM_BASE}" "${UPDATED_REALM}")
