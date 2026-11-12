@@ -138,6 +138,19 @@ Create a realm named `orgiam`. In the realm settings:
 Usernames are assigned automatically by Keycloak as UUIDs. No username is collected from or
 exposed to the user.
 
+Keycloak's own event store is turned on, since a new realm records nothing at all:
+
+- **User events:** enabled, with an expiration. `bootstrap-realm.sh` sets 90 days on a realm
+  that has no expiration of its own; `--events-expiration <seconds>` changes it.
+- **Admin events:** enabled.
+
+Which event types are stored is left as Keycloak has it. A new realm already lists every type
+it knows, so turning saving on is all it takes. A realm whose list is empty stores the types
+Keycloak saves by default instead, which covers `LOGIN`, `LOGIN_ERROR`, `LOGOUT` and
+`CODE_TO_TOKEN`, and leaves out high-volume types such as `REFRESH_TOKEN`. These are
+Keycloak's own records, and they cover a login that never reached the admin application. The
+admin application keeps its own [audit log](audit-events.md) of the changes it makes.
+
 See [A.1, Create the Realm](#a1-create-the-realm) for details.
 
 <a name="top-level-groups"></a>
@@ -324,14 +337,16 @@ bootstrapped releases none of these claims.
 
 The realm sets no unmanaged attribute policy, so an attribute that is not declared is
 silently dropped when a user is written. The OIDC Sweden declarations follow the plugin's own
-definitions: two attribute groups and ten attributes. Two more attributes, `hsaId` and
-`efosId`, hold the HSA-ID and the EFOS-ID. They are not part of the Swedish OIDC Claims
-Specification, so they belong to no attribute group. Every attribute is viewable by admin and
-user, editable by admin only, single-valued and not required.
+definitions: two attribute groups and ten attributes. Three more attributes are declared
+outside that specification: `hsaId` and `efosId` hold the HSA-ID and the EFOS-ID, and
+`phoneNumber` holds the phone number, which is the attribute Keycloak's built-in `phone`
+client scope reads for the `phone_number` claim. None of the three is part of the Swedish
+OIDC Claims Specification, so they belong to no attribute group. Every attribute is viewable
+by admin and user, editable by admin only, single-valued and not required.
 
 | Attribute group | Attributes |
 |---|---|
-| (none) | `middleName`, `birthdate`, `hsaId`, `efosId` |
+| (none) | `middleName`, `birthdate`, `hsaId`, `efosId`, `phoneNumber` |
 | `oidc-sweden-natural-person` | `personalIdentityNumber`, `coordinationNumber`, `coordinationNumberLevel`, `previousCoordinationNumber` |
 | `oidc-sweden-org-id` | `orgAffiliation`, `orgName`, `orgNumber`, `orgUnit` |
 
@@ -342,8 +357,12 @@ version put on it. The selector has no counterpart in the specification; remove 
 **Realm settings → User profile** if the attribute should follow the definitions above.
 
 The IAM admin application writes `personalIdentityNumber`, `orgAffiliation`, `orgNumber`,
-`orgName`, `hsaId` and `efosId`. The remaining attributes are declared so that a token can carry
-them when an identity provider or another administrative route supplies them.
+`orgName`, `hsaId`, `efosId` and `phoneNumber`. The remaining attributes are declared so that a
+token can carry them when an identity provider or another administrative route supplies them.
+
+At startup the admin application reads the realm's user profile and logs a warning naming every
+attribute it writes that the realm would discard, so a missing declaration shows up in the log
+rather than as values that quietly fail to save.
 
 <a name="the-primary-identifier-scope"></a>
 ### 2.4e. The Primary Identifier Scope
@@ -938,7 +957,9 @@ following, in order:
 
     This creates new client scopes and their mappers, and declares new user profile
     attributes. Until it has run, the admin application cannot store values for attributes
-    the realm does not declare, since Keycloak drops them.
+    the realm does not declare, since Keycloak drops them. It also turns on Keycloak's login
+    and admin events on a realm where they are off, and leaves an expiration or a list of
+    saved types that is already set as it stands.
 
 2. Run reconciliation, either with **Reconcile All** under the **Services** tab, as a
    superuser, or with `POST /api/clients/reconcile`. This gives every client holding the OIDC
@@ -1004,6 +1025,20 @@ In **Realm settings → Login**:
 
 - Disable **Forgot password** (unless needed)
 
+In **Realm settings → Events → User events config**:
+
+- Set **Save events** to `ON`
+
+- Set **Expiration** to `90 days`
+
+In **Realm settings → Events → Admin events config**:
+
+- Set **Save events** to `ON`
+
+Leave **Saved types** as it is. A new realm already lists every event type, and a list left
+empty makes Keycloak store the types it saves by default, which include `LOGIN` and
+`LOGIN_ERROR`.
+
 In **Realm settings → User profile → Attribute groups**, click "Create attributes group"
 twice and create:
 
@@ -1028,6 +1063,9 @@ with permissions set so that only admins can edit while both users and admins ca
 | `orgName` | Organization Name | `oidc-sweden-org-id` |
 | `orgNumber` | Organization Number | `oidc-sweden-org-id` |
 | `orgUnit` | Organizational Unit | `oidc-sweden-org-id` |
+| `hsaId` | HSA-ID | (none) |
+| `efosId` | EFOS-ID | (none) |
+| `phoneNumber` | Phone Number | (none) |
 
 > **Note:** The groups must exist before the attributes: an attribute naming a group that has
 > not been created is rejected. Which claims a token carries is decided by the client scopes

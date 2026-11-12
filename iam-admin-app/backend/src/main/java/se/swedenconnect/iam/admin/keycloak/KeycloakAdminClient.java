@@ -36,6 +36,7 @@ import se.swedenconnect.iam.admin.keycloak.model.OrganizationInfo;
 import se.swedenconnect.iam.admin.keycloak.model.RightHolder;
 import se.swedenconnect.iam.admin.keycloak.model.RightsHolderEntry;
 import se.swedenconnect.iam.admin.keycloak.model.UserInfo;
+import se.swedenconnect.iam.admin.keycloak.model.UserProfileInfo;
 import se.swedenconnect.iam.admin.keycloak.model.UserRight;
 import se.swedenconnect.iam.commons.types.LocalizedString;
 
@@ -118,11 +119,35 @@ public class KeycloakAdminClient {
    */
   private static final String ALL_FUNCTIONS_ATTRIBUTE = "iam_admin_all_functions";
 
+  /** User attribute holding the personal identity number. */
+  private static final String PIN_ATTRIBUTE = "personalIdentityNumber";
+
+  /** User attribute holding the organizational affiliation. */
+  private static final String ORG_AFFILIATION_ATTRIBUTE = "orgAffiliation";
+
+  /** User attribute holding the organization number of the affiliation. */
+  private static final String ORG_NUMBER_ATTRIBUTE = "orgNumber";
+
+  /** User attribute holding the legal name of the organization the affiliation names. */
+  private static final String ORG_NAME_ATTRIBUTE = "orgName";
+
   /** User attribute holding the HSA-ID. */
   private static final String HSA_ID_ATTRIBUTE = "hsaId";
 
   /** User attribute holding the EFOS-ID. */
   private static final String EFOS_ID_ATTRIBUTE = "efosId";
+
+  /** User attribute holding the phone number. Keycloak's own {@code phone} scope reads it. */
+  private static final String PHONE_NUMBER_ATTRIBUTE = "phoneNumber";
+
+  /**
+   * Every user attribute this client writes. A realm that declares none of them in its user
+   * profile drops them silently, see
+   * {@link se.swedenconnect.iam.admin.keycloak.UserAttributeDeclarationCheck}.
+   */
+  public static final Set<String> WRITTEN_USER_ATTRIBUTES = Set.of(
+      PIN_ATTRIBUTE, ORG_AFFILIATION_ATTRIBUTE, ORG_NUMBER_ATTRIBUTE, ORG_NAME_ATTRIBUTE,
+      HSA_ID_ATTRIBUTE, EFOS_ID_ATTRIBUTE, PHONE_NUMBER_ATTRIBUTE);
 
   /**
    * Organization group attribute holding the legal name, as registered at Bolagsverket. Untagged,
@@ -2996,7 +3021,7 @@ public class KeycloakAdminClient {
    * @return the Keycloak user UUID, or {@link Optional#empty()} if no such user exists
    */
   public Optional<String> findUserIdByPersonalIdentityNumber(final @NonNull String pin) {
-    return this.findUserIdByAttribute("personalIdentityNumber", pin);
+    return this.findUserIdByAttribute(PIN_ATTRIBUTE, pin);
   }
 
   /**
@@ -3006,7 +3031,7 @@ public class KeycloakAdminClient {
    * @return the Keycloak user UUID, or {@link Optional#empty()} if no such user exists
    */
   public Optional<String> findUserIdByOrgAffiliation(final @NonNull String orgAffiliation) {
-    return this.findUserIdByAttribute("orgAffiliation", orgAffiliation);
+    return this.findUserIdByAttribute(ORG_AFFILIATION_ATTRIBUTE, orgAffiliation);
   }
 
   /**
@@ -3048,6 +3073,43 @@ public class KeycloakAdminClient {
       return Optional.empty();
     }
     return Optional.ofNullable(getString(users.getFirst(), "id"));
+  }
+
+  /**
+   * Reads the realm's user profile: which attributes it declares, and whether it accepts an
+   * attribute it does not declare.
+   *
+   * @return the user profile
+   * @throws KeycloakAdminException on any Keycloak API error
+   */
+  public @NonNull UserProfileInfo fetchUserProfile() {
+    return userProfileOf(this.adminGet("/users/profile", new ParameterizedTypeReference<>() {}));
+  }
+
+  /**
+   * Reads a Keycloak user profile representation. An attribute entry without a name, and an
+   * unmanaged attribute policy that is absent, are both taken as Keycloak sends them: the first is
+   * not an attribute, and the second means that the realm sets no policy.
+   *
+   * @param raw the representation
+   * @return the user profile
+   * @throws KeycloakAdminException when there is no representation at all
+   */
+  static @NonNull UserProfileInfo userProfileOf(final @Nullable Map<String, Object> raw) {
+    if (raw == null) {
+      throw new KeycloakAdminException("Keycloak returned no user profile");
+    }
+    final Set<String> declared = new LinkedHashSet<>();
+    if (raw.get("attributes") instanceof final List<?> attributes) {
+      for (final Object attribute : attributes) {
+        if (attribute instanceof final Map<?, ?> map && map.get("name") instanceof final String name) {
+          declared.add(name);
+        }
+      }
+    }
+    final String policy =
+        raw.get("unmanagedAttributePolicy") instanceof final String value ? value : null;
+    return new UserProfileInfo(declared, policy);
   }
 
   /**
@@ -3110,16 +3172,16 @@ public class KeycloakAdminClient {
 
     final Map<String, List<String>> attributes = new LinkedHashMap<>();
     if (personalIdentityNumber != null && !personalIdentityNumber.isBlank()) {
-      attributes.put("personalIdentityNumber", List.of(personalIdentityNumber));
+      attributes.put(PIN_ATTRIBUTE, List.of(personalIdentityNumber));
     }
     if (orgAffiliation != null && !orgAffiliation.isBlank()) {
-      attributes.put("orgAffiliation", List.of(orgAffiliation));
+      attributes.put(ORG_AFFILIATION_ATTRIBUTE, List.of(orgAffiliation));
       final String orgNumber = orgNumberOf(orgAffiliation);
       if (orgNumber != null) {
-        attributes.put("orgNumber", List.of(orgNumber));
+        attributes.put(ORG_NUMBER_ATTRIBUTE, List.of(orgNumber));
         final String orgName = this.resolveOrganizationLegalName(orgNumber);
         if (orgName != null) {
-          attributes.put("orgName", List.of(orgName));
+          attributes.put(ORG_NAME_ATTRIBUTE, List.of(orgName));
         }
       }
     }
@@ -3130,7 +3192,7 @@ public class KeycloakAdminClient {
       attributes.put(EFOS_ID_ATTRIBUTE, List.of(efosId));
     }
     if (phoneNumber != null && !phoneNumber.isBlank()) {
-      attributes.put("phoneNumber", List.of(phoneNumber));
+      attributes.put(PHONE_NUMBER_ATTRIBUTE, List.of(phoneNumber));
     }
 
     final Map<String, Object> body = new LinkedHashMap<>();
@@ -3433,10 +3495,10 @@ public class KeycloakAdminClient {
 
     // Preserve the eID attributes, which are immutable after creation; update phoneNumber
     if (phoneNumber != null && !phoneNumber.isBlank()) {
-      existingAttrs.put("phoneNumber", List.of(phoneNumber));
+      existingAttrs.put(PHONE_NUMBER_ATTRIBUTE, List.of(phoneNumber));
     }
     else {
-      existingAttrs.remove("phoneNumber");
+      existingAttrs.remove(PHONE_NUMBER_ATTRIBUTE);
     }
 
     final Map<String, Object> body = new LinkedHashMap<>();
@@ -4112,11 +4174,11 @@ public class KeycloakAdminClient {
         getString(raw, "firstName"),
         getString(raw, "lastName"),
         getString(raw, "email"),
-        getFirstAttr(raw, "personalIdentityNumber"),
-        getFirstAttr(raw, "orgAffiliation"),
+        getFirstAttr(raw, PIN_ATTRIBUTE),
+        getFirstAttr(raw, ORG_AFFILIATION_ATTRIBUTE),
         getFirstAttr(raw, HSA_ID_ATTRIBUTE),
         getFirstAttr(raw, EFOS_ID_ATTRIBUTE),
-        getFirstAttr(raw, "phoneNumber"),
+        getFirstAttr(raw, PHONE_NUMBER_ATTRIBUTE),
         id != null && superuserIds.contains(id),
         List.of());
   }

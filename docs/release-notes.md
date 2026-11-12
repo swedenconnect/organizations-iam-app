@@ -11,10 +11,10 @@
 **Date:** _not yet released_
 
 - Two users may hold the same email address, and saving an address that is already registered no longer fails with a server error ([#191](https://github.com/swedenconnect/organizations-iam-app/issues/191), [#184](https://github.com/swedenconnect/organizations-iam-app/issues/184)).
-
 - The user list is shown a page at a time, and a newly created user is shown on the page that holds them.
-
 - Users are created from the Users page by a superuser only. An organization administrator adds a user from the organization or function they are to have a right in, since a user without any right is outside the administrator's scope ([#114](https://github.com/swedenconnect/organizations-iam-app/issues/114)).
+- Realms created by `bootstrap-realm.sh` record logins, failed logins and administrative changes. Keycloak's own events were off, so nothing was stored ([#139](https://github.com/swedenconnect/organizations-iam-app/issues/139)).
+- A phone number given for a user was discarded by Keycloak, because the realm did not declare the attribute. It is now stored ([#185](https://github.com/swedenconnect/organizations-iam-app/issues/185)).
 
 ---
 
