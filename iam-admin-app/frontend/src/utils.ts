@@ -73,3 +73,25 @@ export function getPageNumbers(current: number, total: number): (number | 'ellip
   pages.push(total - 1);
   return pages;
 }
+
+/**
+ * The characters Keycloak refuses in a person's name, as its
+ * `person-name-prohibited-characters` validator lists them. The realm validates `firstName` and
+ * `lastName` with it, so a name carrying one of these is refused when the user is saved.
+ *
+ * `\p{Cntrl}` in the validator's own pattern is written out here as the control ranges, which is
+ * what it means. This is the only copy of the rule: a name it lets through that Keycloak still
+ * refuses is answered by the API as a bad request.
+ */
+const ALLOWED_PERSON_NAME = /^[^<>&"\v$%!#?§;*~/\\|^=[\]{}()\u0000-\u001F\u007F]+$/;
+
+/** The prohibited characters, for a message that says which ones to remove. */
+export const PROHIBITED_NAME_CHARACTERS = '< > & " $ % ! # ? § ; * ~ / \\ | ^ = [ ] { } ( )';
+
+/**
+ * True when Keycloak would accept this name. An empty name is not a name; a caller that reports
+ * a missing name separately checks for that first.
+ */
+export function isAllowedPersonName(name: string): boolean {
+  return ALLOWED_PERSON_NAME.test(name);
+}
