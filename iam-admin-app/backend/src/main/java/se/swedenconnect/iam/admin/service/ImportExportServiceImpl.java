@@ -39,7 +39,6 @@ import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportJobStatus;
 import se.swedenconnect.iam.admin.controllers.dto.impexp.ImportPreviewReport;
 import se.swedenconnect.iam.admin.keycloak.FunctionAttachContext;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminClient;
-import se.swedenconnect.iam.admin.keycloak.PersonNameRule;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminException;
 import se.swedenconnect.iam.admin.keycloak.model.FunctionInfo;
 import se.swedenconnect.iam.admin.keycloak.model.OrganizationInfo;
@@ -281,10 +280,6 @@ public class ImportExportServiceImpl implements ImportExportService {
 
       if (blank(u.name())) {
         userOutcomes.add(new ImportItemOutcome(key, "error", "name must not be blank"));
-        continue;
-      }
-      if (!PersonNameRule.isAllowed(u.name())) {
-        userOutcomes.add(new ImportItemOutcome(key, "error", PersonNameRule.rejectionMessage()));
         continue;
       }
       if (identityKey == null) {

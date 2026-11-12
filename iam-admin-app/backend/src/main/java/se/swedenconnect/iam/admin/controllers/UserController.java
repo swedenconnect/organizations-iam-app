@@ -47,7 +47,6 @@ import se.swedenconnect.iam.admin.controllers.dto.UserRightResponse;
 import se.swedenconnect.iam.admin.keycloak.AdminSessionBootstrapHandler;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminClient;
 import se.swedenconnect.iam.admin.keycloak.KeycloakAdminException;
-import se.swedenconnect.iam.admin.keycloak.PersonNameRule;
 import se.swedenconnect.iam.admin.keycloak.model.AdminSessionData;
 import se.swedenconnect.iam.admin.keycloak.model.RightHolder;
 import se.swedenconnect.iam.admin.keycloak.model.UserInfo;
@@ -213,10 +212,6 @@ public class UserController {
 
     if (name == null || name.isBlank()) {
       return ResponseEntity.badRequest().body("name must not be blank");
-    }
-    if (!PersonNameRule.isAllowed(name)) {
-      log.info("POST /api/users — rejected: the name carries a character the realm refuses");
-      return ResponseEntity.badRequest().body(PersonNameRule.rejectionMessage());
     }
     if (pin != null && !pin.matches("^\\d{12}$")) {
       return ResponseEntity.badRequest().body("personalIdentityNumber must be exactly 12 digits");
@@ -405,10 +400,6 @@ public class UserController {
     final String name = req.name();
     if (name == null || name.isBlank()) {
       return ResponseEntity.badRequest().body("name must not be blank");
-    }
-    if (!PersonNameRule.isAllowed(name)) {
-      log.info("PUT /api/users/{} — rejected: the name carries a character the realm refuses", userId);
-      return ResponseEntity.badRequest().body(PersonNameRule.rejectionMessage());
     }
     if (req.email() != null && !req.email().isBlank() && !req.email().contains("@")) {
       return ResponseEntity.badRequest().body("email is not valid");

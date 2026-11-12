@@ -80,7 +80,8 @@ export function getPageNumbers(current: number, total: number): (number | 'ellip
  * `lastName` with it, so a name carrying one of these is refused when the user is saved.
  *
  * `\p{Cntrl}` in the validator's own pattern is written out here as the control ranges, which is
- * what it means.
+ * what it means. This is the only copy of the rule: a name it lets through that Keycloak still
+ * refuses is answered by the API as a bad request.
  */
 const ALLOWED_PERSON_NAME = /^[^<>&"\v$%!#?§;*~/\\|^=[\]{}()\u0000-\u001F\u007F]+$/;
 
