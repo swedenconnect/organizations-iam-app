@@ -15,6 +15,7 @@
 - Users are created from the Users page by a superuser only. An organization administrator adds a user from the organization or function they are to have a right in, since a user without any right is outside the administrator's scope ([#114](https://github.com/swedenconnect/organizations-iam-app/issues/114)).
 - Realms created by `bootstrap-realm.sh` record logins, failed logins and administrative changes. Keycloak's own events were off, so nothing was stored ([#139](https://github.com/swedenconnect/organizations-iam-app/issues/139)).
 - A phone number given for a user was discarded by Keycloak, because the realm did not declare the attribute. It is now stored ([#185](https://github.com/swedenconnect/organizations-iam-app/issues/185)).
+- A user name the realm refuses, for example one containing `<` or `>`, is reported on the name field instead of failing with a server error, and an error response no longer carries a stack trace ([#136](https://github.com/swedenconnect/organizations-iam-app/issues/136)).
 
 ---
 
