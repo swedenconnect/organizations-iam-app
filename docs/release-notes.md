@@ -10,9 +10,7 @@
 
 **Date:** _not yet released_
 
-- A phone number given for a user is stored. Keycloak discarded it, because the realm did not declare the attribute ([#185](https://github.com/swedenconnect/organizations-iam-app/issues/185)).
-
-- The admin application warns at startup when the realm would discard a user attribute it writes ([#185](https://github.com/swedenconnect/organizations-iam-app/issues/185)).
+- A phone number given for a user was discarded by Keycloak, because the realm did not declare the attribute. It is now stored ([#185](https://github.com/swedenconnect/organizations-iam-app/issues/185)).
 
 ---
 
