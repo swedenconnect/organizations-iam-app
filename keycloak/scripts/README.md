@@ -103,6 +103,21 @@ for interactively.
 | `--cacert <file>` | No | *(system CA)* | CA certificate file for TLS verification |
 | `--insecure` | No | off | Skip TLS verification, for local development only |
 
+**Authenticating as a service client.** `bootstrap-realm.sh` and
+`add-identity-provider.sh` also accept a client credentials grant, for installations where
+no master realm account is available and realm administration is delegated to a
+realm-scoped service account.
+
+| Option | Required | Default | Description |
+|---|---|---|---|
+| `--auth-client <id>` | No | *(unset)* | Authenticate with `client_credentials` as this client, instead of a username and password |
+| `--auth-secret <secret>` | No | prompt (silent) | The client secret. Also read from `KC_AUTH_SECRET`, which keeps it out of the process arguments |
+| `--auth-realm <realm>` | No | the target realm with `--auth-client`, otherwise `master` | Realm to authenticate against |
+
+The service account needs the `realm-management` roles for whatever the script writes.
+`manage-realm`, `manage-clients` and `manage-users` cover `bootstrap-realm.sh`;
+`add-identity-provider.sh` additionally needs `manage-identity-providers`.
+
 ---
 
 <a name="scripts"></a>

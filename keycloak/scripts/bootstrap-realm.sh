@@ -34,6 +34,9 @@ KC_URL=""
 KC_BASE_PATH=""
 KC_USER="admin"
 KC_PASS=""
+AUTH_CLIENT=""
+AUTH_SECRET="${KC_AUTH_SECRET:-}"
+AUTH_REALM=""
 REALM=""
 DISPLAY_NAME=""
 CACERT=""
@@ -55,8 +58,14 @@ Options:
   --url <url>              Keycloak base URL (e.g. https://keycloak.example.com)
   --base-path <path>       URL path prefix (e.g. /auth). Default: empty
   --realm <realm>          Keycloak realm name to create
-  --username <user>        Admin username for master realm (default: admin)
-  --password <pass>        Admin password for master realm
+  --username <user>        Admin username (default: admin)
+  --password <pass>        Admin password
+  --auth-client <id>       Authenticate as this client with client_credentials
+                           instead of a username and password
+  --auth-secret <secret>   Client secret (also read from KC_AUTH_SECRET)
+  --auth-realm <realm>     Realm to authenticate against. Defaults to the
+                           target realm when --auth-client is given,
+                           otherwise to master
   --display-name <name>    Realm display name (defaults to realm name)
   --cacert <file>          CA certificate file for TLS verification
   --insecure               Skip TLS certificate verification (dev only)
@@ -76,6 +85,9 @@ while [ $# -gt 0 ]; do
     --realm)          REALM="$2";           shift 2 ;;
     --username)       KC_USER="$2";         shift 2 ;;
     --password)       KC_PASS="$2";         shift 2 ;;
+    --auth-client)    AUTH_CLIENT="$2";     shift 2 ;;
+    --auth-secret)    AUTH_SECRET="$2";     shift 2 ;;
+    --auth-realm)     AUTH_REALM="$2";      shift 2 ;;
     --display-name)   DISPLAY_NAME="$2";    shift 2 ;;
     --cacert)         CACERT="$2";          shift 2 ;;
     --insecure)       INSECURE="true";      shift ;;
@@ -85,8 +97,28 @@ done
 
 [ -z "${KC_URL}"  ] && { read -r -p "Keycloak URL: " KC_URL; }
 [ -z "${REALM}"   ] && { read -r -p "Realm: " REALM; }
-[ -z "${KC_USER}" ] && { read -r -p "Admin username: " KC_USER; }
-[ -z "${KC_PASS}" ] && { read -r -s -p "Admin password: " KC_PASS; echo ""; }
+
+if [ -n "${AUTH_CLIENT}" ]; then
+  if [ -z "${AUTH_SECRET}" ]; then
+    read -r -s -p "Client secret for '${AUTH_CLIENT}': " AUTH_SECRET
+    echo ""
+  fi
+  if [ -z "${AUTH_REALM}" ]; then
+    AUTH_REALM="${REALM}"
+  fi
+else
+  if [ -z "${KC_USER}" ]; then
+    read -r -p "Admin username: " KC_USER
+  fi
+  if [ -z "${KC_PASS}" ]; then
+    read -r -s -p "Admin password: " KC_PASS
+    echo ""
+  fi
+  if [ -z "${AUTH_REALM}" ]; then
+    AUTH_REALM="master"
+  fi
+fi
+
 [ -z "${DISPLAY_NAME}" ] && DISPLAY_NAME="${REALM}"
 
 # ---------------------------------------------------------------------------
@@ -99,16 +131,27 @@ CURL_OPTS=(-s)
 
 ADMIN_BASE="${KC_URL}${KC_BASE_PATH}/admin"
 REALM_BASE="${ADMIN_BASE}/realms/${REALM}"
-TOKEN_URL="${KC_URL}${KC_BASE_PATH}/realms/master/protocol/openid-connect/token"
+TOKEN_URL="${KC_URL}${KC_BASE_PATH}/realms/${AUTH_REALM}/protocol/openid-connect/token"
 
 # ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
 
 get_token() {
-  curl "${CURL_OPTS[@]}" -X POST "${TOKEN_URL}" \
-    -d "grant_type=password&client_id=admin-cli&username=${KC_USER}&password=${KC_PASS}" \
-    | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null
+  if [ -n "${AUTH_CLIENT}" ]; then
+    curl "${CURL_OPTS[@]}" -X POST "${TOKEN_URL}" \
+      --data-urlencode "grant_type=client_credentials" \
+      --data-urlencode "client_id=${AUTH_CLIENT}" \
+      --data-urlencode "client_secret=${AUTH_SECRET}" \
+      | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null
+  else
+    curl "${CURL_OPTS[@]}" -X POST "${TOKEN_URL}" \
+      --data-urlencode "grant_type=password" \
+      --data-urlencode "client_id=admin-cli" \
+      --data-urlencode "username=${KC_USER}" \
+      --data-urlencode "password=${KC_PASS}" \
+      | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null
+  fi
 }
 
 api_get() {
@@ -145,7 +188,11 @@ api_put() {
 # ---------------------------------------------------------------------------
 
 echo ""
-echo "==> Authenticating as '${KC_USER}'..."
+if [ -n "${AUTH_CLIENT}" ]; then
+  echo "==> Authenticating as client '${AUTH_CLIENT}' in realm '${AUTH_REALM}'..."
+else
+  echo "==> Authenticating as '${KC_USER}' in realm '${AUTH_REALM}'..."
+fi
 TOKEN=$(get_token)
 [ -z "${TOKEN}" ] && { echo "ERROR: Failed to obtain admin token." >&2; exit 1; }
 echo "    Token obtained."
