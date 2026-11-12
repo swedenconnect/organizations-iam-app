@@ -205,6 +205,28 @@ class ListUsersRightsVisibilityTest {
         .containsExactlyInAnyOrder(ICA, DIGG);
   }
 
+  /**
+   * A user who holds no right at all — which is what a user looks like the moment they are created
+   * — is listed for a superuser. A regular admin never reaches such a user, see
+   * {@code listUsers_userWithNoVisibleRight_isDroppedAndNotCounted}, so creating users is left to
+   * a superuser.
+   */
+  @Test
+  void listUsers_superuser_seesAUserWithoutAnyRight() {
+    final AdminSessionData data = new AdminSessionData(true, null, null, List.of(), Set.of(),
+        new OrgRightsClaim(true, List.of()));
+    when(this.session.getAttribute(AdminSessionBootstrapHandler.SESSION_DATA_ATTR)).thenReturn(data);
+    when(this.keycloakAdminClient.fetchUsersPaged(0, 50)).thenReturn(List.of(userInfo(KLARA)));
+    when(this.keycloakAdminClient.fetchUserCount()).thenReturn(1);
+    this.setupRights(KLARA);
+
+    final UserPageResponse body = this.listUsers();
+
+    assertThat(body.totalElements()).isEqualTo(1);
+    assertThat(body.content()).extracting(UserResponse::userId).containsExactly(KLARA);
+    assertThat(body.content().getFirst().rights()).isEmpty();
+  }
+
   // ---------------------------------------------------------------------------
   // SSO constraints
   // ---------------------------------------------------------------------------

@@ -133,6 +133,7 @@ Create a realm named `orgiam`. In the realm settings:
 - **User registration:** disabled
 - **Email as username:** disabled
 - **Login with email:** disabled (unless required)
+- **Duplicate emails:** allowed (the address is contact information, not an identity)
 
 Usernames are assigned automatically by Keycloak as UUIDs. No username is collected from or
 exposed to the user.
@@ -1019,6 +1020,8 @@ In **Realm settings → Login**:
 - Disable **User registration**
 
 - Disable **Email as username**
+
+- Enable **Duplicate emails** (selectable only while the two settings above are disabled)
 
 - Disable **Forgot password** (unless needed)
 

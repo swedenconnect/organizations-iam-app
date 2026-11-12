@@ -8,7 +8,8 @@ vi.mock('@/lib/api', () => ({
   apiFetch: (input: string) => apiFetch(input),
 }));
 
-const { fetchAllUsers, deriveUserRoles } = await import('@/services/userService');
+const { fetchAllUsers, deriveUserRoles, createUser, updateUser, DuplicateIdentityError,
+  UserIdTakenError } = await import('@/services/userService');
 
 /** A minimal user as GET /api/users returns it. */
 function userData(userId: string): UserData {
@@ -133,5 +134,44 @@ describe('deriveUserRoles', () => {
       user('b', [{ orgIdentifier: 'org2', functionId: null, right: 'read' }]),
     ]);
     expect(roles.map((r) => r.id)).toEqual(['a:org1:*', 'a:org1:f1', 'b:org2:*']);
+  });
+});
+
+/**
+ * How the backend's answers are turned into errors the form can report against the right field.
+ * A taken user ID must not be mistaken for a duplicate eID identity. An email address somebody
+ * else holds is not a conflict at all, see issue #191.
+ */
+describe('conflict handling', () => {
+  beforeEach(() => {
+    apiFetch.mockReset();
+  });
+
+  /** The backend refusing the write with the given body. */
+  function conflict(body: unknown) {
+    apiFetch.mockResolvedValue(new Response(JSON.stringify(body), { status: 409 }));
+  }
+
+  it('reports a taken user ID as such', async () => {
+    conflict({ reason: 'USER_ID_TAKEN' });
+
+    await expect(createUser({ name: 'Klara', userId: 'klara' } as never))
+      .rejects.toBeInstanceOf(UserIdTakenError);
+  });
+
+  it('still reports a duplicate eID identity as such', async () => {
+    conflict({ existingUserId: 'other-uuid' });
+
+    await expect(createUser({ name: 'Klara', personalIdentityNumber: '196911292032' } as never))
+      .rejects.toBeInstanceOf(DuplicateIdentityError);
+  });
+
+  it('saves a user with an email address somebody else holds', async () => {
+    apiFetch.mockResolvedValue(new Response(JSON.stringify(
+      { userId: 'target-uuid', username: 'target-uuid', email: 'shared@example.com' }),
+      { status: 200 }));
+
+    await expect(updateUser('target-uuid', { name: 'Klara', email: 'shared@example.com' }))
+      .resolves.toMatchObject({ email: 'shared@example.com' });
   });
 });

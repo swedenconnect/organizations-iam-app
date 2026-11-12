@@ -56,3 +56,20 @@ export function canAdminFunction(
     org?.functions.some((f) => f.function === functionId && f.right === 'admin') ?? false
   );
 }
+
+/**
+ * The page numbers to offer for a paged list, 0-based, with 'ellipsis' standing for the pages
+ * left out. Up to seven pages are all offered; beyond that the first, the last and the pages
+ * around the current one are.
+ */
+export function getPageNumbers(current: number, total: number): (number | 'ellipsis')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i);
+  const pages: (number | 'ellipsis')[] = [0];
+  if (current > 2) pages.push('ellipsis');
+  for (let i = Math.max(1, current - 1); i <= Math.min(total - 2, current + 1); i++) {
+    pages.push(i);
+  }
+  if (current < total - 3) pages.push('ellipsis');
+  pages.push(total - 1);
+  return pages;
+}

@@ -28,7 +28,7 @@ import { useState, useEffect } from 'react';
 import { AddUserToOrgDialog } from '@/app/components/AddUserToOrgDialog';
 import { AssignFunctionsDialog } from '@/app/components/AssignFunctionsDialog';
 import { AddUserToFunctionDialog } from '@/app/components/AddUserToFunctionDialog';
-import { formatOrgNumber, canAdminOrg, canAdminFunction, resolveOrgName } from '@/utils';
+import { formatOrgNumber, canAdminOrg, canAdminFunction, getPageNumbers, resolveOrgName } from '@/utils';
 import { LastAdminError } from '@/services/userService';
 
 /**
@@ -216,18 +216,6 @@ export function OrganizationList({
       newExpanded.add(orgId);
     }
     setExpandedOrgs(newExpanded);
-  };
-
-  const getPageNumbers = (current: number, total: number): (number | 'ellipsis')[] => {
-    if (total <= 7) return Array.from({ length: total }, (_, i) => i);
-    const pages: (number | 'ellipsis')[] = [0];
-    if (current > 2) pages.push('ellipsis');
-    for (let i = Math.max(1, current - 1); i <= Math.min(total - 2, current + 1); i++) {
-      pages.push(i);
-    }
-    if (current < total - 3) pages.push('ellipsis');
-    pages.push(total - 1);
-    return pages;
   };
 
   return (

@@ -253,8 +253,7 @@ public class KeycloakAdminClient {
       }
       log.error("Keycloak admin API error {} for GET {}: {}",
           e.getStatusCode(), uri, e.getResponseBodyAsString());
-      throw new KeycloakAdminException(
-          "Keycloak admin API returned " + e.getStatusCode() + " for GET " + uri, e);
+      throw KeycloakAdminException.forResponse("GET " + uri, e);
     }
     catch (final KeycloakAdminException e) {
       throw e;
@@ -308,8 +307,7 @@ public class KeycloakAdminClient {
       }
       log.error("Keycloak admin API error {} for POST {}: {}",
           e.getStatusCode(), path, e.getResponseBodyAsString());
-      throw new KeycloakAdminException(
-          "Keycloak admin API returned " + e.getStatusCode() + " for POST " + path, e);
+      throw KeycloakAdminException.forResponse("POST " + path, e);
     }
     catch (final KeycloakAdminException e) {
       throw e;
@@ -363,8 +361,7 @@ public class KeycloakAdminClient {
       }
       log.error("Keycloak admin API error {} for POST {}: {}",
           e.getStatusCode(), path, e.getResponseBodyAsString());
-      throw new KeycloakAdminException(
-          "Keycloak admin API returned " + e.getStatusCode() + " for POST " + path, e);
+      throw KeycloakAdminException.forResponse("POST " + path, e);
     }
     catch (final KeycloakAdminException e) {
       throw e;
@@ -401,8 +398,7 @@ public class KeycloakAdminClient {
       }
       log.error("Keycloak admin API error {} for PUT {}: {}",
           e.getStatusCode(), path, e.getResponseBodyAsString());
-      throw new KeycloakAdminException(
-          "Keycloak admin API returned " + e.getStatusCode() + " for PUT " + path, e);
+      throw KeycloakAdminException.forResponse("PUT " + path, e);
     }
     catch (final KeycloakAdminException e) {
       throw e;
@@ -438,8 +434,7 @@ public class KeycloakAdminClient {
       }
       log.error("Keycloak admin API error {} for PUT {}: {}",
           e.getStatusCode(), path, e.getResponseBodyAsString());
-      throw new KeycloakAdminException(
-          "Keycloak admin API returned " + e.getStatusCode() + " for PUT " + path, e);
+      throw KeycloakAdminException.forResponse("PUT " + path, e);
     }
     catch (final KeycloakAdminException e) {
       throw e;
@@ -476,8 +471,7 @@ public class KeycloakAdminClient {
       }
       log.error("Keycloak admin API error {} for DELETE {}: {}",
           e.getStatusCode(), path, e.getResponseBodyAsString());
-      throw new KeycloakAdminException(
-          "Keycloak admin API returned " + e.getStatusCode() + " for DELETE " + path, e);
+      throw KeycloakAdminException.forResponse("DELETE " + path, e);
     }
     catch (final KeycloakAdminException e) {
       throw e;

@@ -67,6 +67,11 @@ import java.util.regex.Pattern;
  * <p>Any authenticated admin (superuser or org-admin) may create users. A newly created
  * user has no rights — rights are assigned separately via group-membership endpoints.</p>
  *
+ * <p>A user without a single right is outside every org-admin's scope, see
+ * {@link #listUsers}, so such an admin creates users from the organization or function the user is
+ * to hold a right in, which grants the right in the same interaction. The admin application offers
+ * creating a user on its own only to a superuser.</p>
+ *
  * @author Martin Lindström
  */
 @RestController
@@ -444,7 +449,7 @@ public class UserController {
       this.eventPublisher.publishEvent(IamErrorAuditEvent.operationFailed(
           new AuditData.Operation(AuditOperations.UPDATE_USER, null),
           AuditData.Target.none().user(AuditData.User.of(existing)), e));
-      return ResponseEntity.status(500).body(e.getMessage());
+      return ResponseEntity.status(500).build();
     }
   }
 
@@ -532,7 +537,7 @@ public class UserController {
       this.eventPublisher.publishEvent(IamErrorAuditEvent.operationFailed(
           new AuditData.Operation(AuditOperations.DELETE_USER, null),
           AuditData.Target.none().user(AuditData.User.of(userId, auditUser.displayName())), e));
-      return ResponseEntity.status(500).body(e.getMessage());
+      return ResponseEntity.status(500).build();
     }
     this.eventPublisher.publishEvent(IamAuditEvent.userDeleted(auditUser, rights.stream()
         .map(r -> new RightHolder(userId, auditUser.displayName(), r.orgIdentifier(), r.functionId(), r.right()))
