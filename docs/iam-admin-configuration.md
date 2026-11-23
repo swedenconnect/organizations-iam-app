@@ -191,7 +191,56 @@ report. A deployment that assigns its own `audit.repository.exclude-events` repl
 these types to keep them out of the log.
 
 **Production must configure a durable repository**, for example a database, a file collected by the log
-infrastructure, or syslog.
+infrastructure, syslog, or standard output where a container log collector picks it up.
+
+<a name="audit-stdout"></a>
+### Audit Events on Standard Output
+
+`iam.admin.audit.stdout.enabled` makes the application write each audit event to standard output as a single line of
+JSON, for a container log collector to pick up and route. This is the application's own repository, not one of the
+library's backends, because the library has none that writes to a log stream.
+
+```yaml
+iam:
+  admin:
+    audit:
+      stdout:
+        enabled: true
+        # Events kept in memory for the actuator's auditevents endpoint. Default: 1000.
+        in-memory-capacity: 1000
+```
+
+The event itself is serialized exactly as the file and syslog backends serialize it, see
+[Audit Events](audit-events.md). Three fields are added so that a log collector can tell an audit event apart from an
+application log record, and route the events that carry personal data:
+
+| Field | Value |
+| :--- | :--- |
+| `log_type` | `audit` |
+| `sensitive` | `true` |
+| `logger` | `se.swedenconnect.iam.admin.AUDIT` |
+
+The line is written through the logger named `se.swedenconnect.iam.admin.AUDIT`, which `logback-spring.xml` attaches
+to an appender whose pattern is the message and nothing else, so the line is valid JSON on its own. The application's
+other logs are plain text, so the audit events appear as JSON lines among text lines; a collector that parses JSON per
+line handles this, and the `log_type` field is the marker to route on. **Do not set
+`logging.level.se.swedenconnect.iam.admin.AUDIT`** — lowering that logger's level silences the audit log. Raising the
+level of the parent `se.swedenconnect.iam.admin` is safe, because the audit logger carries an explicit level.
+
+Two things to know before turning this on.
+
+**It replaces the library's repository wiring.** Supplying an `AuditEventRepository` makes the library's repository
+auto-configuration back off, so `audit.repository.file`, `audit.repository.jdbc` and the other backends are *not*
+configured while standard output is enabled. The event filter in `audit.repository.include-events` and
+`audit.repository.exclude-events`, and the write failure policy in `audit.repository.throw-on-write-fail`, are still
+honoured. A bounded number of events is also kept in memory so that the actuator's `auditevents` endpoint still has
+something to serve.
+
+**A write to standard output cannot be detected as failed.** It succeeds as soon as the bytes are accepted, so if the
+collector is down, or lines are dropped under back pressure, the application cannot tell.
+`audit.repository.throw-on-write-fail` therefore cannot uphold its guarantee here — it can no longer stop an operation
+whose audit event was lost after it left the process. Where that guarantee matters, use a durable repository, whose
+writes do fail detectably.
 
 **Write failures.** `audit.repository.throw-on-write-fail` keeps the library default `true`. A missing audit entry
 is considered worse than a failed request, so when an event cannot be written the operation fails:

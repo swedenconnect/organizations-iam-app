@@ -10,6 +10,7 @@
 
 **Date:** _not yet released_
 
+- The audit events can be written to standard output, one JSON object per line, for a container log collector to pick up. Set `iam.admin.audit.stdout.enabled`. The events carry `log_type`, `sensitive` and `logger` fields so that a collector can separate them from the application log and route the personal data they contain. See [Audit Logging](iam-admin-configuration.md#audit-logging). Note that a write to standard output cannot be detected as failed, so `audit.repository.throw-on-write-fail` cannot uphold its guarantee on this path.
 - Two users may hold the same email address, and saving an address that is already registered no longer fails with a server error ([#191](https://github.com/swedenconnect/organizations-iam-app/issues/191), [#184](https://github.com/swedenconnect/organizations-iam-app/issues/184)).
 - The user list is shown a page at a time, and a newly created user is shown on the page that holds them.
 - Users are created from the Users page by a superuser only. An organization administrator adds a user from the organization or function they are to have a right in, since a user without any right is outside the administrator's scope ([#114](https://github.com/swedenconnect/organizations-iam-app/issues/114)).

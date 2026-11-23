@@ -125,6 +125,14 @@ public class IamAdminProperties implements InitializingBean {
   @NestedConfigurationProperty
   private final UserRegistration userRegistration = new UserRegistration();
 
+  /**
+   * Audit logging that the application provides itself, in addition to the {@code audit.*} properties of
+   * spring-audit-support.
+   */
+  @Getter
+  @NestedConfigurationProperty
+  private final Audit audit = new Audit();
+
   @Override
   public void afterPropertiesSet() throws Exception {
     if (this.pnrUserids) {
@@ -226,6 +234,54 @@ public class IamAdminProperties implements InitializingBean {
       }
     }
 
+  }
+
+  /**
+   * Settings for the audit logging the application provides itself. The library's own settings, the repository
+   * backends and the event filter, are configured with the {@code audit.*} properties.
+   */
+  public static class Audit {
+
+    /**
+     * Settings for writing the audit events to standard output.
+     */
+    @Getter
+    @NestedConfigurationProperty
+    private final Stdout stdout = new Stdout();
+  }
+
+  /**
+   * Settings for the repository that writes the audit events to standard output, one JSON object per line, for a
+   * container log collector to pick up.
+   */
+  public static class Stdout {
+
+    /**
+     * Whether the audit events are written to standard output. Default: {@code false}.
+     * <p>
+     * Turning this on supplies the application's own {@code AuditEventRepository}, which makes the repository
+     * auto-configuration of spring-audit-support back off. The library's backends, {@code audit.repository.file},
+     * {@code audit.repository.jdbc} and the rest, are then <b>not</b> configured. The event filter in
+     * {@code audit.repository.include-events} and {@code audit.repository.exclude-events} and the write failure
+     * policy in {@code audit.repository.throw-on-write-fail} are still honoured.
+     * </p>
+     * <p>
+     * Note that a write to standard output cannot be detected as failed, so
+     * {@code audit.repository.throw-on-write-fail} cannot stop an operation whose event was lost after it left the
+     * process. A durable repository is needed for that guarantee.
+     * </p>
+     */
+    @Getter
+    @Setter
+    private boolean enabled = false;
+
+    /**
+     * The number of events kept in memory for the actuator's {@code auditevents} endpoint while standard output is
+     * enabled. Default: 1000.
+     */
+    @Getter
+    @Setter
+    private int inMemoryCapacity = 1000;
   }
 
 }

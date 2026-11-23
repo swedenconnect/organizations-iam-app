@@ -37,6 +37,11 @@ All events carry the
 - `principal` - Who performed the operation, see below.
 - `data` - The event-specific content, described per event below.
 
+When the events are written to standard output, three further fields are added to the object — `log_type`,
+`sensitive` and `logger` — so that a log collector can separate the audit events from the application log. They are
+not part of the event, see
+[Audit Events on Standard Output](iam-admin-configuration.md#audit-stdout).
+
 Fields and members without a value are omitted from the serialized event. An identifier that is the only value of
 its kind, such as an organization identifier, is placed directly under `data` rather than in an object of its own.
 

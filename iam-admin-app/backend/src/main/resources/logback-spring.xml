@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logging configuration for the IAM admin application.
+
+  The only reason this file exists is the audit logger. Everything else is Spring Boot's own
+  default console logging, included below rather than restated, so that the usual
+  logging.level.* and logging.pattern.* properties keep working as they did before this file
+  was added.
+
+  The audit logger carries one JSON object per line and nothing else, so its appender's pattern
+  is the message alone - no timestamp, level or logger name in front of it, since any of those
+  would make the line invalid JSON. StdoutAuditEventRepository puts the logger name inside the
+  object instead. additivity="false" keeps the same line from also being written through the
+  normal console appender in the application's text format.
+
+  The level is set explicitly here so that raising the level of the parent logger
+  se.swedenconnect.iam.admin does not silence the audit log as a side effect. An explicit
+  logging.level.se.swedenconnect.iam.admin.AUDIT would still override it; do not set it.
+-->
+<configuration>
+
+  <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+  <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+  <appender name="AUDIT" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%m%n</pattern>
+    </encoder>
+  </appender>
+
+  <logger name="se.swedenconnect.iam.admin.AUDIT" level="INFO" additivity="false">
+    <appender-ref ref="AUDIT"/>
+  </logger>
+
+  <root level="INFO">
+    <appender-ref ref="CONSOLE"/>
+  </root>
+
+</configuration>
