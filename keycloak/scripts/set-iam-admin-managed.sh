@@ -16,8 +16,8 @@
 #
 # set-iam-admin-managed.sh
 #
-# Mark a Keycloak client as managed by the IAM admin application by setting
-# the iam_admin_managed=true client attribute.
+# Give a Keycloak client the OIDC client role under the IAM admin application by setting
+# the iam_admin_managed=true and iam_admin_oidc_client=true client attributes.
 #
 # Uses the Keycloak Admin REST API (curl + python3)
 #
@@ -44,8 +44,9 @@ INSECURE="false"
 
 usage() {
   cat <<EOF
-Mark a Keycloak client as managed by the IAM admin application by setting
-the iam_admin_managed=true client attribute.
+Give a Keycloak client the OIDC client role under the IAM admin application by
+setting the iam_admin_managed=true and iam_admin_oidc_client=true client
+attributes.
 Uses the Keycloak Admin REST API.
 
 Usage: $0 [OPTIONS]
@@ -143,7 +144,7 @@ print(clients[0]['id'] if clients else '')
 [ -z "${CLIENT_UUID}" ] && { echo "ERROR: Client '${CLIENT_ID}' not found in realm '${REALM}'." >&2; exit 1; }
 echo "    Found (UUID: ${CLIENT_UUID})."
 
-echo "==> Setting iam_admin_managed=true..."
+echo "==> Setting iam_admin_managed=true and iam_admin_oidc_client=true..."
 CURRENT=$(api_get "/${REALM}/clients/${CLIENT_UUID}")
 UPDATED=$(CURRENT_JSON="${CURRENT}" python3 -c "
 import os, json
@@ -160,4 +161,4 @@ STATUS=$(api_put "/${REALM}/clients/${CLIENT_UUID}" "${UPDATED}")
 [ "${STATUS}" = "204" ] && echo "    Done." || { echo "ERROR: Unexpected HTTP status: ${STATUS}" >&2; exit 1; }
 
 echo ""
-echo "==> Client '${CLIENT_ID}' is now marked as iam_admin_managed."
+echo "==> Client '${CLIENT_ID}' is now marked as iam_admin_managed and iam_admin_oidc_client."
