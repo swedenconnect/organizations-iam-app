@@ -50,8 +50,8 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <java.version>21</java.version>
 
-    <spring-boot.version>4.1.2</spring-boot.version>
-    <bc.version>1.86</bc.version>
+    <spring-boot.version>4.2.0</spring-boot.version>
+    <bc.version>1.87</bc.version>
     <credentials-support.version>2.3.0</credentials-support.version>
     <audit-support.version>1.0.2</audit-support.version>
 
@@ -175,7 +175,7 @@
       <dependency>
         <groupId>com.nimbusds</groupId>
         <artifactId>oauth2-oidc-sdk</artifactId>
-        <version>11.38.2</version>
+        <version>11.39</version>
       </dependency>
 
       <dependency>
