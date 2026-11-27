@@ -20,6 +20,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
+import java.io.Serializable;
+
 /**
  * A single right entry attached to a {@link BundleUserEntry}. When {@code function_id} is
  * {@code null}, the right applies to the organization as a whole.
@@ -30,5 +32,5 @@ import org.jspecify.annotations.Nullable;
 public record BundleUserRightEntry(
     @JsonProperty("org_identifier") @NonNull String orgIdentifier,
     @JsonProperty("function_id") @Nullable String functionId,
-    @JsonProperty("right") @NonNull String right) {
+    @JsonProperty("right") @NonNull String right) implements Serializable {
 }

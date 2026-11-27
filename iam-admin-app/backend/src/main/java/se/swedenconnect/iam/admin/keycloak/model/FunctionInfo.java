@@ -19,6 +19,8 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import se.swedenconnect.iam.commons.types.LocalizedString;
 
+import java.io.Serializable;
+
 /**
  * Canonical function definition as stored under the KeyCloak {@code functions} top-level group.
  *
@@ -27,5 +29,5 @@ import se.swedenconnect.iam.commons.types.LocalizedString;
 public record FunctionInfo(
     @NonNull String id,
     @NonNull LocalizedString name,
-    @Nullable LocalizedString description) {
+    @Nullable LocalizedString description) implements Serializable {
 }

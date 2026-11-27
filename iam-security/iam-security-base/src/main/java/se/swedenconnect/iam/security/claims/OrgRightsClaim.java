@@ -20,6 +20,7 @@ import org.jspecify.annotations.Nullable;
 import se.swedenconnect.iam.commons.types.LocalizedString;
 import se.swedenconnect.iam.commons.types.OrganizationID;
 
+import java.io.Serializable;
 import java.util.List;
 
 /**
@@ -33,7 +34,8 @@ import java.util.List;
  *
  * @author Martin Lindström
  */
-public record OrgRightsClaim(boolean superuser, @NonNull List<OrgEntry> orgEntries) {
+public record OrgRightsClaim(boolean superuser, @NonNull List<OrgEntry> orgEntries)
+    implements Serializable {
 
   /**
    * Enumerates the organizations the user is associated with.
@@ -78,7 +80,7 @@ public record OrgRightsClaim(boolean superuser, @NonNull List<OrgEntry> orgEntri
       @NonNull OrganizationID orgIdentifier,
       @NonNull String legalName,
       @NonNull LocalizedString name,
-      @Nullable String orgLevelRight) {
+      @Nullable String orgLevelRight) implements Serializable {
   }
 
   /**
@@ -122,7 +124,7 @@ public record OrgRightsClaim(boolean superuser, @NonNull List<OrgEntry> orgEntri
       @NonNull String legalName,
       @NonNull LocalizedString name,
       @Nullable String orgLevelRight,
-      @NonNull List<FunctionEntry> functions) {
+      @NonNull List<FunctionEntry> functions) implements Serializable {
   }
 
   /**
@@ -134,7 +136,8 @@ public record OrgRightsClaim(boolean superuser, @NonNull List<OrgEntry> orgEntri
    * @param function the function identifier
    * @param right the right level: {@code admin}, {@code write}, or {@code read}
    */
-  public record FunctionEntry(@NonNull String function, @NonNull String right) {
+  public record FunctionEntry(@NonNull String function, @NonNull String right)
+      implements Serializable {
   }
 
 }

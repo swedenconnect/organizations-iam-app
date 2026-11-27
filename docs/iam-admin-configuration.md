@@ -26,6 +26,9 @@ into three distinct areas:
 5. **Management endpoints** (`management.*`) - the Spring Boot Actuator endpoints. See
    [Management Endpoints](#management-endpoints).
 
+6. **Session storage** (`iam.admin.session.*`, `spring.data.redis.*`) - where the HTTP sessions
+   are kept. See [Session Storage](#session-storage).
+
 Also check the
 [application.yml](../iam-admin-app/backend/src/main/resources/application.yml) and
 [application-local.yml](../iam-admin-app/backend/src/main/resources/application-local.yml)
@@ -109,6 +112,7 @@ for the source definition.
 | `iam.admin.client-reconciliation.enabled` | When `true`, managed clients are reconciled against the org/function topology on a schedule. Reconciliation also runs whenever a client is created or updated, and whenever a function is attached to or detached from an organization, so the schedule only exists to repair drift. | `Boolean` | `false` |
 | `iam.admin.client-reconciliation.cron` | Cron expression controlling how often scheduled reconciliation runs. Only used when reconciliation is enabled. | `String` | `0 */15 * * * *` |
 | `iam.admin.user-registration.*` | Settings controlling how users are registered in the system. See [User Registration Settings](#user-registration-settings). | See below. | - |
+| `iam.admin.session.store` | Where the HTTP sessions are kept, `memory` or `redis`. See [Session Storage](#session-storage). | `String` | `memory` |
 
 <a name="user-registration-settings"></a>
 ### User Registration Settings
@@ -135,6 +139,68 @@ setting is `false` is ignored. The eID attributes cannot be changed after the us
 created. The HSA-ID and the EFOS-ID are stored in user attributes that `bootstrap-realm.sh`
 declares, so a realm set up by an earlier version must be bootstrapped again, see
 [Upgrading an Existing Installation](keycloak-setup.md#upgrading-an-existing-installation).
+
+<a name="session-storage"></a>
+## Session Storage
+
+The application keeps its HTTP sessions in Spring Session, and `iam.admin.session.store` chooses what is behind
+it. The store is the only thing that changes: the cookie, the timeout and the contents of a session are the same
+either way.
+
+`memory` is the default. The sessions live in the instance's own heap and are gone after a restart, which is
+enough for a single instance and is what local development runs on. `redis` is for more than one instance, or
+for sessions that have to survive a deployment.
+
+| Property | Description | Type | Default value |
+| :--- | :--- | :--- | :--- |
+| `iam.admin.session.store` | `memory` or `redis`. Any other value refuses the start. | `String` | `memory` |
+| `spring.data.redis.host` | Required with `redis`. | `String` | - |
+| `spring.data.redis.port` | The port of the Redis server. | `Integer` | `6379` |
+| `spring.data.redis.password` | Set when the server requires authentication. | `String` | - |
+| `spring.data.redis.ssl.enabled` | Set when the connection is TLS. `spring.data.redis.ssl.bundle` names a `spring.ssl.bundle` for its certificate. | `Boolean` | `false` |
+| `spring.data.redis.timeout` | Command timeout. A session read is on the request path, so a short one is the point. | `Duration` | - |
+| `spring.session.data.redis.namespace` | Key prefix. Give each group of instances its own when they share a Redis. | `String` | `spring:session` |
+| `spring.session.timeout` | How long an idle session lives. Falls back to `server.servlet.session.timeout`, and applies to both stores. | `Duration` | `30m` |
+| `management.health.redis.enabled` | Set to `true` with `redis`, so a Redis the application cannot reach shows up in the health endpoint and the readiness probe. It must stay `false` with `memory`: the Redis client is on the classpath either way, and its health check would otherwise report a Redis nobody is using as down. | `Boolean` | `false` |
+
+### Switching Redis on
+
+```yaml
+iam:
+  admin:
+    session:
+      store: redis
+
+spring:
+  data:
+    redis:
+      host: redis.internal
+      port: 6379
+      password: secret
+      timeout: 2s
+
+management:
+  health:
+    redis:
+      enabled: true
+```
+
+Nothing has to be created on the Redis side. The application writes plain keys under
+`spring.session.data.redis.namespace` and removes them as the sessions end. It leaves the server's own
+configuration alone — the indexed session repository, which would need `CONFIG SET notify-keyspace-events` and is
+refused by most managed Redis services, is not used.
+
+### What to know before switching
+
+The session cookie is named `SESSION`, which is Spring Session's default, and not the servlet container's
+`JSESSIONID`. The application does not care, but a reverse proxy, load balancer or WAF with a rule naming
+`JSESSIONID` — sticky sessions in particular — has to be pointed at the new name. Everyone signed in at the time
+of the deployment is signed out once, whichever store is used.
+
+Everything put in a session has to be serializable, because that is how Redis stores it. The in-memory store
+holds the attributes as live objects and never serializes them, so a type that cannot be serialized is invisible
+until Redis is switched on. `SessionAttributeSerializationTest` is what catches it instead, and a new session
+attribute belongs in that test.
 
 <a name="management-endpoints"></a>
 ## Management Endpoints
