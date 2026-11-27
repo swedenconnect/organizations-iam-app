@@ -22,6 +22,8 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 
+import java.io.Serializable;
+
 /**
  * A single organization inside an {@link ImportExportBundle}, including the identifiers of the
  * functions it has attached.
@@ -41,5 +43,5 @@ public record BundleOrganizationEntry(
     @JsonProperty("name#en") @Nullable String nameEn,
     @JsonProperty("contact_email") @Nullable String contactEmail,
     @JsonProperty("contact_phone") @Nullable String contactPhone,
-    @JsonProperty("attached_functions") @NonNull List<String> attachedFunctions) {
+    @JsonProperty("attached_functions") @NonNull List<String> attachedFunctions) implements Serializable {
 }

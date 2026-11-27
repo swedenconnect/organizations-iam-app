@@ -22,6 +22,8 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 
+import java.io.Serializable;
+
 /**
  * A single person inside an {@link ImportExportBundle}, with their organizational rights.
  *
@@ -48,5 +50,5 @@ public record BundleUserEntry(
     @JsonProperty("hsa_id") @Nullable String hsaId,
     @JsonProperty("efos_id") @Nullable String efosId,
     @JsonProperty("phone_number") @Nullable String phoneNumber,
-    @JsonProperty("rights") @NonNull List<BundleUserRightEntry> rights) {
+    @JsonProperty("rights") @NonNull List<BundleUserRightEntry> rights) implements Serializable {
 }

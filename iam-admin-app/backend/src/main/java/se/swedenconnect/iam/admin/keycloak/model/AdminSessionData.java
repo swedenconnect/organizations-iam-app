@@ -19,6 +19,7 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import se.swedenconnect.iam.security.claims.OrgRightsClaim;
 
+import java.io.Serializable;
 import java.util.List;
 import java.util.Set;
 
@@ -43,7 +44,7 @@ public record AdminSessionData(
     @Nullable String orgConstraint,
     @NonNull List<FunctionInfo> functions,
     @NonNull Set<String> adminOrgIdentifiers,
-    @NonNull OrgRightsClaim claim) {
+    @NonNull OrgRightsClaim claim) implements Serializable {
 
   /**
    * Decides whether a right held by some user may be disclosed to this caller.

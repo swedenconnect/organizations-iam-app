@@ -125,6 +125,13 @@ public class IamAdminProperties implements InitializingBean {
   @NestedConfigurationProperty
   private final UserRegistration userRegistration = new UserRegistration();
 
+  /**
+   * Where the HTTP sessions are kept.
+   */
+  @Getter
+  @NestedConfigurationProperty
+  private final Session session = new Session();
+
   @Override
   public void afterPropertiesSet() throws Exception {
     if (this.pnrUserids) {
@@ -132,6 +139,7 @@ public class IamAdminProperties implements InitializingBean {
       this.userRegistration.setAllowSelectUserId(true);
     }
     this.userRegistration.afterPropertiesSet();
+    this.session.afterPropertiesSet();
   }
 
   /**
@@ -152,6 +160,35 @@ public class IamAdminProperties implements InitializingBean {
     @Getter
     @Setter
     private String cron = "0 */15 * * * *";
+  }
+
+  /**
+   * Where the HTTP sessions are kept. See
+   * {@link se.swedenconnect.iam.admin.config.SessionConfiguration}.
+   */
+  public static class Session implements InitializingBean {
+
+    /** Sessions are kept in this instance's heap. */
+    public static final String MEMORY = "memory";
+
+    /** Sessions are kept in Redis. */
+    public static final String REDIS = "redis";
+
+    /**
+     * The session store, {@code memory} or {@code redis}. Default: {@code memory}.
+     */
+    @Getter
+    @Setter
+    private String store = MEMORY;
+
+    @Override
+    public void afterPropertiesSet() throws IllegalArgumentException {
+      if (!MEMORY.equals(this.store) && !REDIS.equals(this.store)) {
+        throw new IllegalArgumentException(
+            "iam.admin.session.store is '%s' - expected '%s' or '%s'"
+                .formatted(this.store, MEMORY, REDIS));
+      }
+    }
   }
 
   /**

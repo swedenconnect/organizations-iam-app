@@ -57,6 +57,9 @@ management:
       show-details: never
       probes:
         enabled: true
+  health:
+    redis:
+      enabled: false
 
 # Audit logging. No repository is configured here, so the audit events are only kept in memory.
 # A production deployment must configure a durable repository, see docs/iam-admin-configuration.md.
@@ -79,3 +82,5 @@ iam:
     sso-login-path: /sso/login
     realm: orgiam
     theme: digg
+    session:
+      store: memory

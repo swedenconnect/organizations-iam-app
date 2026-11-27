@@ -20,6 +20,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
+import java.io.Serializable;
+
 /**
  * A single function definition inside an {@link ImportExportBundle}.
  *
@@ -35,5 +37,5 @@ public record BundleFunctionEntry(
     @JsonProperty("name#sv") @Nullable String nameSv,
     @JsonProperty("name#en") @Nullable String nameEn,
     @JsonProperty("description#sv") @Nullable String descriptionSv,
-    @JsonProperty("description#en") @Nullable String descriptionEn) {
+    @JsonProperty("description#en") @Nullable String descriptionEn) implements Serializable {
 }
