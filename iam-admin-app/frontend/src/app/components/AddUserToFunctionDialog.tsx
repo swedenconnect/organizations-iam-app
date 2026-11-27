@@ -30,7 +30,7 @@ import {
   identityPayload,
   validateIdentityValues,
 } from '@/app/components/UserIdentityFields';
-import { resolveOrgName } from '@/utils';
+import { isAllowedPersonName, PROHIBITED_NAME_CHARACTERS, resolveOrgName } from '@/utils';
 
 interface AddUserToFunctionDialogProps {
   open: boolean;
@@ -159,6 +159,9 @@ export function AddUserToFunctionDialog({
   const handleCreateAndAdd = async () => {
     const errors: Record<string, string> = {};
     if (!newName.trim()) errors.name = t('validation.required');
+    else if (!isAllowedPersonName(newName.trim())) {
+      errors.name = `${t('validation.nameCharacters')} ${PROHIBITED_NAME_CHARACTERS}`;
+    }
     if (!newEmail.trim() || !newEmail.includes('@')) errors.email = t('validation.emailRequired');
     const identityValidation = validateIdentityValues(identity, settings, t);
     setIdentityErrors(identityValidation);
